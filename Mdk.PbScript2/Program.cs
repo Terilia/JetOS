@@ -7,7 +7,6 @@ using System.Linq;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
-using static IngameScript.Program;
 
 namespace IngameScript
 {
@@ -161,11 +160,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             /// </summary>
             public void SetThrustOverride(float percentage)
             {
-                if (percentage < 0f) percentage = 0f;
-                if (percentage > 1f) percentage = 1f;
+                percentage = MathHelper.Clamp(percentage, 0f, 1f);
                 foreach (var thruster in _thrusters)
                 {
-                    thruster.ThrustOverridePercentage = percentage;
+                    if (Math.Abs(thruster.ThrustOverridePercentage - percentage) > 0.001f)
+                    {
+                        thruster.ThrustOverridePercentage = percentage;
+                    }
                 }
             }
 
@@ -2211,6 +2212,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     DrawAltitudeIndicator(frame, smoothedAltitude);
                     DrawAOABracket(frame, aoa);
                     DrawTrim(frame, aoa);
+                    DrawBomb(frame, aoa);
                     DrawGForceIndicator(frame, gForces, peakGForce);
                     var cachedData =
                         ParentProgram.Me.CustomData
@@ -2722,7 +2724,62 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 };
                 frame.Add(aoaText);
             }
+            private void DrawBomb(MySpriteDrawFrame frame, double aoa)
+            {
+                float centerX = hud.SurfaceSize.X / 2;
+                float centerY = hud.SurfaceSize.Y / 2;
 
+                float pixelsPerDegreeY = hud.SurfaceSize.Y / 45f;
+                float aoaOffsetY = (float)(aoa * pixelsPerDegreeY);
+                Vector2 bracketPosition = new Vector2(centerX - 40f, centerY + 40f);
+
+                var customDataLines = ParentProgram.Me.CustomData.Split(
+    new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                float offsetY = 0f; // Initial vertical offset
+                float spacingY = 20f; // Spacing between lines
+
+                double sum = 0;
+                int count = 0;
+
+                for (int i = 0; i < customDataLines.Length; i++)
+                {
+                    string line = customDataLines[i];
+
+                    if (line.StartsWith("DataSlot"))
+                    {
+                        // Try to extract the second number from the line
+                        string[] parts = line.Split(':');
+                        double extractedValue;
+
+                        if (parts.Length > 1 && double.TryParse(parts[1], out extractedValue))
+                        {
+                            sum += extractedValue;
+                            count++;
+                        }
+                    }
+                }
+
+                if (count > 0)
+                {
+                    double averageValue = sum / count;
+
+                    var aoaText = new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = string.Format("Bomb Acc: {0:F1}°", averageValue), // C# 6 compatible formatting
+                        Position = bracketPosition + new Vector2(offsetY, 0),
+                        RotationOrScale = 0.6f,
+                        Color = Color.White,
+                        Alignment = TextAlignment.RIGHT,
+                        FontId = "White"
+                    };
+
+                    frame.Add(aoaText);
+                }
+
+
+
+            }
             // Helper method to rotate a point around a pivot
             private Vector2 RotatePoint(Vector2 point, Vector2 pivot, float angle)
             {
