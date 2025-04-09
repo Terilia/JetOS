@@ -4,8 +4,10 @@ using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
+using VRage.Game.ModAPI;
 using VRageMath;
 
 namespace IngameScript
@@ -239,7 +241,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private static Program parentProgram;
             private static UIController uiController;
             private static int lastHandledSpecialTick = -1; // Track the last tick special keys were handled
-            private static int currentTick = 0; // Track the current tick
+            public static int currentTick = 0; // Track the current tick
             private static Program.RaycastCameraControl raycastProgram;
             private static Program.HUDModule hudProgram;
             private static int gpsindex = 0;
@@ -623,6 +625,61 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         }
 
                         directionIndex++;
+                    }
+                    var blocks = new List<IMyTerminalBlock>();
+                    parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks);
+
+                    // Step 1: Get X/Z bounds
+                    int minX = int.MaxValue, maxX = int.MinValue;
+                    int minZ = int.MaxValue, maxZ = int.MinValue;
+
+                    foreach (var block in blocks)
+                    {
+                        var pos = block.Position;
+                        if (pos.X < minX) minX = pos.X;
+                        if (pos.X > maxX) maxX = pos.X;
+                        if (pos.Z < minZ) minZ = pos.Z;
+                        if (pos.Z > maxZ) maxZ = pos.Z;
+                    }
+
+                    int width = maxX - minX + 1;
+                    int height = maxZ - minZ + 1;
+
+                    // Step 2: Calculate drawing area and scaling
+                    float padding = 10f;
+                    float lineThickness = 2f;
+                    float cellSizeX = (renderArea.X - padding * 2) / width;
+                    float cellSizeY = (renderArea.Y - padding * 2) / height;
+                    float cellSize = Math.Min(cellSizeX, cellSizeY) * 10; // Ensure square blocks
+
+                    Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
+                    Vector2 renderCenter = renderArea.Position + renderArea.Size / 2f;
+                    Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
+
+                
+
+                    // Step 4: Draw blocks
+                    foreach (var block in blocks)
+                    {
+                        int origX = block.Position.X - minX;
+                        int origZ = block.Position.Z - minZ;
+
+                        // Rotate 90 degrees clockwise
+                        int localX = origZ;
+                        int localZ = width - origX - 1;
+
+
+                        Vector2 drawPos = boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
+
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
+                            Size = new Vector2(cellSize*5f, cellSize*1f),
+                            Color = Color.LightGray,
+                            Alignment = TextAlignment.CENTER
+                        });
                     }
                 }, area);
 
@@ -1137,6 +1194,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             public abstract void ExecuteOption(int index);
             public virtual void HandleSpecialFunction(int key) { }
             public virtual void Tick() { }
+            public int currentTick = 0;
             public virtual string GetHotkeys()
             {
                 return "";
@@ -1968,81 +2026,87 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
 
 
+            // PID-related variables (define as class fields):
             private float integralError = 0f;
             private float previousError = 0f;
-            private const float Kp = 0.15f; // Proportional gain
-            private const float Ki = 0.02f; // Integral gain
-            private const float Kd = 0.1f;  // Derivative gain
-            private const float IntegralDecayFactor = 0.95f; // Decay for integral term
-            private const float ErrorThreshold = 0.1f; // Minimum significant error to act on
+            private const float Kp = 3f;
+            private const float Kd = 0.5f;
+            private const float Ki = 0.015f; // Lower integral effect slightly
+            private const float IntegralDecayFactor = 0.95f; // Increase decay speed to reduce persistent integral build-up
+
+            private const float MaxPIDOutput = 45f;
+            private const float ErrorThreshold = 0.1f; // AOA error below which no correction is needed
+            private int pilotInputDelay = 0;
 
             private void AdjustStabilizers(double aoa)
             {
-                const float MaxAOA = 75f;
-                const float MinMultiplier = 0.1f;
+                // Clamp AOA input
+                float aoaFloat = MathHelper.Clamp((float)aoa, -50f, 50f);
+                Vector3D velocity = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D forward = cockpit.WorldMatrix.Forward;
 
-                float aoaFloat = MathHelper.Clamp((float)aoa, -45f, 45f);
-
-                // Calculate the adjustment factor based on AOA
-                float adjustmentFactor = MinMultiplier + (maxMultiplier - MinMultiplier) * (1f - (Math.Abs(aoaFloat) / MaxAOA));
-                adjustmentFactor = MathHelper.Clamp(adjustmentFactor, MinMultiplier, maxMultiplier);
+                // Adjust the target AOA here (desired AOA: -3 degrees)
+                float targetAOA = 7f; //TODO: Allow this offset to be changed. 
+                float aoaError = aoaFloat - targetAOA; // this is the adjusted error
 
                 Vector2 pitchyaw = cockpit.RotationIndicator;
-                if (delay >= 1)
+
+                // Check if pilot input exists:
+                if (Math.Abs(pitchyaw.Y) > 0.01f)
                 {
-                    delay -= 1;
+                    integralError = 0f;
+                    previousError = 0f;
+                    pilotInputDelay = 0;
+
+                    AdjustTrim(rightstab, -pitchyaw.Y * 1f);
+                    AdjustTrim(leftstab, pitchyaw.Y * 1f);
                 }
                 else
                 {
-                    if (pitchyaw.Y == 0)
+                    if (pilotInputDelay > 0)
                     {
-                        if (Math.Abs(aoaFloat) > ErrorThreshold)
-                        {
-                            float desiredTrim = -PIDController(aoaFloat) * adjustmentFactor;
+                        pilotInputDelay--;
+                        return;
+                    }
 
-                            // Incrementally increase maxMultiplier if needed
-                            if (maxMultiplier < 5f) { maxMultiplier += 0.1f; }
+                    // Autonomous PID Control with adjusted error
+                    if (Math.Abs(aoaError) > ErrorThreshold)
+                    {
+                        float desiredTrim = ComputePIDOutput(aoaError);
 
-                            // Adjust stabilizers
-                            AdjustTrim(rightstab, -desiredTrim);
-                            AdjustTrim(leftstab, desiredTrim);
-                        }
+                        AdjustTrim(rightstab, -desiredTrim);
+                        AdjustTrim(leftstab, desiredTrim);
                     }
                     else
                     {
-                        // Reset maxMultiplier when the pilot takes control
-                        maxMultiplier = MinMultiplier;
-                        delay = 90;
+                        AdjustTrim(rightstab, 0f);
+                        AdjustTrim(leftstab, 0f);
 
-                        // Reset PID components
                         integralError = 0f;
                         previousError = 0f;
-
-                        // Adjust stabilizers based on pilot input
-                        AdjustTrim(rightstab, -pitchyaw.Y);
-                        AdjustTrim(leftstab, pitchyaw.Y);
                     }
                 }
             }
 
-            private float PIDController(float currentError)
-            {
-                const float MaxPIDOutput = 5f;
 
-                // Decay the integral error
+            private float ComputePIDOutput(float currentError)
+            {
+                // Decay the integral error slightly each tick to prevent windup
                 integralError *= IntegralDecayFactor;
 
-                // Calculate integral and derivative terms
+                // Accumulate integral error
                 integralError += currentError;
+
+                // Calculate derivative
                 float derivative = currentError - previousError;
 
-                // Calculate PID output
+                // PID Calculation
                 float pidOutput = (Kp * currentError) + (Ki * integralError) + (Kd * derivative);
 
-                // Clamp the output to avoid excessive adjustments
+                // Clamp output for stability
                 pidOutput = MathHelper.Clamp(pidOutput, -MaxPIDOutput, MaxPIDOutput);
 
-                // Update the previous error for the next iteration
+                // Update previous error
                 previousError = currentError;
 
                 return pidOutput;
@@ -2050,7 +2114,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
             private void AdjustTrim(IEnumerable<IMyTerminalBlock> stabilizers, float desiredTrim)
             {
-                const float MaxTrimChangePerTick = 0.2f; // Adjust this for smoothness
+                const float MaxTrimChangePerTick = 2f; // Adjust this for smoothness
 
                 foreach (var item in stabilizers)
                 {
@@ -2066,6 +2130,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     item.SetValue("Trim", currentTrim + adjustment);
                 }
             }
+
+
 
 
 
@@ -2125,7 +2191,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
                 double heading = CalculateHeading();
                 double altitude = GetAltitude();
-                double aoa = CalculateAngleOfAttack(forwardVector, upVector, currentVelocity);
+                double aoa = CalculateAngleOfAttack(
+                    cockpit.WorldMatrix.Forward,
+                    cockpit.GetShipVelocities().LinearVelocity
+                );
 
 
                 double throttle = cockpit.MoveIndicator.Z * -1; // Assuming Z-axis throttle control
@@ -2198,6 +2267,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
 
                 throttle = throttlecontrol;
+
                 UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttle);
                 AdjustStabilizers(aoa);
                 using (var frame = hud.DrawFrame())
@@ -2295,39 +2365,46 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 };
                 frame.Add(peakGSprite);
             }
+            private double smoothAirspeed = 0;
+
             private void DrawAirspeedIndicator(MySpriteDrawFrame frame, double airspeed)
             {
-                float scaleX = 50f;
+                float scaleX = 60f;
                 float centerY = hud.SurfaceSize.Y / 2;
-                float scaleHeight = hud.SurfaceSize.Y * 0.6f;
-                float pixelsPerUnit = scaleHeight / 1000f; // Adjust as needed
+                float scaleHeight = hud.SurfaceSize.Y * 0.7f;
+                float pixelsPerUnit = scaleHeight / 200f;
 
-                // Draw background
-                var bg = new MySprite()
+                // Smooth the airspeed
+                smoothAirspeed += (airspeed - smoothAirspeed) * 0.1;
+                int airspeedRounded = (int)Math.Round(smoothAirspeed);
+
+                // Current speed indicator box
+                var speedBox = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(scaleX, centerY),
-                    Size = new Vector2(60f, scaleHeight),
-                    Color = new Color(0, 0, 0, 128),
+                    Data = "SquareHollow",
+                    Position = new Vector2(scaleX-20f, centerY-20f),
+                    Size = new Vector2(80f, 30f),
+                    Color = Color.White,
                     Alignment = TextAlignment.CENTER
                 };
-                frame.Add(bg);
+                frame.Add(speedBox);
 
-                // Draw airspeed value
-                string airspeedText = airspeed.ToString("F0");
+                // Current airspeed
                 var airspeedLabel = new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = airspeedText,
-                    Position = new Vector2(scaleX, centerY),
-                    RotationOrScale = 1f,
+                    Data = airspeedRounded.ToString(),
+                    Position = new Vector2(scaleX - 20f, centerY - 30f),
+                    RotationOrScale = 0.8f,
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER,
                     FontId = "White"
                 };
                 frame.Add(airspeedLabel);
             }
+
+
 
             private void DrawAltitudeIndicator(MySpriteDrawFrame frame, double currentAltitude)
             {
@@ -2561,6 +2638,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     });
 
                 }
+
+
             }
 
 
@@ -2651,6 +2730,29 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 frame.Add(rightWing);
             }
 
+            private double GetPitchFromWorldMatrix(MatrixD matrix)
+            {
+                Vector3D forward = matrix.Forward;
+                return Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
+            }
+            private double CalculateAOAFromFlightPath(Vector3D velocity, MatrixD worldMatrix)
+            {
+                if (velocity.LengthSquared() < 0.01) return 0;
+
+                // Transform velocity into cockpit-local space
+                Vector3D velocityDirection = Vector3D.Normalize(velocity);
+                Vector3D localVelocity = Vector3D.TransformNormal(velocityDirection, MatrixD.Transpose(worldMatrix));
+
+                // Velocity pitch (in degrees) — this is what your flight path marker uses
+                double velocityPitch = Math.Atan2(localVelocity.Y, -localVelocity.Z) * (180.0 / Math.PI);
+
+                // Nose pitch
+                Vector3D forward = worldMatrix.Forward;
+                double nosePitch = Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
+
+                // AOA = Nose Pitch - Velocity Pitch
+                return nosePitch - velocityPitch;
+            }
 
 
             private void DrawAOABracket(MySpriteDrawFrame frame, double aoa)
@@ -2809,19 +2911,21 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 return altitude;
             }
 
-            private double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D upVector, Vector3D velocity)
+            private double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity)
             {
                 if (velocity.LengthSquared() < 0.01) return 0;
-                Vector3D velocityDirection = Vector3D.Normalize(velocity);
 
-                // Calculate the angle between the velocity and the forward vector in the plane defined by the up vector
-                double angleOfAttack = Math.Atan2(
-                    Vector3D.Dot(velocityDirection, upVector),
-                    Vector3D.Dot(velocityDirection, forwardVector)
-                ) * (180 / Math.PI);
+                Vector3D velocityDir = Vector3D.Normalize(velocity);
+                Vector3D forward = Vector3D.Normalize(forwardVector);
 
-                return angleOfAttack;
+                // Pitch angles from velocity and nose (forward)
+                double velocityPitch = Math.Atan2(velocityDir.Y, -velocityDir.Z) * (180.0 / Math.PI);
+                double nosePitch = Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
+
+                return nosePitch - velocityPitch;
             }
+
+
 
 
 
@@ -2833,23 +2937,23 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             {
                 float centerX = hud.SurfaceSize.X / 2;
                 float centerY = hud.SurfaceSize.Y / 2;
-                float pixelsPerDegree = hud.SurfaceSize.Y / 45f; // Adjust scaling for pitch ladder
+                float pixelsPerDegree = hud.SurfaceSize.Y / 40f; // F18-like scaling
 
-                List<MySprite> preFrame = new List<MySprite>();
+                List<MySprite> sprites = new List<MySprite>();
 
-                // Draw pitch ladder lines
+                // Pitch ladder
                 for (int i = -90; i <= 90; i += 5)
                 {
                     float markerY = centerY - (i - pitch) * pixelsPerDegree;
-                    if (markerY < -50 || markerY > hud.SurfaceSize.Y + 50) continue; // Allow off-screen lines
+                    if (markerY < -100 || markerY > hud.SurfaceSize.Y + 100) continue;
 
-                    bool isMajorLine = i % 10 == 0;
-                    float lineWidth = isMajorLine ? 120f : 60f;
-                    float lineThickness = isMajorLine ? 3f : 1f;
-                    Color lineColor = isMajorLine ? Color.Cyan : Color.Gray;
+                    bool majorLine = i % 10 == 0;
+                    float lineWidth = majorLine ? 150f : 75f;
+                    float lineThickness = majorLine ? 3f : 1f;
+                    Color lineColor = majorLine ? Color.Lime : Color.Gray;
 
-                    // Draw pitch line
-                    var line = new MySprite()
+                    // Pitch ladder line
+                    sprites.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
@@ -2857,89 +2961,80 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         Size = new Vector2(lineWidth, lineThickness),
                         Color = lineColor,
                         Alignment = TextAlignment.CENTER
-                    };
-                    preFrame.Add(line);
+                    });
 
-                    // Add labels for major lines
-                    if (isMajorLine && i != 0)
+                    // Labels for major lines
+                    if (majorLine && i != 0)
                     {
-                        string pitchLabel = Math.Abs(i).ToString();
-                        var leftLabel = new MySprite()
+                        string label = Math.Abs(i).ToString();
+
+                        sprites.Add(new MySprite()
                         {
                             Type = SpriteType.TEXT,
-                            Data = pitchLabel,
-                            Position = new Vector2(centerX - lineWidth / 2 - 25, markerY - 10),
+                            Data = label,
+                            Position = new Vector2(centerX - lineWidth / 2 - 30, markerY - 12),
                             RotationOrScale = 0.6f,
                             Color = lineColor,
                             Alignment = TextAlignment.RIGHT,
                             FontId = "White"
-                        };
-                        var rightLabel = new MySprite()
+                        });
+
+                        sprites.Add(new MySprite()
                         {
                             Type = SpriteType.TEXT,
-                            Data = pitchLabel,
-                            Position = new Vector2(centerX + lineWidth / 2 + 25, markerY - 10),
+                            Data = label,
+                            Position = new Vector2(centerX + lineWidth / 2 + 30, markerY - 12),
                             RotationOrScale = 0.6f,
                             Color = lineColor,
                             Alignment = TextAlignment.LEFT,
                             FontId = "White"
-                        };
-                        preFrame.Add(leftLabel);
-                        preFrame.Add(rightLabel);
+                        });
                     }
                 }
 
-                // Horizon line
-                float horizonY = centerY - (0 - pitch) * pixelsPerDegree;
-                var horizonLine = new MySprite()
+                // Distinct Horizon line
+                float horizonY = centerY + pitch * pixelsPerDegree;
+                // Distinct Horizon line
+                sprites.Add(new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
                     Data = "SquareSimple",
                     Position = new Vector2(centerX, horizonY),
-                    Size = new Vector2(hud.SurfaceSize.X, 2f),
+                    Size = new Vector2(hud.SurfaceSize.X, 4f),
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER
-                };
-                preFrame.Add(horizonLine);
+                });
 
-                // Center marker (custom design -^-)
-                var centerMarker = new MySprite()
+                // F18-style center marker (-^-)
+                sprites.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Triangle",
-                    Position = new Vector2(centerX, centerY),
-                    Size = new Vector2(10f, 10f),
+                    Type = SpriteType.TEXT,
+                    Data = "-^-",
+                    Position = new Vector2(centerX, centerY - 10),
+                    RotationOrScale = 0.8f,
                     Color = Color.Yellow,
-                    Alignment = TextAlignment.CENTER
-                };
-                preFrame.Add(centerMarker);
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "Monospace"
+                });
 
+                // Apply roll rotation
+                float rollRad = MathHelper.ToRadians(-roll);
+                float cosRoll = (float)Math.Cos(rollRad);
+                float sinRoll = (float)Math.Sin(rollRad);
 
-                // Rotate pitch ladder for roll angle
-                float rollRad = roll * (float)Math.PI / 180f;
-                float cosRoll = (float)Math.Cos(-rollRad);
-                float sinRoll = (float)Math.Sin(-rollRad);
-
-                for (int i = 0; i < preFrame.Count; i++)
+                for (int i = 0; i < sprites.Count; i++)
                 {
-                    MySprite sprite = preFrame[i];
-                    Vector2 spritePosition = sprite.Position ?? Vector2.Zero;
-                    Vector2 positionOffset = spritePosition - new Vector2(centerX, centerY);
-
-                    float rotatedX = positionOffset.X * cosRoll - positionOffset.Y * sinRoll;
-                    float rotatedY = positionOffset.X * sinRoll + positionOffset.Y * cosRoll;
-
-                    sprite.Position = new Vector2(rotatedX + centerX, rotatedY + centerY);
+                    MySprite sprite = sprites[i];
+                    Vector2 offset = (sprite.Position ?? Vector2.Zero) - new Vector2(centerX, centerY);
+                    sprite.Position = new Vector2(
+                        offset.X * cosRoll - offset.Y * sinRoll + centerX,
+                        offset.X * sinRoll + offset.Y * cosRoll + centerY
+                    );
 
                     if (sprite.Type == SpriteType.TEXTURE)
-                    {
-                        sprite.RotationOrScale = -rollRad;
-                    }
-                    else if (sprite.Type == SpriteType.TEXT)
-                    {
-                        sprite.RotationOrScale = 0f; // Keep text upright
-                    }
+                        sprite.RotationOrScale = rollRad;
 
+                    sprites[i] = sprite;
                     frame.Add(sprite);
                 }
             }
@@ -2949,92 +3044,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
 
 
-
-
-
-
-
-            private void DrawHeadingTape(MySpriteDrawFrame frame, double heading)
-            {
-                float centerX = hud.SurfaceSize.X / 2;
-                float tapeY = 50f; // Position of the heading tape
-                float tapeWidth = hud.SurfaceSize.X * 0.8f;
-                float headingScale = tapeWidth / 60f; // 60 degrees span
-
-                double normalizedHeading = heading % 360;
-                double centerHeading = Math.Round(normalizedHeading / 5) * 5;
-                float offsetX = (float)((centerHeading - normalizedHeading) * headingScale);
-
-                // Draw background for the heading tape
-                var tapeBg = new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(centerX, tapeY),
-                    Size = new Vector2(tapeWidth, 40f),
-                    Color = new Color(0, 0, 0, 128),
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(tapeBg);
-
-                // Draw heading markers
-                for (double h = centerHeading - 30; h <= centerHeading + 30; h += 5)
-                {
-                    double displayedHeading = (h + 360) % 360;
-                    float markerX = centerX + (float)((h - centerHeading) * headingScale) + offsetX;
-
-                    if (markerX < centerX - tapeWidth / 2 || markerX > centerX + tapeWidth / 2)
-                        continue;
-
-                    bool isMajorTick = h % 10 == 0;
-
-                    // Draw tick marks
-                    var tick = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(markerX, tapeY),
-                        Size = new Vector2(2, isMajorTick ? 20f : 10f),
-                        Color = Color.White,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(tick);
-
-                    // Draw heading labels for major ticks
-                    if (isMajorTick)
-                    {
-                        string label = displayedHeading.ToString("000");
-                        var headingLabel = new MySprite()
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = label,
-                            Position = new Vector2(markerX, tapeY - 15f),
-                            RotationOrScale = 0.6f,
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER,
-                            FontId = "White"
-                        };
-                        frame.Add(headingLabel);
-                    }
-                }
-
-                // Draw the current heading indicator (triangle)
-                var headingIndicator = new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Triangle",
-                    Position = new Vector2(centerX, tapeY + 20f),
-                    Size = new Vector2(20, 15),
-                    Color = Color.Yellow,
-                    Alignment = TextAlignment.CENTER,
-                    RotationOrScale = (float)Math.PI // Pointing down
-                };
-                frame.Add(headingIndicator);
-            }
-
-
             private void DrawCompass(MySpriteDrawFrame frame, double heading)
-            {
+            { 
                 float centerX = hud.SurfaceSize.X / 2;
                 float compassY = 40f;
                 float compassWidth = hud.SurfaceSize.X * 0.9f;
