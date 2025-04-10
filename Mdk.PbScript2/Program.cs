@@ -48,10 +48,7 @@ namespace IngameScript
             public IMyTerminalBlock hudBlock;
             public IMyTextSurface hud;
             public List<IMyGasTank> tanks = new List<IMyGasTank>();
-
-
-
-
+            public int offset = 0;
             // Constructor: gather all relevant blocks
             public Jet(IMyGridTerminalSystem grid)
             {
@@ -60,11 +57,17 @@ namespace IngameScript
 
                 // Thrusters (non-Sci-Fi, on same grid)
                 _thrusters = new List<IMyThrust>();
-                grid.GetBlocksOfType(_thrusters, t => t.CubeGrid == _cockpit.CubeGrid && !t.CustomName.Contains("Sci-Fi"));
+                grid.GetBlocksOfType(
+                    _thrusters,
+                    t => t.CubeGrid == _cockpit.CubeGrid && !t.CustomName.Contains("Sci-Fi")
+                );
 
                 // Sound blocks with "Sound Block Warning" in name
                 _soundBlocks = new List<IMySoundBlock>();
-                grid.GetBlocksOfType(_soundBlocks, s => s.CustomName.Contains("Sound Block Warning"));
+                grid.GetBlocksOfType(
+                    _soundBlocks,
+                    s => s.CustomName.Contains("Sound Block Warning")
+                );
 
                 // Radar turrets
                 _radars = new List<IMyLargeGatlingTurret>();
@@ -74,26 +77,31 @@ namespace IngameScript
 
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
-                grid.GetBlocksOfType(
-    _bays, b => b.CustomName.Contains("Bay"));
-                _bays.Sort((a, b) => ExtractBayNumber(a.CustomName)
-                                               .CompareTo(ExtractBayNumber(b.CustomName)));
+                grid.GetBlocksOfType(_bays, b => b.CustomName.Contains("Bay"));
+                _bays.Sort(
+                    (a, b) =>
+                        ExtractBayNumber(a.CustomName).CompareTo(ExtractBayNumber(b.CustomName))
+                );
 
-
-                grid.GetBlocksOfType(rightstab, g => g.CustomName.Contains("invertedstab"));//invertedstab
-                grid.GetBlocksOfType(leftstab, g => g.CustomName.Contains("normalstab"));//normalstab
+                grid.GetBlocksOfType(rightstab, g => g.CustomName.Contains("invertedstab")); //invertedstab
+                grid.GetBlocksOfType(leftstab, g => g.CustomName.Contains("normalstab")); //normalstab
                 _thrustersbackwards = new List<IMyThrust>();
-                grid.GetBlocksOfType(_thrustersbackwards,
-g => g.CubeGrid == _cockpit.CubeGrid && !g.CustomName.Contains("Sci-Fi") && g.GridThrustDirection == Vector3I.Backward);
+                grid.GetBlocksOfType(
+                    _thrustersbackwards,
+                    g =>
+                        g.CubeGrid == _cockpit.CubeGrid
+                        && !g.CustomName.Contains("Sci-Fi")
+                        && g.GridThrustDirection == Vector3I.Backward
+                );
                 hudBlock = grid.GetBlockWithName("Fighter HUD");
                 hud = hudBlock as IMyTextSurface;
-                grid.GetBlocksOfType(tanks,
-g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
+                grid.GetBlocksOfType(
+                    tanks,
+                    g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet")
+                );
                 hud.ContentType = ContentType.SCRIPT;
                 hud.ScriptBackgroundColor = new Color(0, 0, 0, 0);
                 hud.ScriptForegroundColor = Color.White;
-
-
             }
             private int ExtractBayNumber(string name)
             {
@@ -119,7 +127,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             /// </summary>
             public double GetVelocity()
             {
-                if (_cockpit == null) return 0.0;
+                if (_cockpit == null)
+                    return 0.0;
                 return _cockpit.GetShipSpeed(); // m/s
             }
 
@@ -136,7 +145,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             /// </summary>
             public double GetAltitude()
             {
-                if (_cockpit == null) return 0.0;
+                if (_cockpit == null)
+                    return 0.0;
                 double altitude = 0.0;
                 _cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
                 return altitude;
@@ -183,7 +193,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             {
                 foreach (var soundBlock in _soundBlocks)
                 {
-                    soundBlock.Stop();            // Stop any currently playing
+                    soundBlock.Stop(); // Stop any currently playing
                     soundBlock.SelectedSound = soundName;
                     soundBlock.Play();
                 }
@@ -250,7 +260,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private const int GPS_INDEX_MAX = 4;
             private static String selectedsound;
             private static String module_sound;
-            private static int lastSoundTick = -500;  // Initialize to -500 to allow instant play when damaged
+            private static int lastSoundTick = -500; // Initialize to -500 to allow instant play when damaged
             private static bool isPlayingSound = false;
             private static bool soundNeedsToPlay = false; // Track if sound is currently playing
             private static string previousSelectedSound;
@@ -261,7 +271,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             public static void Initialize(Program program)
             {
                 _myJet = new Jet(program.GridTerminalSystem);
-                var cockpit = program.GridTerminalSystem.GetBlockWithName("JetOS") as IMyTextSurfaceProvider;
+                var cockpit =
+                    program.GridTerminalSystem.GetBlockWithName("JetOS") as IMyTextSurfaceProvider;
                 if (cockpit != null)
                 {
                     lcdMain = cockpit.GetSurface(0);
@@ -276,10 +287,11 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         cockpit.GetSurface(i).FontColor = new Color(25, 217, 140, 255);
                     }
                 }
-                else
-                {
-                }
-                program.GridTerminalSystem.GetBlocksOfType(soundblocks, b => b.CustomName.Contains("Sound Block Warning"));
+                else { }
+                program.GridTerminalSystem.GetBlocksOfType(
+                    soundblocks,
+                    b => b.CustomName.Contains("Sound Block Warning")
+                );
 
                 thrusters = _myJet._thrusters;
                 parentProgram = program;
@@ -301,8 +313,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     mainMenuOptions[i] = modules[i].name;
                 }
                 currentModule = null;
-
-
             }
 
             // Add these variables at the class level if not already present
@@ -319,7 +329,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     for (int i = 0; i < radars.Count; i++)
                     {
-
                         radars[i].Enabled = true;
                     }
                 }
@@ -327,7 +336,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     for (int i = 0; i < radars.Count; i++)
                     {
-
                         radars[i].Enabled = false;
                     }
                 }
@@ -435,7 +443,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 module_sound = null;
 
-                if (currentTick == lastHandledSpecialTick) return;
+                if (currentTick == lastHandledSpecialTick)
+                    return;
                 lastHandledSpecialTick = currentTick;
 
                 if (string.IsNullOrWhiteSpace(argument))
@@ -471,8 +480,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 HandleSpecialFunctionInputs(argument);
             }
 
-
-
             private static void HandleSpecialFunctionInputs(string argument)
             {
                 int key;
@@ -490,205 +497,270 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 string[] options =
                     currentModule == null ? mainMenuOptions : currentModule.GetOptions();
                 uiController.RenderMainScreen(
-                    title: "System Menu", options: options,
+                    title: "System Menu",
+                    options: options,
                     currentMenuIndex: currentMenuIndex,
-                    navigationInstructions: "1: ▲  | 2: ▼ | 3: Select | 4: Back | 5-8: Special | 9: Menu");
+                    navigationInstructions: "1: ▲  | 2: ▼ | 3: Select | 4: Back | 5-8: Special | 9: Menu"
+                );
                 //uiController.RenderExtraScreen(title: "Module Hotkeys",
                 //                               content: currentModule?.GetHotkeys() ??
                 //                                   "Select a module to view hotkeys."); Commented due to engine recommendations
                 var area = new RectangleF(0, 0, 512, 512); // Example render area
                 float directionSpacing = 150f; // Vertical spacing between direction groups
-                uiController.RenderCustomExtraFrame((frame, renderArea) =>
-                {
-                    float gaugeRadius = 50f; // Radius of the gauge circle
-                    float gaugeSpacing = 120f; // Spacing between gauges
-                    float startX = 50f; // Starting X position for the gauges
-                    float startY = 50f; // Starting Y position for the gauges
-                    // Group thrusters by GridThrustDirection
-                    var groupedByDirection = thrusters
-                        .GroupBy(thruster => thruster.GridThrustDirection)
-                        .OrderBy(group => group.Key.ToString()); // Optional: Sort by direction name
-                    parentProgram.Echo(thrusters.ToArray().ToString());
-                    int directionIndex = 0;
-
-                    foreach (var directionGroup in groupedByDirection)
+                uiController.RenderCustomExtraFrame(
+                    (frame, renderArea) =>
                     {
-                        // Determine direction label
-                        string direction = directionGroup.Key.Z < 0 ? "Backward" : "Forward";
+                        float gaugeRadius = 50f; // Radius of the gauge circle
+                        float gaugeSpacing = 120f; // Spacing between gauges
+                        float startX = 50f; // Starting X position for the gauges
+                        float startY = 50f; // Starting Y position for the gauges
+                        // Group thrusters by GridThrustDirection
+                        var groupedByDirection = thrusters
+                            .GroupBy(thruster => thruster.GridThrustDirection)
+                            .OrderBy(group => group.Key.ToString()); // Optional: Sort by direction name
+                        parentProgram.Echo(thrusters.ToArray().ToString());
+                        int directionIndex = 0;
 
-                        // Position for the direction label
-                        var directionLabelPosition = new Vector2(startX, startY + directionIndex * directionSpacing);
-
-                        // Draw a semi-transparent background rectangle behind the direction label
-                        var directionLabelBackground = new MySprite(
-                            SpriteType.TEXTURE,
-                            "SquareSimple",
-                            directionLabelPosition + new Vector2(0f, 0f), // top-left corner (we’ll adjust size below)
-                            new Vector2(400f, 40f), // width & height of the background
-                            new Color(0, 0, 0, 180), // semi-transparent black
-                            alignment: TextAlignment.LEFT
-                        );
-                        frame.Add(directionLabelBackground);
-
-                        // Draw direction label text
-                        var directionLabel = new MySprite(
-                            SpriteType.TEXT,
-                            $"Direction: {direction}",
-                            directionLabelPosition + new Vector2(10f, 5f),  // small offsets inside the rectangle
-                            null,
-                            Color.White,
-                            "Debug",
-                            TextAlignment.LEFT
-                        );
-                        frame.Add(directionLabel);
-
-                        // Group by MaxEffectiveThrust, highest first
-                        var groupedByMaxThrust = directionGroup
-                            .GroupBy(thruster => thruster.MaxEffectiveThrust)
-                            .OrderByDescending(group => group.Key);
-
-                        int thrustGroupIndex = 0;
-                        foreach (var thrustGroup in groupedByMaxThrust)
+                        foreach (var directionGroup in groupedByDirection)
                         {
-                            // Calculate average thrust percentage for this group
-                            float totalThrust = thrustGroup.Sum(thruster => thruster.CurrentThrust);
-                            float totalMaxThrust = thrustGroup.Sum(thruster => thruster.MaxEffectiveThrust);
-                            float averagePercentage = (totalMaxThrust > 0) ? (totalThrust / totalMaxThrust) * 100f : 0f;
+                            // Determine direction label
+                            string direction = directionGroup.Key.Z < 0 ? "Backward" : "Forward";
 
-                            // Position for the gauge center
-                            var gaugeCenter = new Vector2(
-                                startX + 60f + (thrustGroupIndex * gaugeSpacing),
-                                directionLabelPosition.Y + 80f
+                            // Position for the direction label
+                            var directionLabelPosition = new Vector2(
+                                startX,
+                                startY + directionIndex * directionSpacing
                             );
 
-                            // Optionally show which thrust group we’re looking at (e.g., by max thrust)
-                            var groupLabel = new MySprite(
-                                SpriteType.TEXT,
-                                $"Group: {thrustGroup.Key / 1000f:0.0}kN",  // Just an example
-                                gaugeCenter + new Vector2(0, -50f),
-                                null,
-                                Color.LightGray,
-                                "Debug",
-                                TextAlignment.CENTER
-                            );
-                            frame.Add(groupLabel);
-
-                            // Draw a gray circle as the gauge background
-                            var circle = new MySprite(
-                                SpriteType.TEXTURE,
-                                "Circle",
-                                gaugeCenter,
-                                new Vector2(gaugeRadius * 2, gaugeRadius * 2),
-                                Color.Gray
-                            );
-                            frame.Add(circle);
-
-                            // Dynamically compute a color from green-ish to red-ish based on usage
-                            // (This is just one simple approach—tweak as you wish.)
-                            float t = MathHelper.Clamp(averagePercentage / 100f, 0f, 1f);
-                            Color gaugeColor = new Color(
-                                (int)MathHelper.Lerp(0, 255, t),
-                                (int)MathHelper.Lerp(255, 0, t),
-                                0
-                            );
-
-                            // Draw the needle
-                            float angle = MathHelper.ToRadians((averagePercentage / 100f) * 180f - 90f); // Map [0..100%] -> [-90..+90 deg]
-                            var needle = new MySprite(
+                            // Draw a semi-transparent background rectangle behind the direction label
+                            var directionLabelBackground = new MySprite(
                                 SpriteType.TEXTURE,
                                 "SquareSimple",
-                                gaugeCenter,
-                                new Vector2(2, gaugeRadius),
-                                gaugeColor,
-                                alignment: TextAlignment.CENTER
+                                directionLabelPosition + new Vector2(0f, 0f), // top-left corner (we’ll adjust size below)
+                                new Vector2(400f, 40f), // width & height of the background
+                                new Color(0, 0, 0, 180), // semi-transparent black
+                                alignment: TextAlignment.LEFT
                             );
-                            needle.Position = gaugeCenter + new Vector2(
-                                (float)Math.Cos(angle - MathHelper.ToRadians(90)),
-                                (float)Math.Sin(angle - MathHelper.ToRadians(90))
-                            ) * (gaugeRadius / 2);
-                            needle.RotationOrScale = angle;
-                            frame.Add(needle);
+                            frame.Add(directionLabelBackground);
 
-                            // Draw the percentage label under the gauge
-                            var percentageLabel = new MySprite(
+                            // Draw direction label text
+                            var directionLabel = new MySprite(
                                 SpriteType.TEXT,
-                                $"{averagePercentage:F1}%",
-                                gaugeCenter + new Vector2(0, gaugeRadius + 20f),
+                                $"Direction: {direction}",
+                                directionLabelPosition + new Vector2(10f, 5f), // small offsets inside the rectangle
                                 null,
                                 Color.White,
                                 "Debug",
-                                TextAlignment.CENTER
+                                TextAlignment.LEFT
                             );
-                            frame.Add(percentageLabel);
+                            frame.Add(directionLabel);
 
-                            thrustGroupIndex++;
+                            // Group by MaxEffectiveThrust, highest first
+                            var groupedByMaxThrust = directionGroup
+                                .GroupBy(thruster => thruster.MaxEffectiveThrust)
+                                .OrderByDescending(group => group.Key);
+
+                            int thrustGroupIndex = 0;
+                            foreach (var thrustGroup in groupedByMaxThrust)
+                            {
+                                // Calculate average thrust percentage for this group
+                                float totalThrust = thrustGroup.Sum(
+                                    thruster => thruster.CurrentThrust
+                                );
+                                float totalMaxThrust = thrustGroup.Sum(
+                                    thruster => thruster.MaxEffectiveThrust
+                                );
+                                float averagePercentage =
+                                    (totalMaxThrust > 0)
+                                        ? (totalThrust / totalMaxThrust) * 100f
+                                        : 0f;
+
+                                // Position for the gauge center
+                                var gaugeCenter = new Vector2(
+                                    startX + 60f + (thrustGroupIndex * gaugeSpacing),
+                                    directionLabelPosition.Y + 80f
+                                );
+
+                                // Optionally show which thrust group we’re looking at (e.g., by max thrust)
+                                var groupLabel = new MySprite(
+                                    SpriteType.TEXT,
+                                    $"Group: {thrustGroup.Key / 1000f:0.0}kN", // Just an example
+                                    gaugeCenter + new Vector2(0, -50f),
+                                    null,
+                                    Color.LightGray,
+                                    "Debug",
+                                    TextAlignment.CENTER
+                                );
+                                frame.Add(groupLabel);
+
+                                // Draw a gray circle as the gauge background
+                                var circle = new MySprite(
+                                    SpriteType.TEXTURE,
+                                    "Circle",
+                                    gaugeCenter,
+                                    new Vector2(gaugeRadius * 2, gaugeRadius * 2),
+                                    Color.Gray
+                                );
+                                frame.Add(circle);
+
+                                // Dynamically compute a color from green-ish to red-ish based on usage
+                                // (This is just one simple approach—tweak as you wish.)
+                                float t = MathHelper.Clamp(averagePercentage / 100f, 0f, 1f);
+                                Color gaugeColor = new Color(
+                                    (int)MathHelper.Lerp(0, 255, t),
+                                    (int)MathHelper.Lerp(255, 0, t),
+                                    0
+                                );
+
+                                // Draw the needle
+                                float angle = MathHelper.ToRadians(
+                                    (averagePercentage / 100f) * 180f - 90f
+                                ); // Map [0..100%] -> [-90..+90 deg]
+                                var needle = new MySprite(
+                                    SpriteType.TEXTURE,
+                                    "SquareSimple",
+                                    gaugeCenter,
+                                    new Vector2(2, gaugeRadius),
+                                    gaugeColor,
+                                    alignment: TextAlignment.CENTER
+                                );
+                                needle.Position =
+                                    gaugeCenter
+                                    + new Vector2(
+                                        (float)Math.Cos(angle - MathHelper.ToRadians(90)),
+                                        (float)Math.Sin(angle - MathHelper.ToRadians(90))
+                                    ) * (gaugeRadius / 2);
+                                needle.RotationOrScale = angle;
+                                frame.Add(needle);
+
+                                // Draw the percentage label under the gauge
+                                var percentageLabel = new MySprite(
+                                    SpriteType.TEXT,
+                                    $"{averagePercentage:F1}%",
+                                    gaugeCenter + new Vector2(0, gaugeRadius + 20f),
+                                    null,
+                                    Color.White,
+                                    "Debug",
+                                    TextAlignment.CENTER
+                                );
+                                frame.Add(percentageLabel);
+
+                                thrustGroupIndex++;
+                            }
+
+                            directionIndex++;
+                        }
+                        var blocks = new List<IMyTerminalBlock>();
+                        parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks);
+
+                        // Step 1: Get X/Z bounds
+                        int minX = int.MaxValue,
+                            maxX = int.MinValue;
+                        int minZ = int.MaxValue,
+                            maxZ = int.MinValue;
+
+                        foreach (var block in blocks)
+                        {
+                            var pos = block.Position;
+                            if (pos.X < minX)
+                                minX = pos.X;
+                            if (pos.X > maxX)
+                                maxX = pos.X;
+                            if (pos.Z < minZ)
+                                minZ = pos.Z;
+                            if (pos.Z > maxZ)
+                                maxZ = pos.Z;
                         }
 
-                        directionIndex++;
-                    }
-                    var blocks = new List<IMyTerminalBlock>();
-                    parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks);
+                        int width = maxX - minX + 1;
+                        int height = maxZ - minZ + 1;
 
-                    // Step 1: Get X/Z bounds
-                    int minX = int.MaxValue, maxX = int.MinValue;
-                    int minZ = int.MaxValue, maxZ = int.MinValue;
-
-                    foreach (var block in blocks)
-                    {
-                        var pos = block.Position;
-                        if (pos.X < minX) minX = pos.X;
-                        if (pos.X > maxX) maxX = pos.X;
-                        if (pos.Z < minZ) minZ = pos.Z;
-                        if (pos.Z > maxZ) maxZ = pos.Z;
-                    }
-
-                    int width = maxX - minX + 1;
-                    int height = maxZ - minZ + 1;
-
-                    // Step 2: Calculate drawing area and scaling
-                    float padding = 10f;
-                    float lineThickness = 2f;
-                    float cellSizeX = (renderArea.X - padding * 2) / width;
-                    float cellSizeY = (renderArea.Y - padding * 2) / height;
-                    float cellSize = Math.Min(cellSizeX, cellSizeY) * 10; // Ensure square blocks
-
-                    Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
-                    Vector2 renderCenter = renderArea.Position + renderArea.Size / 2f;
-                    Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
-
-                
-
-                    // Step 4: Draw blocks
-                    foreach (var block in blocks)
-                    {
-                        int origX = block.Position.X - minX;
-                        int origZ = block.Position.Z - minZ;
-
-                        // Rotate 90 degrees clockwise
-                        int localX = origZ;
-                        int localZ = width - origX - 1;
-
-
-                        Vector2 drawPos = boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
-
-                        frame.Add(new MySprite()
+                        // Step 2: Build occupancy grid
+                        bool[,] occupancyGrid = new bool[width, height];
+                        foreach (var block in blocks)
                         {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
-                            Size = new Vector2(cellSize*5f, cellSize*1f),
-                            Color = Color.LightGray,
-                            Alignment = TextAlignment.CENTER
-                        });
-                    }
-                }, area);
+                            int x = block.Position.X - minX;
+                            int z = block.Position.Z - minZ;
+                            occupancyGrid[x, z] = true;
+                        }
 
+                        // Step 3: Calculate drawing area and scaling
+                        float padding = 10f;
+                        float cellSizeX = (renderArea.X - padding * 2) / width;
+                        float cellSizeY = (renderArea.Y - padding * 2) / height;
+                        float cellSize = Math.Min(cellSizeX, cellSizeY) * 10; // Ensure square blocks
 
+                        Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
+                        Vector2 renderCenter =
+                            renderArea.Position
+                            + new Vector2(renderArea.Size.X * 0.225f, renderArea.Size.Y * 0.12f)
+                            + renderArea.Size / 2f;
+                        Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
 
+                        // Directions to check neighbors (4 cardinal directions)
+                        Vector2I[] directions = new Vector2I[]
+                        {
+                            new Vector2I(1, 0),
+                            new Vector2I(-1, 0),
+                            new Vector2I(0, 1),
+                            new Vector2I(0, -1)
+                        };
 
+                        // Step 4: Draw only outline blocks
+                        for (int x = 0; x < width; x++)
+                        {
+                            for (int z = 0; z < height; z++)
+                            {
+                                if (!occupancyGrid[x, z])
+                                    continue;
 
+                                bool isOutline = false;
+                                foreach (var dir in directions)
+                                {
+                                    int nx = x + dir.X;
+                                    int nz = z + dir.Y;
+
+                                    if (
+                                        nx < 0
+                                        || nx >= width
+                                        || nz < 0
+                                        || nz >= height
+                                        || !occupancyGrid[nx, nz]
+                                    )
+                                    {
+                                        isOutline = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!isOutline)
+                                    continue;
+
+                                // Rotate 90 degrees clockwise
+                                int localX = z;
+                                int localZ = width - x - 1;
+
+                                Vector2 drawPos =
+                                    boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
+
+                                frame.Add(
+                                    new MySprite()
+                                    {
+                                        Type = SpriteType.TEXTURE,
+                                        Data = "SquareSimple",
+                                        Position =
+                                            drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
+                                        Size = new Vector2(cellSize * 5f, cellSize * 2f),
+                                        Color = Color.LightGray,
+                                        Alignment = TextAlignment.CENTER
+                                    }
+                                );
+                            }
+                        }
+                    },
+                    area
+                );
             }
-
 
             private static void HandleInput(string argument)
             {
@@ -711,7 +783,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         break;
                     case "5":
                     case "6":
+                        _myJet.offset += -1;
+                        break;
                     case "7":
+                        _myJet.offset += 1;
                         break;
                     case "8":
                         FlipGPS();
@@ -724,22 +799,25 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private static void FlipGPS()
             {
                 var customDataLines = parentProgram.Me.CustomData.Split(
-                    new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    new[] { '\n' },
+                    StringSplitOptions.RemoveEmptyEntries
+                );
                 List<string> modifiedLines = new List<string>(customDataLines);
-                string cachedLine =
-                    modifiedLines.FirstOrDefault(line => line.StartsWith("Cached:"));
+                string cachedLine = modifiedLines.FirstOrDefault(
+                    line => line.StartsWith("Cached:")
+                );
                 if (cachedLine == null)
                 {
                     return;
                 }
                 string cachedGPSData = cachedLine.Substring(7);
                 string currentCacheGPSLine = $"CacheGPS{gpsindex}:";
-                int currentCacheLineIndex =
-                    modifiedLines.FindIndex(line => line.StartsWith(currentCacheGPSLine));
+                int currentCacheLineIndex = modifiedLines.FindIndex(
+                    line => line.StartsWith(currentCacheGPSLine)
+                );
                 if (currentCacheLineIndex >= 0)
                 {
-                    modifiedLines[currentCacheLineIndex] =
-                        currentCacheGPSLine + cachedGPSData;
+                    modifiedLines[currentCacheLineIndex] = currentCacheGPSLine + cachedGPSData;
                 }
                 else
                 {
@@ -747,23 +825,22 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
                 gpsindex = (gpsindex + 1) % GPS_INDEX_MAX;
                 string nextCacheGPSLine = $"CacheGPS{gpsindex}:";
-                int nextCacheLineIndex =
-                    modifiedLines.FindIndex(line => line.StartsWith(nextCacheGPSLine));
+                int nextCacheLineIndex = modifiedLines.FindIndex(
+                    line => line.StartsWith(nextCacheGPSLine)
+                );
                 string nextGPSData = "";
                 if (nextCacheLineIndex >= 0)
                 {
-                    nextGPSData =
-                        modifiedLines[nextCacheLineIndex].Substring(nextCacheGPSLine.Length);
+                    nextGPSData = modifiedLines[nextCacheLineIndex].Substring(
+                        nextCacheGPSLine.Length
+                    );
                 }
-                int cachedLineIndex =
-                    modifiedLines.FindIndex(line => line.StartsWith("Cached:"));
+                int cachedLineIndex = modifiedLines.FindIndex(line => line.StartsWith("Cached:"));
                 if (cachedLineIndex >= 0)
                 {
                     modifiedLines[cachedLineIndex] = $"Cached:{nextGPSData}";
                 }
-                else
-                {
-                }
+                else { }
                 parentProgram.Me.CustomData = string.Join("\n", modifiedLines);
             }
             private static void NavigateUp()
@@ -775,9 +852,11 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
             private static void NavigateDown()
             {
-                int totalOptions =
-                    (currentModule == null ? mainMenuOptions.Length
-                                           : currentModule.GetOptions().Length);
+                int totalOptions = (
+                    currentModule == null
+                        ? mainMenuOptions.Length
+                        : currentModule.GetOptions().Length
+                );
                 if (currentMenuIndex < totalOptions - 1)
                 {
                     currentMenuIndex++;
@@ -858,20 +937,29 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 InitializeUI();
             }
             public void RenderCustomFrame(
-                Action<MySpriteDrawFrame, RectangleF> customRender, RectangleF area)
+                Action<MySpriteDrawFrame, RectangleF> customRender,
+                RectangleF area
+            )
             {
                 var frame = mainScreen.DrawFrame();
                 customRender?.Invoke(frame, area);
                 frame.Dispose();
             }
             public void RenderCustomExtraFrame(
-    Action<MySpriteDrawFrame, RectangleF> customRender, RectangleF area)
+                Action<MySpriteDrawFrame, RectangleF> customRender,
+                RectangleF area
+            )
             {
                 var frame = extraScreen.DrawFrame();
                 customRender?.Invoke(frame, area);
                 frame.Dispose();
             }
-            public void RenderMainScreen(string title, string[] options, int currentMenuIndex, string navigationInstructions)
+            public void RenderMainScreen(
+                string title,
+                string[] options,
+                int currentMenuIndex,
+                string navigationInstructions
+            )
             {
                 var frame = mainScreen.DrawFrame();
                 mainElements.Clear();
@@ -881,20 +969,33 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 // Add extra padding for the title
                 float titlePaddingTop = 20f;
-                DrawBackground(frame, new RectangleF(new Vector2(0, titlePaddingTop), new Vector2(mainViewport.Width, MAIN_VIEWPORT_HEIGHT)), TITLE_BACKGROUND);
+                DrawBackground(
+                    frame,
+                    new RectangleF(
+                        new Vector2(0, titlePaddingTop),
+                        new Vector2(mainViewport.Width, MAIN_VIEWPORT_HEIGHT)
+                    ),
+                    TITLE_BACKGROUND
+                );
 
                 // Create title container with added padding
-                mainElements.Add(new UIContainer(new Vector2(0, titlePaddingTop), new Vector2(mainViewport.Width, MAIN_VIEWPORT_HEIGHT))
-                {
-                    BorderColor = BORDER_COLOR,
-                    BorderThickness = BORDER_THICKNESS,
-                    Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
-                }
-                .AddElement(new UILabel(title, Vector2.Zero)
-                {
-                    Scale = TITLE_SCALE,
-                    TextColor = TITLE_COLOR
-                }));
+                mainElements.Add(
+                    new UIContainer(
+                        new Vector2(0, titlePaddingTop),
+                        new Vector2(mainViewport.Width, MAIN_VIEWPORT_HEIGHT)
+                    )
+                    {
+                        BorderColor = BORDER_COLOR,
+                        BorderThickness = BORDER_THICKNESS,
+                        Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
+                    }.AddElement(
+                        new UILabel(title, Vector2.Zero)
+                        {
+                            Scale = TITLE_SCALE,
+                            TextColor = TITLE_COLOR
+                        }
+                    )
+                );
 
                 // Calculate total height for content
                 float totalHeight = 0;
@@ -932,7 +1033,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     // Highlight the current option
                     if (i == currentMenuIndex)
                     {
-                        AddArrowIndicator(container, new Vector2(5, currentY + optionHeight / 2 - 5));
+                        AddArrowIndicator(
+                            container,
+                            new Vector2(5, currentY + optionHeight / 2 - 5)
+                        );
                     }
 
                     container.AddElement(optionText);
@@ -943,17 +1047,23 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 mainElements.Add(container);
 
                 // Draw navigation instructions
-                mainElements.Add(new UIContainer(new Vector2(0, contentSize.Y + titlePaddingTop + 60), new Vector2(mainViewport.Width, NAVIGATION_INSTRUCTIONS_HEIGHT))
-                {
-                    BorderColor = BORDER_COLOR,
-                    BorderThickness = BORDER_THICKNESS,
-                    Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
-                }
-                .AddElement(new UILabel(navigationInstructions, Vector2.Zero)
-                {
-                    Scale = NAVIGATION_SCALE,
-                    TextColor = NAVIGATION_COLOR
-                }));
+                mainElements.Add(
+                    new UIContainer(
+                        new Vector2(0, contentSize.Y + titlePaddingTop + 60),
+                        new Vector2(mainViewport.Width, NAVIGATION_INSTRUCTIONS_HEIGHT)
+                    )
+                    {
+                        BorderColor = BORDER_COLOR,
+                        BorderThickness = BORDER_THICKNESS,
+                        Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
+                    }.AddElement(
+                        new UILabel(navigationInstructions, Vector2.Zero)
+                        {
+                            Scale = NAVIGATION_SCALE,
+                            TextColor = NAVIGATION_COLOR
+                        }
+                    )
+                );
 
                 // Draw all elements
                 foreach (var element in mainElements)
@@ -971,42 +1081,51 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 DrawBackground(frame, extraViewport, BLACK_BACKGROUND);
                 DrawBackground(
                     frame,
-                    new RectangleF(new Vector2(0, 0),
-                                   new Vector2(extraViewport.Width, EXTRA_VIEWPORT_HEIGHT)),
-                    TITLE_BACKGROUND);
+                    new RectangleF(
+                        new Vector2(0, 0),
+                        new Vector2(extraViewport.Width, EXTRA_VIEWPORT_HEIGHT)
+                    ),
+                    TITLE_BACKGROUND
+                );
                 extraElements.Add(
-                    new UIContainer(new Vector2(0, 0), new Vector2(extraViewport.Width,
-                                                                   EXTRA_VIEWPORT_HEIGHT))
+                    new UIContainer(
+                        new Vector2(0, 0),
+                        new Vector2(extraViewport.Width, EXTRA_VIEWPORT_HEIGHT)
+                    )
                     {
                         BorderColor = BORDER_COLOR,
                         BorderThickness = BORDER_THICKNESS,
                         Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
-                    }
-                        .AddElement(new UILabel(title, Vector2.Zero)
+                    }.AddElement(
+                        new UILabel(title, Vector2.Zero)
                         {
                             Scale = TITLE_SCALE,
                             TextColor = TITLE_COLOR
-                        }));
-                int lineCount =
-                    content.Split(new[] { '\n' }, StringSplitOptions.None).Length;
+                        }
+                    )
+                );
+                int lineCount = content.Split(new[] { '\n' }, StringSplitOptions.None).Length;
                 float lineHeight = OPTION_HEIGHT * OPTION_SCALE;
-                float contentHeight =
-                    (lineCount * lineHeight) + (PADDING_TOP + PADDING_BOTTOM);
+                float contentHeight = (lineCount * lineHeight) + (PADDING_TOP + PADDING_BOTTOM);
                 contentHeight = Math.Max(contentHeight, EXTRA_VIEWPORT_HEIGHT + 10);
                 extraElements.Add(
-                    new UIContainer(new Vector2(0, EXTRA_VIEWPORT_HEIGHT + 10),
-                                    new Vector2(extraViewport.Width, contentHeight))
+                    new UIContainer(
+                        new Vector2(0, EXTRA_VIEWPORT_HEIGHT + 10),
+                        new Vector2(extraViewport.Width, contentHeight)
+                    )
                     {
                         BorderColor = BORDER_COLOR,
                         BorderThickness = BORDER_THICKNESS,
                         Padding = new Vector2(PADDING_TOP, PADDING_BOTTOM)
-                    }
-                        .AddElement(new UILabel(content, Vector2.Zero)
+                    }.AddElement(
+                        new UILabel(content, Vector2.Zero)
                         {
                             Scale = OPTION_SCALE,
                             TextColor = TEXT_COLOR,
                             FixedWidth = true
-                        }));
+                        }
+                    )
+                );
                 foreach (var element in extraElements)
                 {
                     element.Draw(ref frame, extraViewport);
@@ -1024,22 +1143,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     Color = HIGHLIGHT_COLOR,
                     Alignment = TextAlignment.CENTER
                 };
-                container.AddElement(
-                    new UISquare(position, new Vector2(10, 10), HIGHLIGHT_COLOR));
+                container.AddElement(new UISquare(position, new Vector2(10, 10), HIGHLIGHT_COLOR));
             }
-            private void DrawBackground(MySpriteDrawFrame frame, RectangleF area,
-                                        Color color)
+            private void DrawBackground(MySpriteDrawFrame frame, RectangleF area, Color color)
             {
-                var backgroundSprite =
-                    new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = area.Position + area.Size / 2,
-                        Size = area.Size,
-                        Color = color,
-                        Alignment = TextAlignment.CENTER
-                    };
+                var backgroundSprite = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = area.Position + area.Size / 2,
+                    Size = area.Size,
+                    Color = color,
+                    Alignment = TextAlignment.CENTER
+                };
                 frame.Add(backgroundSprite);
             }
             private void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
@@ -1199,7 +1315,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             {
                 return "";
             }
-
         }
         class RaycastCameraControl : ProgramModule
         {
@@ -1217,31 +1332,41 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             public RaycastCameraControl(Program program, Jet jet) : base(program)
             {
                 name = "TargetingPod Control";
-                camera = program.GridTerminalSystem.GetBlockWithName(
-                    "Camera Targeting Turret") as IMyCameraBlock;
+                camera =
+                    program.GridTerminalSystem.GetBlockWithName("Camera Targeting Turret")
+                    as IMyCameraBlock;
                 if (camera != null)
                 {
                     camera.EnableRaycast = true;
                 }
-                lcdTGP = program.GridTerminalSystem.GetBlockWithName("LCD Targeting Pod")
-                             as IMyTextSurface;
+                lcdTGP =
+                    program.GridTerminalSystem.GetBlockWithName("LCD Targeting Pod")
+                    as IMyTextSurface;
                 if (lcdTGP != null)
                 {
                     lcdTGP.ContentType = ContentType.TEXT_AND_IMAGE;
                 }
-                remoteControl = program.GridTerminalSystem.GetBlockWithName(
-                    "Remote Control") as IMyRemoteControl;
-                rotor = program.GridTerminalSystem.GetBlockWithName("Targeting Rotor")
-                            as IMyMotorStator;
-                hinge = program.GridTerminalSystem.GetBlockWithName("Targeting Hinge")
-                            as IMyMotorAdvancedStator;
+                remoteControl =
+                    program.GridTerminalSystem.GetBlockWithName("Remote Control")
+                    as IMyRemoteControl;
+                rotor =
+                    program.GridTerminalSystem.GetBlockWithName("Targeting Rotor")
+                    as IMyMotorStator;
+                hinge =
+                    program.GridTerminalSystem.GetBlockWithName("Targeting Hinge")
+                    as IMyMotorAdvancedStator;
                 cockpit = jet._cockpit;
             }
             public override string[] GetOptions()
             {
                 string trackingStatus = trackingActive ? "[ON]" : "[OFF]";
-                return new[] { "Perform Raycast", "Activate TV Screen",
-                   $"Toggle GPS Lock {trackingStatus}", "Back to Main Menu" };
+                return new[]
+                {
+                    "Perform Raycast",
+                    "Activate TV Screen",
+                    $"Toggle GPS Lock {trackingStatus}",
+                    "Back to Main Menu"
+                };
             }
             public override void ExecuteOption(int index)
             {
@@ -1280,8 +1405,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     if (!hitInfo.IsEmpty())
                     {
                         Vector3D target = hitInfo.HitPosition ?? Vector3D.Zero;
-                        string gpsCoordinates = "Cached:GPS:Target2:" + target.X + ":" +
-                                                target.Y + ":" + target.Z + ":#FF75C9F1:";
+                        string gpsCoordinates =
+                            "Cached:GPS:Target2:"
+                            + target.X
+                            + ":"
+                            + target.Y
+                            + ":"
+                            + target.Z
+                            + ":#FF75C9F1:";
                         UpdateCustomDataWithCache(gpsCoordinates);
                         DisplayRaycastResult(gpsCoordinates);
                     }
@@ -1393,8 +1524,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     animationstarted = false;
                 }
             }
-            private void SetSymbolAtPosition(StringBuilder output, int x, int y,
-                                             char symbol)
+            private void SetSymbolAtPosition(StringBuilder output, int x, int y, char symbol)
             {
                 int lineLength = 54 + 1;
                 if (x >= 0 && x < 54 && y >= 0 && y < 35)
@@ -1439,9 +1569,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         animationTicks = 0;
                         animating = true;
                     }
-                    else
-                    {
-                    }
+                    else { }
                 }
             }
             private void TrackTarget()
@@ -1457,26 +1585,26 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     currentTargetPosition = targetPosition;
                 }
                 Vector3D cameraPosition = camera.GetPosition();
-                Vector3D directionToTarget =
-                    VectorMath.SafeNormalize(currentTargetPosition - cameraPosition);
+                Vector3D directionToTarget = VectorMath.SafeNormalize(
+                    currentTargetPosition - cameraPosition
+                );
                 Vector3D cameraForward = -camera.WorldMatrix.Forward;
                 double dotProductForward = Vector3D.Dot(cameraForward, directionToTarget);
-                double angleToTargetForward =
-                    Math.Acos(MathHelper.Clamp(dotProductForward, -1.0, 1.0));
+                double angleToTargetForward = Math.Acos(
+                    MathHelper.Clamp(dotProductForward, -1.0, 1.0)
+                );
                 angleToTargetForward = MathHelper.ToDegrees(angleToTargetForward);
                 Vector3D remotePosition = remoteControl.GetPosition();
                 MatrixD remoteOrientation = remoteControl.WorldMatrix;
-                Vector3D relativeTargetPosition =
-                    Vector3D.TransformNormal(currentTargetPosition - remotePosition,
-                                             MatrixD.Transpose(remoteOrientation));
+                Vector3D relativeTargetPosition = Vector3D.TransformNormal(
+                    currentTargetPosition - remotePosition,
+                    MatrixD.Transpose(remoteOrientation)
+                );
                 float kP_rotor = 0.05f;
                 float kP_hinge = 0.05f;
-                double dampingFactor =
-                    Math.Max(0.05, Math.Min(1.0, angleToTargetForward / 90.0));
-                double rotorVelocity =
-                    -(kP_rotor * relativeTargetPosition.X) * dampingFactor;
-                double hingeVelocity =
-                    -(kP_hinge * relativeTargetPosition.Y) * dampingFactor;
+                double dampingFactor = Math.Max(0.05, Math.Min(1.0, angleToTargetForward / 90.0));
+                double rotorVelocity = -(kP_rotor * relativeTargetPosition.X) * dampingFactor;
+                double hingeVelocity = -(kP_hinge * relativeTargetPosition.Y) * dampingFactor;
                 rotorVelocity = MathHelper.Clamp(rotorVelocity, -5.0, 5.0);
                 hingeVelocity = MathHelper.Clamp(hingeVelocity, -5.0, 5.0);
                 rotor.TargetVelocityRPM = (float)rotorVelocity;
@@ -1487,8 +1615,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     hinge.TargetVelocityRPM = 0f;
                 }
             }
-            private bool TryParseCachedGPSCoordinates(string input,
-                                                      out Vector3D targetPosition)
+            private bool TryParseCachedGPSCoordinates(string input, out Vector3D targetPosition)
             {
                 targetPosition = Vector3D.Zero;
                 string[] lines = input.Split('\n');
@@ -1499,10 +1626,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         string[] parts = line.Split(':');
                         if (parts.Length >= 6)
                         {
-                            double x, y, z;
-                            if (double.TryParse(parts[3], out x) &&
-                                double.TryParse(parts[4], out y) &&
-                                double.TryParse(parts[5], out z))
+                            double x,
+                                y,
+                                z;
+                            if (
+                                double.TryParse(parts[3], out x)
+                                && double.TryParse(parts[4], out y)
+                                && double.TryParse(parts[5], out z)
+                            )
                             {
                                 targetPosition = new Vector3D(x, y, z);
                                 return true;
@@ -1529,7 +1660,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
         }
 
-
         public class PIDController
         {
             public double Kp { get; set; } // Proportional gain
@@ -1541,7 +1671,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private double outputMin;
             private double outputMax;
 
-            public PIDController(double kp, double ki, double kd, double outputMin = double.MinValue, double outputMax = double.MaxValue)
+            public PIDController(
+                double kp,
+                double ki,
+                double kd,
+                double outputMin = double.MinValue,
+                double outputMax = double.MaxValue
+            )
             {
                 Kp = kp;
                 Ki = ki;
@@ -1581,9 +1717,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
         }
 
-
-
-
         class HUDModule : ProgramModule
         {
             IMyCockpit cockpit;
@@ -1620,6 +1753,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             bool hydrogenswitch = false;
             Vector3D previousVelocity = Vector3D.Zero;
             string hotkeytext = "Test";
+            Jet myjet;
             public HUDModule(Program program, Jet jet) : base(program)
             {
                 cockpit = jet._cockpit;
@@ -1631,6 +1765,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 thrusters = jet._thrustersbackwards;
                 tanks = jet.tanks;
+                myjet = jet;
                 if (hudBlock == null)
                 {
                     return;
@@ -1664,7 +1799,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 return hotkeytext;
             }
 
-            
             public class CircularBuffer<T> : Queue<T>
             {
                 private readonly int _capacity;
@@ -1673,7 +1807,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     _capacity = capacity;
                 }
-
 
                 public new void Enqueue(T item)
                 {
@@ -1684,12 +1817,21 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     }
                 }
             }
-            private void DrawLeadingPip(MySpriteDrawFrame frame, Vector3D targetPosition, Vector3D targetVelocity,
-    Vector3D shooterPosition, Vector3D shooterVelocity, double projectileSpeed, Vector3D gravityDirection)
+            private void DrawLeadingPip(
+                MySpriteDrawFrame frame,
+                Vector3D targetPosition,
+                Vector3D targetVelocity,
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity,
+                double projectileSpeed,
+                Vector3D gravityDirection
+            )
             {
                 // Use a fixed-size circular buffer for efficiency
                 const int historySize = 5;
-                CircularBuffer<Vector3D> velocityHistory = new CircularBuffer<Vector3D>(historySize);
+                CircularBuffer<Vector3D> velocityHistory = new CircularBuffer<Vector3D>(
+                    historySize
+                );
 
                 velocityHistory.Enqueue(targetVelocity);
 
@@ -1703,7 +1845,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     averageAcceleration = velocityChange / totalDeltaT;
                 }
 
-
                 // Estimate time to intercept (iterative for gravity)
                 double t_pred = 0;
                 Vector3D predictedTargetPosition = targetPosition;
@@ -1716,37 +1857,51 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     double distanceToTarget = (predictedTargetPosition - shooterPosition).Length();
                     t_pred = distanceToTarget / projectileSpeed;
 
-                    predictedTargetPosition = targetPosition + targetVelocity * t_pred + 0.5 * averageAcceleration * t_pred * t_pred;
+                    predictedTargetPosition =
+                        targetPosition
+                        + targetVelocity * t_pred
+                        + 0.5 * averageAcceleration * t_pred * t_pred;
                     iterations++;
-
-                } while (Math.Abs((predictedTargetPosition - shooterPosition).Length() - projectileSpeed * t_pred) > tolerance && iterations < maxIterations);
-
-
+                } while (
+                    Math.Abs(
+                        (predictedTargetPosition - shooterPosition).Length()
+                            - projectileSpeed * t_pred
+                    ) > tolerance
+                    && iterations < maxIterations
+                );
 
                 Vector3D predictedTargetVelocity = targetVelocity + averageAcceleration * t_pred;
-
 
                 // Calculate the intercept point using predicted values
                 Vector3D interceptPoint;
 
-
-                if (!CalculateInterceptPoint(shooterPosition, shooterVelocity, projectileSpeed,
-                    predictedTargetPosition, predictedTargetVelocity, gravityDirection, out interceptPoint))
+                if (
+                    !CalculateInterceptPoint(
+                        shooterPosition,
+                        shooterVelocity,
+                        projectileSpeed,
+                        predictedTargetPosition,
+                        predictedTargetVelocity,
+                        gravityDirection,
+                        out interceptPoint
+                    )
+                )
                 {
-
                     return;
                 }
-
 
                 // Calculate the direction to the intercept point
                 Vector3D directionToIntercept = interceptPoint - shooterPosition;
 
                 // Transform direction to local cockpit coordinates
                 MatrixD cockpitMatrix = cockpit.WorldMatrix;
-                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, MatrixD.Transpose(cockpitMatrix));
+                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(
+                    directionToIntercept,
+                    MatrixD.Transpose(cockpitMatrix)
+                );
                 // Define line thickness and reticle size as a fraction of the screen size
                 float lineThickness = hud.SurfaceSize.Y * 0.01f; // 1% of screen height
-                float reticleSize = hud.SurfaceSize.Y * 0.05f;   // 5% of screen height
+                float reticleSize = hud.SurfaceSize.Y * 0.05f; // 5% of screen height
 
                 // Calculate center position
                 float centerX = hud.SurfaceSize.X / 2;
@@ -1761,16 +1916,29 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 // Calculate screen coordinates for the intercept point
                 float zoomFactor = 4f; // Increase zoom factor to make the leading pip more prominent
-                float screenX = (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * hud.SurfaceSize.X / 2 * zoomFactor + hud.SurfaceSize.X / 2;
-                float screenY = (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * hud.SurfaceSize.Y / 2 * zoomFactor + hud.SurfaceSize.Y / 2;
+                float screenX =
+                    (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z)
+                        * hud.SurfaceSize.X
+                        / 2
+                        * zoomFactor
+                    + hud.SurfaceSize.X / 2;
+                float screenY =
+                    (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z)
+                        * hud.SurfaceSize.Y
+                        / 2
+                        * zoomFactor
+                    + hud.SurfaceSize.Y / 2;
 
                 // Check if the pip is within the screen bounds
-                bool isOnScreen = (screenX >= 0 && screenX <= hud.SurfaceSize.X && screenY >= 0 && screenY <= hud.SurfaceSize.Y);
+                bool isOnScreen = (
+                    screenX >= 0
+                    && screenX <= hud.SurfaceSize.X
+                    && screenY >= 0
+                    && screenY <= hud.SurfaceSize.Y
+                );
                 // Check if the target is behind
                 if (localDirectionToIntercept.Z >= 0)
                 {
-
-
                     var horizontalLine = new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
@@ -1784,11 +1952,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
                 else
                 {
-
-
-
-
-
                     if (isOnScreen)
                     {
                         // Draw the leading pip as a red "X" using diagonal lines
@@ -1915,7 +2078,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                             // Map the angle to the arrow length (larger angle means longer arrow)
                             float angleFactor = (float)(clampedAngle / 90.0); // Normalized between 0 and 1
-                            float arrowLength = angleFactor * (maxArrowLength - minArrowLength) + minArrowLength;
+                            float arrowLength =
+                                angleFactor * (maxArrowLength - minArrowLength) + minArrowLength;
 
                             // Compute the end point of the arrow within the screen
                             Vector2 lineEndPoint = center + direction * arrowLength;
@@ -1930,7 +2094,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                             Vector2 linePosition = center + toPoint / 2; // Midpoint of the line
 
-                            float rotation = (float)Math.Atan2(toPoint.Y, toPoint.X) + (float)Math.PI / 2;
+                            float rotation =
+                                (float)Math.Atan2(toPoint.Y, toPoint.X) + (float)Math.PI / 2;
 
                             // Adjust line thickness as needed
                             float lineThicknessOffScreen = hud.SurfaceSize.Y * 0.005f;
@@ -1968,8 +2133,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
 
             private bool CalculateInterceptPoint(
-     Vector3D shooterPosition, Vector3D shooterVelocity, double projectileSpeed,
-     Vector3D targetPosition, Vector3D targetVelocity, Vector3D gravityDirection, out Vector3D interceptPoint)
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity,
+                double projectileSpeed,
+                Vector3D targetPosition,
+                Vector3D targetVelocity,
+                Vector3D gravityDirection,
+                out Vector3D interceptPoint
+            )
             {
                 // Relative position and velocity
                 Vector3D relativePosition = targetPosition - shooterPosition;
@@ -2003,8 +2174,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     double t2 = (-b + sqrtDiscriminant) / (2 * a);
 
                     t = double.PositiveInfinity;
-                    if (t1 > 0 && t1 < t) t = t1;
-                    if (t2 > 0 && t2 < t) t = t2;
+                    if (t1 > 0 && t1 < t)
+                        t = t1;
+                    if (t2 > 0 && t2 < t)
+                        t = t2;
 
                     if (double.IsInfinity(t))
                     {
@@ -2024,89 +2197,85 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 return true;
             }
-
-
-            // PID-related variables (define as class fields):
+            // Class-level PID variables
             private float integralError = 0f;
             private float previousError = 0f;
-            private const float Kp = 3f;
-            private const float Kd = 0.5f;
-            private const float Ki = 0.015f; // Lower integral effect slightly
-            private const float IntegralDecayFactor = 0.95f; // Increase decay speed to reduce persistent integral build-up
 
-            private const float MaxPIDOutput = 45f;
-            private const float ErrorThreshold = 0.1f; // AOA error below which no correction is needed
-            private int pilotInputDelay = 0;
+            // PID constants
+            private  float Kp = 5f;
+            private  float Ki = 0.0024f;
+            private  float Kd = 1f;
 
-            private void AdjustStabilizers(double aoa)
+            // PID limits
+            private const float MaxPIDOutput = 60f;
+            private const float MaxAOA = 36f;
+
+            private void AdjustStabilizers(double aoa, Jet myjet)
             {
-                // Clamp AOA input
-                float aoaFloat = MathHelper.Clamp((float)aoa, -50f, 50f);
-                Vector3D velocity = cockpit.GetShipVelocities().LinearVelocity;
-                Vector3D forward = cockpit.WorldMatrix.Forward;
-
-                // Adjust the target AOA here (desired AOA: -3 degrees)
-                float targetAOA = 7f; //TODO: Allow this offset to be changed. 
-                float aoaError = aoaFloat - targetAOA; // this is the adjusted error
 
                 Vector2 pitchyaw = cockpit.RotationIndicator;
+                ParentProgram.Echo("Pilot Input: " + pitchyaw.Y); //Todo: Does not work. 
 
                 // Check if pilot input exists:
-                if (Math.Abs(pitchyaw.Y) > 0.01f)
+                if (Math.Abs(pitchyaw.Y) > 0)
                 {
-                    integralError = 0f;
-                    previousError = 0f;
-                    pilotInputDelay = 0;
-
-                    AdjustTrim(rightstab, -pitchyaw.Y * 1f);
-                    AdjustTrim(leftstab, pitchyaw.Y * 1f);
+                    if(pitchyaw.Y > 0)
+                    {
+                        AdjustTrim(rightstab, pitchyaw.Y);
+                        AdjustTrim(leftstab, -pitchyaw.Y);
+                    }
+                    if (pitchyaw.Y < 0)
+                    {
+                        AdjustTrim(rightstab, -pitchyaw.Y);
+                        AdjustTrim(leftstab, pitchyaw.Y);
+                    }
+                    integralError = 0;
+                    previousError = 0;
                 }
                 else
                 {
-                    if (pilotInputDelay > 0)
-                    {
-                        pilotInputDelay--;
-                        return;
-                    }
 
-                    // Autonomous PID Control with adjusted error
-                    if (Math.Abs(aoaError) > ErrorThreshold)
-                    {
-                        float desiredTrim = ComputePIDOutput(aoaError);
+                    float aoaClamped = MathHelper.Clamp((float)aoa, -MaxAOA, MaxAOA);
+                    float pidOutput = PIDController(aoaClamped + myjet.offset);
 
-                        AdjustTrim(rightstab, -desiredTrim);
-                        AdjustTrim(leftstab, desiredTrim);
-                    }
-                    else
-                    {
-                        AdjustTrim(rightstab, 0f);
-                        AdjustTrim(leftstab, 0f);
+                    AdjustTrim(rightstab, pidOutput);
+                    AdjustTrim(leftstab, -pidOutput);
 
-                        integralError = 0f;
-                        previousError = 0f;
-                    }
+                    
                 }
+
             }
 
-
-            private float ComputePIDOutput(float currentError)
+            private float PIDController(float currentError)
             {
-                // Decay the integral error slightly each tick to prevent windup
-                integralError *= IntegralDecayFactor;
+                var cachedData = ParentProgram.Me.CustomData
+                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in cachedData)
+                {
+                    if (line.StartsWith("KPI:"))
+                    {
+                        string[] parts = line.Split(':');
 
-                // Accumulate integral error
-                integralError += currentError;
 
-                // Calculate derivative
+                        Kp = float.Parse( parts[1]);
+            Ki = float.Parse(parts[2]);
+                              Kd = float.Parse(parts[3]);
+
+                    }
+                }
+                    // Integral term calculation
+                    integralError += currentError;
+                integralError = MathHelper.Clamp(integralError,-500, 500);
+                // Derivative term calculation
                 float derivative = currentError - previousError;
 
-                // PID Calculation
+                // PID output
                 float pidOutput = (Kp * currentError) + (Ki * integralError) + (Kd * derivative);
+                ParentProgram.Echo(Kp.ToString());
 
-                // Clamp output for stability
+                // Clamp PID output
                 pidOutput = MathHelper.Clamp(pidOutput, -MaxPIDOutput, MaxPIDOutput);
 
-                // Update previous error
                 previousError = currentError;
 
                 return pidOutput;
@@ -2114,26 +2283,18 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
             private void AdjustTrim(IEnumerable<IMyTerminalBlock> stabilizers, float desiredTrim)
             {
-                const float MaxTrimChangePerTick = 2f; // Adjust this for smoothness
 
                 foreach (var item in stabilizers)
                 {
                     currentTrim = item.GetValueFloat("Trim");
-                    currentTrim = MathHelper.Clamp(currentTrim, -100f, 100f);
-
-                    float trimDifference = desiredTrim - currentTrim;
 
                     // Limit the adjustment per tick
-                    float adjustment = MathHelper.Clamp(trimDifference, -MaxTrimChangePerTick, MaxTrimChangePerTick);
 
-                    // Apply the adjustment
-                    item.SetValue("Trim", currentTrim + adjustment);
+
+                    item.SetValue("Trim", desiredTrim);
+
                 }
             }
-
-
-
-
 
             public override void Tick()
             {
@@ -2164,13 +2325,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 double roll = 0;
                 if (inGravity)
                 {
-                    pitch = (Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI));
-                    roll = (Math.Atan2(Vector3D.Dot(leftVector, gravityDirection), Vector3D.Dot(upVector, gravityDirection)) * (180 / Math.PI));
+                    pitch = (
+                        Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI)
+                    );
+                    roll = (
+                        Math.Atan2(
+                            Vector3D.Dot(leftVector, gravityDirection),
+                            Vector3D.Dot(upVector, gravityDirection)
+                        ) * (180 / Math.PI)
+                    );
                     if (roll < 0)
                     {
                         roll += 360;
                     }
-
                 }
 
                 double velocity = cockpit.GetShipSpeed();
@@ -2180,7 +2347,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 double mach = velocity / speedOfSound; // Calculate Mach number
                 Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
                 double deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
-                if (deltaTime <= 0) deltaTime = 0.0167;
+                if (deltaTime <= 0)
+                    deltaTime = 0.0167;
 
                 Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
                 double gForces = acceleration.Length() / 9.81;
@@ -2193,9 +2361,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 double altitude = GetAltitude();
                 double aoa = CalculateAngleOfAttack(
                     cockpit.WorldMatrix.Forward,
-                    cockpit.GetShipVelocities().LinearVelocity
+                    cockpit.GetShipVelocities().LinearVelocity, upVector
                 );
-
 
                 double throttle = cockpit.MoveIndicator.Z * -1; // Assuming Z-axis throttle control
                 double jumpthrottle = cockpit.MoveIndicator.Y; // Assuming Z-axis throttle control
@@ -2203,7 +2370,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 if (throttle == 1f)
                 {
                     throttlecontrol += 0.01f;
-                    if (throttlecontrol > 1f) throttlecontrol = 1f;
+                    if (throttlecontrol > 1f)
+                        throttlecontrol = 1f;
                     if (throttlecontrol >= 0.8f)
                     {
                         if (!hydrogenswitch)
@@ -2219,7 +2387,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 if (throttle == -1f)
                 {
                     throttlecontrol -= 0.01f;
-                    if (throttlecontrol < 0f) throttlecontrol = 0f;
+                    if (throttlecontrol < 0f)
+                        throttlecontrol = 0f;
                     if (throttlecontrol < 0.8f)
                     {
                         if (hydrogenswitch)
@@ -2269,12 +2438,21 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 throttle = throttlecontrol;
 
                 UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttle);
-                AdjustStabilizers(aoa);
+                AdjustStabilizers(aoa, myjet);
                 using (var frame = hud.DrawFrame())
                 {
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll);
                     //DrawHeadingTape(frame, heading); //No clue what it does
-                    DrawFlightInfo(frame, smoothedVelocity, smoothedGForces, heading, smoothedAltitude, smoothedAoA, smoothedThrottle, mach);
+                    DrawFlightInfo(
+                        frame,
+                        smoothedVelocity,
+                        smoothedGForces,
+                        heading,
+                        smoothedAltitude,
+                        smoothedAoA,
+                        smoothedThrottle,
+                        mach
+                    );
                     DrawFlightPathMarker(frame, currentVelocity, worldMatrix, roll);
                     DrawCompass(frame, heading);
                     //DrawRollIndicator(frame, (float)roll);
@@ -2284,10 +2462,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     DrawTrim(frame, aoa);
                     DrawBomb(frame, aoa);
                     DrawGForceIndicator(frame, gForces, peakGForce);
-                    var cachedData =
-                        ParentProgram.Me.CustomData
-                            .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                            .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
+                    var cachedData = ParentProgram.Me.CustomData
+                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
                     if (cachedData == null)
                     {
                         return;
@@ -2297,43 +2474,62 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     {
                         return;
                     }
-                    double tarx, tary, tarz;
-                    if (!double.TryParse(parts[3], out tarx) ||
-                        !double.TryParse(parts[4], out tary) ||
-                        !double.TryParse(parts[5], out tarz))
+                    double tarx,
+                        tary,
+                        tarz;
+                    if (
+                        !double.TryParse(parts[3], out tarx)
+                        || !double.TryParse(parts[4], out tary)
+                        || !double.TryParse(parts[5], out tarz)
+                    )
                     {
                         return;
                     }
-                    var speecachedData =
-    ParentProgram.Me.CustomData
-        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-        .FirstOrDefault(line => line.StartsWith("CachedSpeed:"));
+                    var speecachedData = ParentProgram.Me.CustomData
+                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .FirstOrDefault(line => line.StartsWith("CachedSpeed:"));
                     if (speecachedData == null)
                     {
                         return;
                     }
                     var speeparts = speecachedData.Split(':');
-                    double speex, speey, speez;
-                    if (!double.TryParse(speeparts[1], out speex) ||
-                        !double.TryParse(speeparts[2], out speey) ||
-                        !double.TryParse(speeparts[3], out speez))
+                    double speex,
+                        speey,
+                        speez;
+                    if (
+                        !double.TryParse(speeparts[1], out speex)
+                        || !double.TryParse(speeparts[2], out speey)
+                        || !double.TryParse(speeparts[3], out speez)
+                    )
                     {
                         return;
                     }
-                    Vector3D targetPosition = new Vector3D(tarx, tary, tarz);  // Replace with actual target GPS
-                    Vector3D targetVelocity = new Vector3D(speex, speey, speez);     // Replace with actual target speed
-                    Vector3D shooterPosition = cockpit.GetPosition();          // Your ship's current position
+                    Vector3D targetPosition = new Vector3D(tarx, tary, tarz); // Replace with actual target GPS
+                    Vector3D targetVelocity = new Vector3D(speex, speey, speez); // Replace with actual target speed
+                    Vector3D shooterPosition = cockpit.GetPosition(); // Your ship's current position
                     double muzzleVelocity = 910; // Muzzle velocity of your weapon in m/s
-                                                 // Compute the projectile's initial velocity
+                    // Compute the projectile's initial velocity
                     Vector3D shooterForwardDirection = cockpit.WorldMatrix.Forward;
-                    Vector3D projectileInitialVelocity = currentVelocity + muzzleVelocity * shooterForwardDirection;
+                    Vector3D projectileInitialVelocity =
+                        currentVelocity + muzzleVelocity * shooterForwardDirection;
 
                     // Call the DrawLeadingPip function
-                    DrawLeadingPip(frame, targetPosition, targetVelocity, shooterPosition, currentVelocity, muzzleVelocity, gravityDirection);
-
+                    DrawLeadingPip(
+                        frame,
+                        targetPosition,
+                        targetVelocity,
+                        shooterPosition,
+                        currentVelocity,
+                        muzzleVelocity,
+                        gravityDirection
+                    );
                 }
             }
-            private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
+            private void DrawGForceIndicator(
+                MySpriteDrawFrame frame,
+                double gForces,
+                double peakGForce
+            )
             {
                 float padding = 10f;
                 float textScale = 0.8f;
@@ -2383,7 +2579,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     Type = SpriteType.TEXTURE,
                     Data = "SquareHollow",
-                    Position = new Vector2(scaleX-20f, centerY-20f),
+                    Position = new Vector2(scaleX - 20f, centerY - 20f),
                     Size = new Vector2(80f, 30f),
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER
@@ -2403,8 +2599,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 };
                 frame.Add(airspeedLabel);
             }
-
-
 
             private void DrawAltitudeIndicator(MySpriteDrawFrame frame, double currentAltitude)
             {
@@ -2438,7 +2632,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     return;
                 }
                 // Draw total altitude change
-                string altitudeChangeText = (totalAltitudeChange >= 0 ? "+" : "") + totalAltitudeChange.ToString("F1");
+                string altitudeChangeText =
+                    (totalAltitudeChange >= 0 ? "+" : "") + totalAltitudeChange.ToString("F1");
                 var altitudeChangeLabel = new MySprite()
                 {
                     Type = SpriteType.TEXT,
@@ -2452,7 +2647,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 frame.Add(altitudeChangeLabel);
             }
 
-            private void UpdateSmoothedValues(double velocityKnots, double altitude, double gForces, double aoa, double throttle)
+            private void UpdateSmoothedValues(
+                double velocityKnots,
+                double altitude,
+                double gForces,
+                double aoa,
+                double throttle
+            )
             {
                 velocityHistory.Enqueue(velocityKnots);
                 if (velocityHistory.Count > smoothingWindowSize)
@@ -2485,10 +2686,16 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 smoothedThrottle = throttle * 100; // Convert to percentage
             }
 
-
-
-
-            private void DrawFlightInfo(MySpriteDrawFrame frame, double velocityKPH, double gForces, double heading, double altitude, double aoa, double throttle, double mach)
+            private void DrawFlightInfo(
+                MySpriteDrawFrame frame,
+                double velocityKPH,
+                double gForces,
+                double heading,
+                double altitude,
+                double aoa,
+                double throttle,
+                double mach
+            )
             {
                 float padding = 0f;
                 float infoX = hud.SurfaceSize.X - hud.SurfaceSize.X / 2;
@@ -2500,18 +2707,52 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 var textScale = 0.75f;
 
                 // Measure the longest text to determine maxWidth
-                Vector2 maxTextSize = surface.MeasureStringInPixels(new StringBuilder("SPD: 00.0 kph"), "White", textScale);
+                Vector2 maxTextSize = surface.MeasureStringInPixels(
+                    new StringBuilder("SPD: 00.0 kph"),
+                    "White",
+                    textScale
+                );
                 float maxWidth = maxTextSize.X + boxPadding * 2;
 
                 // Now draw each piece of information with a box around it
-                DrawTextWithManualBox(frame, surface, $"M {mach:F2}", new Vector2(padding, infoY + textHeight), TextAlignment.LEFT, boxPadding, maxWidth, textScale);
-                DrawThrottleBarWithBox(frame, surface, (float)throttle / 100, new Vector2(5, hud.SurfaceSize.Y - textHeight - 140), 80, 8, textScale);
+                DrawTextWithManualBox(
+                    frame,
+                    surface,
+                    $"M {mach:F2}",
+                    new Vector2(padding, infoY + textHeight),
+                    TextAlignment.LEFT,
+                    boxPadding,
+                    maxWidth,
+                    textScale
+                );
+                DrawThrottleBarWithBox(
+                    frame,
+                    surface,
+                    (float)throttle / 100,
+                    new Vector2(5, hud.SurfaceSize.Y - textHeight - 140),
+                    80,
+                    8,
+                    textScale
+                );
             }
 
-            private void DrawTextWithManualBox(MySpriteDrawFrame frame, IMyTextSurface surface, string text, Vector2 position, TextAlignment alignment, float boxPadding, float maxWidth, float textScale)
+            private void DrawTextWithManualBox(
+                MySpriteDrawFrame frame,
+                IMyTextSurface surface,
+                string text,
+                Vector2 position,
+                TextAlignment alignment,
+                float boxPadding,
+                float maxWidth,
+                float textScale
+            )
             {
                 // Measure the text size
-                Vector2 textSize = surface.MeasureStringInPixels(new StringBuilder(text), "White", textScale);
+                Vector2 textSize = surface.MeasureStringInPixels(
+                    new StringBuilder(text),
+                    "White",
+                    textScale
+                );
                 Vector2 boxSize = new Vector2(maxWidth, textSize.Y + boxPadding * 2);
 
                 // Adjust the position so it's the top-left corner of the box
@@ -2525,18 +2766,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     textPosition.X = boxTopLeft.X + maxWidth - boxPadding;
                 }
 
-
                 // Draw the text inside the box
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = text,
-                    Position = textPosition, // Position the text based on padding
-                    RotationOrScale = textScale,
-                    Color = Color.White,
-                    Alignment = alignment,
-                    FontId = "White"
-                });
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = text,
+                        Position = textPosition, // Position the text based on padding
+                        RotationOrScale = textScale,
+                        Color = Color.White,
+                        Alignment = alignment,
+                        FontId = "White"
+                    }
+                );
             }
 
             private void DrawThrottleBarWithBox(
@@ -2549,51 +2791,64 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 float barHeight,
                 Color barColor = default(Color),
                 Color boxColor = default(Color),
-                float lineThickness = 2f)
+                float lineThickness = 2f
+            )
             {
                 // Set default colors if not provided
                 barColor = barColor == default(Color) ? Color.White : barColor;
                 boxColor = boxColor == default(Color) ? Color.White : boxColor;
 
                 // Calculate box size
-                Vector2 boxSize = new Vector2(maxWidth + boxPadding * 1f, barHeight + boxPadding * 1.5f);
+                Vector2 boxSize = new Vector2(
+                    maxWidth + boxPadding * 1f,
+                    barHeight + boxPadding * 1.5f
+                );
                 boxSize.X = boxSize.X / 4;
 
                 Vector2 boxTopLeft = position;
 
                 // Draw the box (rectangle) around the throttle bar
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = boxTopLeft + new Vector2(0, lineThickness / 2),
-                    Size = new Vector2(boxSize.X, lineThickness),
-                    Color = boxColor
-                });
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = boxTopLeft + new Vector2(0, boxSize.Y - lineThickness / 2),
-                    Size = new Vector2(boxSize.X, lineThickness),
-                    Color = boxColor
-                });
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = boxTopLeft + new Vector2(lineThickness / 2, boxSize.Y / 2),
-                    Size = new Vector2(lineThickness, boxSize.Y),
-                    Color = boxColor
-                });
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = boxTopLeft + new Vector2(boxSize.X - lineThickness / 2, boxSize.Y / 2),
-                    Size = new Vector2(lineThickness, boxSize.Y),
-                    Color = boxColor
-                });
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = boxTopLeft + new Vector2(0, lineThickness / 2),
+                        Size = new Vector2(boxSize.X, lineThickness),
+                        Color = boxColor
+                    }
+                );
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = boxTopLeft + new Vector2(0, boxSize.Y - lineThickness / 2),
+                        Size = new Vector2(boxSize.X, lineThickness),
+                        Color = boxColor
+                    }
+                );
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = boxTopLeft + new Vector2(lineThickness / 2, boxSize.Y / 2),
+                        Size = new Vector2(lineThickness, boxSize.Y),
+                        Color = boxColor
+                    }
+                );
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position =
+                            boxTopLeft + new Vector2(boxSize.X - lineThickness / 2, boxSize.Y / 2),
+                        Size = new Vector2(lineThickness, boxSize.Y),
+                        Color = boxColor
+                    }
+                );
 
                 // Calculate the filled height based on throttle
                 float filledHeight = barHeight * throttle;
@@ -2601,14 +2856,22 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 barColor = throttle > 0.8f ? Color.Yellow : Color.White;
 
                 // Draw the filled throttle bar
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = boxTopLeft + new Vector2(0, (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSize.Y / 2) * 1.025f),
-                    Size = new Vector2(boxSize.X, filledSize.Y * 1.05f),
-                    Color = barColor
-                });
+                frame.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position =
+                            boxTopLeft
+                            + new Vector2(
+                                0,
+                                (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSize.Y / 2)
+                                    * 1.025f
+                            ),
+                        Size = new Vector2(boxSize.X, filledSize.Y * 1.05f),
+                        Color = barColor
+                    }
+                );
 
                 // **Add Tick Marks Every 10%**
 
@@ -2623,27 +2886,43 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     // Calculate the position for each tick
                     float percent = i / (float)numberOfTicks;
                     float xPosition = boxTopLeft.X + (percent * boxSize.X); // Adjust based on your coordinate system
-                    Vector2 filledSizetick = new Vector2(maxWidth * 100, barHeight * percent * boxSize.Y * 1.25f);
+                    Vector2 filledSizetick = new Vector2(
+                        maxWidth * 100,
+                        barHeight * percent * boxSize.Y * 1.25f
+                    );
 
                     // Depending on the orientation of your throttle bar, adjust the tick position
                     // Here, assuming horizontal throttle bar
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = "----", // Tick mark
-                        Position = boxTopLeft + new Vector2(0, (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSizetick.Y) - 3),
-                        FontId = "Debug", // Use an appropriate font
-                        RotationOrScale = 0.2f,
-                        Color = tickColor
-                    });
-
+                    frame.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "----", // Tick mark
+                            Position =
+                                boxTopLeft
+                                + new Vector2(
+                                    0,
+                                    (
+                                        boxSize.Y
+                                        - boxPadding / 33
+                                        - lineThickness / 2
+                                        - filledSizetick.Y
+                                    ) - 3
+                                ),
+                            FontId = "Debug", // Use an appropriate font
+                            RotationOrScale = 0.2f,
+                            Color = tickColor
+                        }
+                    );
                 }
-
-
             }
 
-
-            private void DrawFlightPathMarker(MySpriteDrawFrame frame, Vector3D currentVelocity, MatrixD worldMatrix, double roll)
+            private void DrawFlightPathMarker(
+                MySpriteDrawFrame frame,
+                Vector3D currentVelocity,
+                MatrixD worldMatrix,
+                double roll
+            )
             {
                 // Constants for degree-radian conversion and marker properties
                 const double DegToRad = Math.PI / 180.0;
@@ -2657,7 +2936,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 Vector3D velocityDirection = Vector3D.Normalize(currentVelocity);
 
                 // Transform velocity into local coordinates
-                Vector3D localVelocity = Vector3D.TransformNormal(velocityDirection, MatrixD.Transpose(worldMatrix));
+                Vector3D localVelocity = Vector3D.TransformNormal(
+                    velocityDirection,
+                    MatrixD.Transpose(worldMatrix)
+                );
 
                 // Compute yaw and pitch from local velocity (in degrees)
                 double velocityYaw = Math.Atan2(localVelocity.X, -localVelocity.Z) * RadToDeg;
@@ -2701,7 +2983,11 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 // Rotate wing offsets
                 Vector2 rotatedLeftWingOffset = RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
-                Vector2 rotatedRightWingOffset = RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
+                Vector2 rotatedRightWingOffset = RotatePoint(
+                    rightWingOffset,
+                    Vector2.Zero,
+                    -rollRad
+                );
 
                 // Create and add left wing sprite
                 var leftWing = new MySprite
@@ -2737,14 +3023,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
             private double CalculateAOAFromFlightPath(Vector3D velocity, MatrixD worldMatrix)
             {
-                if (velocity.LengthSquared() < 0.01) return 0;
+                if (velocity.LengthSquared() < 0.01)
+                    return 0;
 
                 // Transform velocity into cockpit-local space
                 Vector3D velocityDirection = Vector3D.Normalize(velocity);
-                Vector3D localVelocity = Vector3D.TransformNormal(velocityDirection, MatrixD.Transpose(worldMatrix));
+                Vector3D localVelocity = Vector3D.TransformNormal(
+                    velocityDirection,
+                    MatrixD.Transpose(worldMatrix)
+                );
 
                 // Velocity pitch (in degrees) — this is what your flight path marker uses
-                double velocityPitch = Math.Atan2(localVelocity.Y, -localVelocity.Z) * (180.0 / Math.PI);
+                double velocityPitch =
+                    Math.Atan2(localVelocity.Y, -localVelocity.Z) * (180.0 / Math.PI);
 
                 // Nose pitch
                 Vector3D forward = worldMatrix.Forward;
@@ -2753,7 +3044,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 // AOA = Nose Pitch - Velocity Pitch
                 return nosePitch - velocityPitch;
             }
-
 
             private void DrawAOABracket(MySpriteDrawFrame frame, double aoa)
             {
@@ -2765,24 +3055,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 Vector2 bracketPosition = new Vector2(centerX - 100f, centerY);
 
-                // Draw the AOA bracket (simplified representation)
-                var aoaBracket = new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "RightBracket",
-                    Position = bracketPosition,
-                    Size = new Vector2(20f, 40f),
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(aoaBracket);
 
                 // Display the numeric AOA value
                 var aoaText = new MySprite()
                 {
                     Type = SpriteType.TEXT,
                     Data = $"{aoa:F1}°",
-                    Position = bracketPosition + new Vector2(-30f, 0),
+                    Position = bracketPosition + new Vector2(-100f, 20),
                     RotationOrScale = 0.6f,
                     Color = Color.White,
                     Alignment = TextAlignment.RIGHT,
@@ -2801,30 +3080,31 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 Vector2 bracketPosition = new Vector2(centerX - 100f, centerY);
 
-                // Draw the AOA bracket (simplified representation)
-                var aoaBracket = new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "RightBracket",
-                    Position = bracketPosition,
-                    Size = new Vector2(20f, 40f),
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(aoaBracket);
-
                 // Display the numeric AOA value
                 var aoaText = new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = $"Trim: {currentTrim:F1}°",
-                    Position = bracketPosition + new Vector2(-30f, -20f),
+                    Data = $"T|O: {myjet.offset:F1}°",
+                    Position = bracketPosition + new Vector2(-100f, -0f),
                     RotationOrScale = 0.6f,
                     Color = Color.White,
                     Alignment = TextAlignment.RIGHT,
                     FontId = "White"
                 };
                 frame.Add(aoaText);
+
+                // Display the numeric AOA value
+                var aoaText2 = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"T: {currentTrim:F1}°",
+                    Position = bracketPosition + new Vector2(-100f, 40f),
+                    RotationOrScale = 0.6f,
+                    Color = Color.White,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "White"
+                };
+                frame.Add(aoaText2);
             }
             private void DrawBomb(MySpriteDrawFrame frame, double aoa)
             {
@@ -2836,7 +3116,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 Vector2 bracketPosition = new Vector2(centerX - 40f, centerY + 40f);
 
                 var customDataLines = ParentProgram.Me.CustomData.Split(
-    new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    new[] { '\n' },
+                    StringSplitOptions.RemoveEmptyEntries
+                );
                 float offsetY = 0f; // Initial vertical offset
                 float spacingY = 20f; // Spacing between lines
 
@@ -2878,9 +3160,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                     frame.Add(aoaText);
                 }
-
-
-
             }
             // Helper method to rotate a point around a pivot
             private Vector2 RotatePoint(Vector2 point, Vector2 pivot, float angle)
@@ -2894,7 +3173,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 );
                 return rotatedPoint + pivot;
             }
-
 
             private double CalculateHeading()
             {
@@ -2911,27 +3189,45 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 return altitude;
             }
 
-            private double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity)
+            private double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity, Vector3D upVector)
             {
-                if (velocity.LengthSquared() < 0.01) return 0;
 
-                Vector3D velocityDir = Vector3D.Normalize(velocity);
-                Vector3D forward = Vector3D.Normalize(forwardVector);
 
-                // Pitch angles from velocity and nose (forward)
-                double velocityPitch = Math.Atan2(velocityDir.Y, -velocityDir.Z) * (180.0 / Math.PI);
-                double nosePitch = Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
 
-                return nosePitch - velocityPitch;
+
+
+                    if (velocity.LengthSquared() < 0.01) return 0;
+
+
+                    Vector3D velocityDirection = Vector3D.Normalize(velocity);
+
+
+
+
+
+                    // Calculate the angle between the velocity and the forward vector in the plane defined by the up vector
+
+
+                    double angleOfAttack = Math.Atan2(
+
+
+                        Vector3D.Dot(velocityDirection, upVector),
+
+
+                        Vector3D.Dot(velocityDirection, forwardVector)
+
+
+                    ) * (180 / Math.PI);
+
+
+
+
+
+                    return angleOfAttack;
+
+
+                
             }
-
-
-
-
-
-
-
-
 
             private void DrawArtificialHorizon(MySpriteDrawFrame frame, float pitch, float roll)
             {
@@ -2945,7 +3241,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 for (int i = -90; i <= 90; i += 5)
                 {
                     float markerY = centerY - (i - pitch) * pixelsPerDegree;
-                    if (markerY < -100 || markerY > hud.SurfaceSize.Y + 100) continue;
+                    if (markerY < -100 || markerY > hud.SurfaceSize.Y + 100)
+                        continue;
 
                     bool majorLine = i % 10 == 0;
                     float lineWidth = majorLine ? 150f : 75f;
@@ -2953,69 +3250,79 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     Color lineColor = majorLine ? Color.Lime : Color.Gray;
 
                     // Pitch ladder line
-                    sprites.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(centerX, markerY),
-                        Size = new Vector2(lineWidth, lineThickness),
-                        Color = lineColor,
-                        Alignment = TextAlignment.CENTER
-                    });
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(centerX, markerY),
+                            Size = new Vector2(lineWidth, lineThickness),
+                            Color = lineColor,
+                            Alignment = TextAlignment.CENTER
+                        }
+                    );
 
                     // Labels for major lines
                     if (majorLine && i != 0)
                     {
                         string label = Math.Abs(i).ToString();
 
-                        sprites.Add(new MySprite()
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = label,
-                            Position = new Vector2(centerX - lineWidth / 2 - 30, markerY - 12),
-                            RotationOrScale = 0.6f,
-                            Color = lineColor,
-                            Alignment = TextAlignment.RIGHT,
-                            FontId = "White"
-                        });
+                        sprites.Add(
+                            new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = label,
+                                Position = new Vector2(centerX - lineWidth / 2 - 30, markerY - 12),
+                                RotationOrScale = 0.6f,
+                                Color = lineColor,
+                                Alignment = TextAlignment.RIGHT,
+                                FontId = "White"
+                            }
+                        );
 
-                        sprites.Add(new MySprite()
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = label,
-                            Position = new Vector2(centerX + lineWidth / 2 + 30, markerY - 12),
-                            RotationOrScale = 0.6f,
-                            Color = lineColor,
-                            Alignment = TextAlignment.LEFT,
-                            FontId = "White"
-                        });
+                        sprites.Add(
+                            new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = label,
+                                Position = new Vector2(centerX + lineWidth / 2 + 30, markerY - 12),
+                                RotationOrScale = 0.6f,
+                                Color = lineColor,
+                                Alignment = TextAlignment.LEFT,
+                                FontId = "White"
+                            }
+                        );
                     }
                 }
 
                 // Distinct Horizon line
                 float horizonY = centerY + pitch * pixelsPerDegree;
                 // Distinct Horizon line
-                sprites.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(centerX, horizonY),
-                    Size = new Vector2(hud.SurfaceSize.X, 4f),
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER
-                });
+                sprites.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(centerX, horizonY),
+                        Size = new Vector2(hud.SurfaceSize.X, 4f),
+                        Color = Color.White,
+                        Alignment = TextAlignment.CENTER
+                    }
+                );
 
                 // F18-style center marker (-^-)
-                sprites.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = "-^-",
-                    Position = new Vector2(centerX, centerY - 10),
-                    RotationOrScale = 0.8f,
-                    Color = Color.Yellow,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
-                });
+                sprites.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = "-^-",
+                        Position = new Vector2(centerX, centerY - 10),
+                        RotationOrScale = 0.8f,
+                        Color = Color.Yellow,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "Monospace"
+                    }
+                );
 
                 // Apply roll rotation
                 float rollRad = MathHelper.ToRadians(-roll);
@@ -3025,7 +3332,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 for (int i = 0; i < sprites.Count; i++)
                 {
                     MySprite sprite = sprites[i];
-                    Vector2 offset = (sprite.Position ?? Vector2.Zero) - new Vector2(centerX, centerY);
+                    Vector2 offset =
+                        (sprite.Position ?? Vector2.Zero) - new Vector2(centerX, centerY);
                     sprite.Position = new Vector2(
                         offset.X * cosRoll - offset.Y * sinRoll + centerX,
                         offset.X * sinRoll + offset.Y * cosRoll + centerY
@@ -3039,13 +3347,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
 
-
-
-
-
-
             private void DrawCompass(MySpriteDrawFrame frame, double heading)
-            { 
+            {
                 float centerX = hud.SurfaceSize.X / 2;
                 float compassY = 40f;
                 float compassWidth = hud.SurfaceSize.X * 0.9f;
@@ -3073,7 +3376,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     if (deltaHeading >= -45 && deltaHeading <= 45)
                     {
                         float markerX = centerX + (float)deltaHeading * headingScale;
-                        float markerHeight = (markerHeading % 10 == 0) ? compassHeight * 0.6f : compassHeight * 0.4f;
+                        float markerHeight =
+                            (markerHeading % 10 == 0) ? compassHeight * 0.6f : compassHeight * 0.4f;
                         Color markerColor = (markerHeading % 90 == 0) ? Color.Cyan : Color.White;
 
                         // Draw the marker line
@@ -3091,7 +3395,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         // Draw text for major markers
                         if (markerHeading % 10 == 0)
                         {
-                            string label = (markerHeading % 90 == 0) ? GetCompassDirection(markerHeading) : markerHeading.ToString();
+                            string label =
+                                (markerHeading % 90 == 0)
+                                    ? GetCompassDirection(markerHeading)
+                                    : markerHeading.ToString();
                             Color textColor = (markerHeading % 90 == 0) ? Color.Cyan : Color.White;
 
                             var markerText = new MySprite()
@@ -3121,22 +3428,26 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     RotationOrScale = (float)Math.PI
                 };
                 frame.Add(headingIndicator);
-
             }
-
-
-
 
             private string GetCompassDirection(double heading)
             {
-                if (heading >= 337.5 || heading < 22.5) return "N";
-                else if (heading >= 22.5 && heading < 67.5) return "NE";
-                else if (heading >= 67.5 && heading < 112.5) return "E";
-                else if (heading >= 112.5 && heading < 157.5) return "SE";
-                else if (heading >= 157.5 && heading < 202.5) return "S";
-                else if (heading >= 202.5 && heading < 247.5) return "SW";
-                else if (heading >= 247.5 && heading < 292.5) return "W";
-                else return "NW";
+                if (heading >= 337.5 || heading < 22.5)
+                    return "N";
+                else if (heading >= 22.5 && heading < 67.5)
+                    return "NE";
+                else if (heading >= 67.5 && heading < 112.5)
+                    return "E";
+                else if (heading >= 112.5 && heading < 157.5)
+                    return "SE";
+                else if (heading >= 157.5 && heading < 202.5)
+                    return "S";
+                else if (heading >= 202.5 && heading < 247.5)
+                    return "SW";
+                else if (heading >= 247.5 && heading < 292.5)
+                    return "W";
+                else
+                    return "NW";
             }
 
             private void DrawRollIndicator(MySpriteDrawFrame frame, float roll)
@@ -3175,7 +3486,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
         }
 
-
         class LogoDisplay : ProgramModule
         {
             private UIController uiController;
@@ -3210,7 +3520,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private const int maxTrailParticles = 4;
             private const float trailParticleSize = 2f;
 
-
             private const int ZOOM = 10;
             private const float BRIGHTNESS = 0.8f;
             private float fScale = 1.25f;
@@ -3218,87 +3527,91 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             // Utility functions
             float CosRange(float amt, float range, float minimum)
             {
-                return (((1.0f + (float)Math.Cos(MathHelper.ToRadians(amt))) * 0.5f) * range) + minimum;
+                return (((1.0f + (float)Math.Cos(MathHelper.ToRadians(amt))) * 0.5f) * range)
+                    + minimum;
             }
 
             private List<string> motivationalTexts = new List<string>
-    {
-"Innovate for a better\ntomorrow",
-    "Success is a journey,\nnot a destination",
-    "Every challenge is\nan opportunity",
-    "Excellence is not an act,\nbut a habit",
-    "Dream big, work hard,\nstay focused",
-    "Turn obstacles into\nopportunities",
-    "Create your own destiny",
-    "Rise above the rest",
-    "Strength comes from\nadversity",
-    "Your potential is\nlimitless",
-    "Believe in yourself,\nachieve the impossible",
-    "Be the change you\nwish to see",
-    "Push boundaries,\nbreak limits",
-    "The future belongs\nto those who prepare",
-    "Never settle for less\nthan your best",
-    "Lead with vision,\nact with purpose",
-    "Transform challenges\ninto victories",
-    "Inspire others\nthrough your actions",
-    "Greatness is achieved\none step at a time",
-    "Persevere and succeed",
-    "Rise to the challenge\nand excel",
-    "Turn dreams into reality",
-    "Make every moment count",
-    "Stay relentless in\nthe pursuit of excellence",
-    "Success is forged in\nthe fires of hard work",
-    "Unleash your inner power",
-    "Great things take time,\nstay patient",
-    "Success is a journey,\nnot a destination",
-    "Embrace every challenge\nas an opportunity",
-    "Your effort defines\nyour success",
-    "Pursue greatness relentlessly",
-    "Strive for progress,\nnot perfection",
-    "Commit to your goals\nand achieve greatness",
-    "Lead with courage,\nact with integrity"
-    };
+            {
+                "Innovate for a better\ntomorrow",
+                "Success is a journey,\nnot a destination",
+                "Every challenge is\nan opportunity",
+                "Excellence is not an act,\nbut a habit",
+                "Dream big, work hard,\nstay focused",
+                "Turn obstacles into\nopportunities",
+                "Create your own destiny",
+                "Rise above the rest",
+                "Strength comes from\nadversity",
+                "Your potential is\nlimitless",
+                "Believe in yourself,\nachieve the impossible",
+                "Be the change you\nwish to see",
+                "Push boundaries,\nbreak limits",
+                "The future belongs\nto those who prepare",
+                "Never settle for less\nthan your best",
+                "Lead with vision,\nact with purpose",
+                "Transform challenges\ninto victories",
+                "Inspire others\nthrough your actions",
+                "Greatness is achieved\none step at a time",
+                "Persevere and succeed",
+                "Rise to the challenge\nand excel",
+                "Turn dreams into reality",
+                "Make every moment count",
+                "Stay relentless in\nthe pursuit of excellence",
+                "Success is forged in\nthe fires of hard work",
+                "Unleash your inner power",
+                "Great things take time,\nstay patient",
+                "Success is a journey,\nnot a destination",
+                "Embrace every challenge\nas an opportunity",
+                "Your effort defines\nyour success",
+                "Pursue greatness relentlessly",
+                "Strive for progress,\nnot perfection",
+                "Commit to your goals\nand achieve greatness",
+                "Lead with courage,\nact with integrity"
+            };
             private List<string> evilTexts = new List<string>
-    {
-        "We thrive on\nbribery and power",
-    "Control is profit,\nand profit is control",
-    "Peace is a myth;\nconflict pays well",
-    "Infiltrate and dominate",
-    "Power is the ultimate\ncurrency",
-    "Chaos breeds opportunity",
-    "Fear is the greatest\ntool of control",
-    "Silence dissent\nthrough intimidation",
-    "Manipulate and conquer",
-    "Corruption is a means\nto an end",
-    "Betrayal is an art\nwe've perfected",
-    "Subjugate the weak\nfor our gain",
-    "Violence is an\nacceptable solution",
-    "Lies are a necessary\nevil",
-    "Exploit every weakness\nto our advantage",
-    "Absolute power corrupts\nabsolutely",
-    "Profit from the\nsuffering of others",
-    "Tyranny is the path\nto true control",
-    "Repression ensures\ndominance",
-    "Divide and conquer\nto control",
-    "Oppression is our\nbusiness model",
-    "Deceit is a powerful\nally",
-    "Instill fear,\nmaintain control",
-    "Ensure loyalty through\nbribery and threat",
-    "We control the narrative\nthrough manipulation",
-    "Success demands ruthless\nand cunning strategies",
-    "Enforce obedience\nwith an iron fist",
-    "Compromise integrity\nfor power",
-    "Betrayal is our path\nto dominance",
-    "Exploitation is our\nprimary strategy",
-    "Punish dissent harshly\nto deter rebellion",
-    "Deception is a means\nto control the masses",
-    "Our will is enforced\nthrough fear",
-    "Victory is achieved\nthrough oppression",
-    "Moral boundaries are\nsacrificed for power",
-    "Corruption is the price\nof ultimate control"
-    };
+            {
+                "We thrive on\nbribery and power",
+                "Control is profit,\nand profit is control",
+                "Peace is a myth;\nconflict pays well",
+                "Infiltrate and dominate",
+                "Power is the ultimate\ncurrency",
+                "Chaos breeds opportunity",
+                "Fear is the greatest\ntool of control",
+                "Silence dissent\nthrough intimidation",
+                "Manipulate and conquer",
+                "Corruption is a means\nto an end",
+                "Betrayal is an art\nwe've perfected",
+                "Subjugate the weak\nfor our gain",
+                "Violence is an\nacceptable solution",
+                "Lies are a necessary\nevil",
+                "Exploit every weakness\nto our advantage",
+                "Absolute power corrupts\nabsolutely",
+                "Profit from the\nsuffering of others",
+                "Tyranny is the path\nto true control",
+                "Repression ensures\ndominance",
+                "Divide and conquer\nto control",
+                "Oppression is our\nbusiness model",
+                "Deceit is a powerful\nally",
+                "Instill fear,\nmaintain control",
+                "Ensure loyalty through\nbribery and threat",
+                "We control the narrative\nthrough manipulation",
+                "Success demands ruthless\nand cunning strategies",
+                "Enforce obedience\nwith an iron fist",
+                "Compromise integrity\nfor power",
+                "Betrayal is our path\nto dominance",
+                "Exploitation is our\nprimary strategy",
+                "Punish dissent harshly\nto deter rebellion",
+                "Deception is a means\nto control the masses",
+                "Our will is enforced\nthrough fear",
+                "Victory is achieved\nthrough oppression",
+                "Moral boundaries are\nsacrificed for power",
+                "Corruption is the price\nof ultimate control"
+            };
 
-            public bool IsActive { get { return isActive; } }
+            public bool IsActive
+            {
+                get { return isActive; }
+            }
 
             public LogoDisplay(Program program, UIController uiController) : base(program)
             {
@@ -3307,35 +3620,60 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 particles = new List<Particle>();
                 dustParticles = new List<DustParticle>();
 
-                List<string> snowflakeTextures = new List<string> { "Snowflake1", "Snowflake2", "Snowflake3" };
-                List<Color> snowflakeColors = new List<Color> { Color.White, Color.LightBlue, Color.Cyan };
+                List<string> snowflakeTextures = new List<string>
+                {
+                    "Snowflake1",
+                    "Snowflake2",
+                    "Snowflake3"
+                };
+                List<Color> snowflakeColors = new List<Color>
+                {
+                    Color.White,
+                    Color.LightBlue,
+                    Color.Cyan
+                };
 
                 // Initialize snowflake particles
                 for (int i = 0; i < particleCount; i++)
                 {
-                    particles.Add(new Particle(
-                        new Vector2(random.Next(0, (int)uiController.MainScreen.SurfaceSize.X), random.Next(0, (int)uiController.MainScreen.SurfaceSize.Y)),
-                        new Vector2(0f, (float)(random.NextDouble() * 0.5 + 0.5)) * particleSpeed,
-                        (float)random.NextDouble() * (maxOpacity - minOpacity) + minOpacity,
-                        (float)random.NextDouble() * (maxParticleSize - minParticleSize) + minParticleSize,
-                        snowflakeColors[random.Next(snowflakeColors.Count)],
-                        snowflakeTextures[random.Next(snowflakeTextures.Count)],
-                        random));
+                    particles.Add(
+                        new Particle(
+                            new Vector2(
+                                random.Next(0, (int)uiController.MainScreen.SurfaceSize.X),
+                                random.Next(0, (int)uiController.MainScreen.SurfaceSize.Y)
+                            ),
+                            new Vector2(0f, (float)(random.NextDouble() * 0.5 + 0.5))
+                                * particleSpeed,
+                            (float)random.NextDouble() * (maxOpacity - minOpacity) + minOpacity,
+                            (float)random.NextDouble() * (maxParticleSize - minParticleSize)
+                                + minParticleSize,
+                            snowflakeColors[random.Next(snowflakeColors.Count)],
+                            snowflakeTextures[random.Next(snowflakeTextures.Count)],
+                            random
+                        )
+                    );
                 }
 
                 // Initialize falling snow dust particles
                 for (int i = 0; i < dustParticleCount; i++)
                 {
-                    dustParticles.Add(new DustParticle(
-                        new Vector2(random.Next(0, (int)uiController.MainScreen.SurfaceSize.X), random.Next(0, (int)uiController.MainScreen.SurfaceSize.Y)),
-                        new Vector2(0f, (float)(random.NextDouble() * 0.5 + 0.5)) * dustSpeed,
-                        (float)random.NextDouble() * (maxOpacity - minOpacity) + minOpacity,
-                        (float)random.NextDouble() * (maxDustSize - minDustSize) + minDustSize,
-                        Color.White));
+                    dustParticles.Add(
+                        new DustParticle(
+                            new Vector2(
+                                random.Next(0, (int)uiController.MainScreen.SurfaceSize.X),
+                                random.Next(0, (int)uiController.MainScreen.SurfaceSize.Y)
+                            ),
+                            new Vector2(0f, (float)(random.NextDouble() * 0.5 + 0.5)) * dustSpeed,
+                            (float)random.NextDouble() * (maxOpacity - minOpacity) + minOpacity,
+                            (float)random.NextDouble() * (maxDustSize - minDustSize) + minDustSize,
+                            Color.White
+                        )
+                    );
                 }
             }
 
-            public override string[] GetOptions() => new string[] { "Display Christmas Animation", "Back" };
+            public override string[] GetOptions() =>
+                new string[] { "Display Christmas Animation", "Back" };
 
             public override void ExecuteOption(int index)
             {
@@ -3367,7 +3705,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     //UpdateParticles();
                     animationcounter++;
                     Vector2 screenSize = uiController.MainScreen.SurfaceSize;
-                    uiController.RenderCustomFrame((frame, area) => RenderParticles(frame, area), new RectangleF(Vector2.Zero, screenSize));
+                    uiController.RenderCustomFrame(
+                        (frame, area) => RenderParticles(frame, area),
+                        new RectangleF(Vector2.Zero, screenSize)
+                    );
                     tickCounter++;
                     if (showingEvilText && tickCounter >= ticksPerEvil)
                     {
@@ -3444,21 +3785,33 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     {
                         Vector2 fragCoord = new Vector2(x, y);
                         Vector2 uv = fragCoord / resolution;
-                        Vector2 p = (2.0f * fragCoord - resolution) / Math.Max(resolution.X, resolution.Y);
+                        Vector2 p =
+                            (2.0f * fragCoord - resolution) / Math.Max(resolution.X, resolution.Y);
 
                         fScale = CosRange(time * 5.0f, 1.0f, 0.5f);
 
                         for (int i = 1; i < ZOOM; i++)
                         {
                             float _i = (float)i;
-                            p.X += 0.05f / _i * (float)Math.Sin(_i * p.Y + time * 0.5f) * fScale + 0.01f * (float)Math.Sin(time * 0.3f);
-                            p.Y += 0.05f / _i * (float)Math.Sin(_i * p.X + time * 0.4f) * fScale + 0.01f * (float)Math.Cos(time * 0.2f);
+                            p.X +=
+                                0.05f / _i * (float)Math.Sin(_i * p.Y + time * 0.5f) * fScale
+                                + 0.01f * (float)Math.Sin(time * 0.3f);
+                            p.Y +=
+                                0.05f / _i * (float)Math.Sin(_i * p.X + time * 0.4f) * fScale
+                                + 0.01f * (float)Math.Cos(time * 0.2f);
                         }
 
-                        Vector3 col = new Vector3(0.5f * (float)Math.Sin(2.0f * p.X) + 0.5f, 0.5f * (float)Math.Sin(2.0f * p.Y) + 0.5f, (float)Math.Sin(p.X + p.Y));
+                        Vector3 col = new Vector3(
+                            0.5f * (float)Math.Sin(2.0f * p.X) + 0.5f,
+                            0.5f * (float)Math.Sin(2.0f * p.Y) + 0.5f,
+                            (float)Math.Sin(p.X + p.Y)
+                        );
                         col *= BRIGHTNESS;
 
-                        float vignette = 1.0f - 2.0f * ((uv.X - 0.5f) * (uv.X - 0.5f) + (uv.Y - 0.5f) * (uv.Y - 0.5f));
+                        float vignette =
+                            1.0f
+                            - 2.0f
+                                * ((uv.X - 0.5f) * (uv.X - 0.5f) + (uv.Y - 0.5f) * (uv.Y - 0.5f));
                         vignette = MathHelper.Clamp(vignette, 0.0f, 1.0f);
 
                         var sprite = new MySprite()
@@ -3476,7 +3829,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
 
-
             private struct Particle
             {
                 public Vector2 Position;
@@ -3486,7 +3838,15 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 public Color Color;
                 public string Texture;
 
-                public Particle(Vector2 position, Vector2 velocity, float opacity, float size, Color color, string texture, Random random)
+                public Particle(
+                    Vector2 position,
+                    Vector2 velocity,
+                    float opacity,
+                    float size,
+                    Color color,
+                    string texture,
+                    Random random
+                )
                 {
                     Position = position;
                     Velocity = velocity;
@@ -3505,7 +3865,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 public float Size;
                 public Color Color;
 
-                public DustParticle(Vector2 position, Vector2 velocity, float opacity, float size, Color color)
+                public DustParticle(
+                    Vector2 position,
+                    Vector2 velocity,
+                    float opacity,
+                    float size,
+                    Color color
+                )
                 {
                     Position = position;
                     Velocity = velocity;
@@ -3524,7 +3890,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 public Color Color;
                 public float Lifetime;
 
-                public TrailParticle(Vector2 position, Vector2 velocity, float opacity, float size, float lifetime, Color color)
+                public TrailParticle(
+                    Vector2 position,
+                    Vector2 velocity,
+                    float opacity,
+                    float size,
+                    float lifetime,
+                    Color color
+                )
                 {
                     Position = position;
                     Velocity = velocity;
@@ -3534,10 +3907,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     Color = color;
                 }
             }
-
-
-
-
         }
 
         class AirToGround : ProgramModule
@@ -3555,7 +3924,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private void LoadTopdownState()
             {
                 var customDataLines = ParentProgram.Me.CustomData.Split(
-                    new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    new[] { '\n' },
+                    StringSplitOptions.RemoveEmptyEntries
+                );
                 foreach (var line in customDataLines)
                 {
                     if (line.StartsWith("Topdown:"))
@@ -3567,22 +3938,30 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
             public override string[] GetOptions()
             {
-                var options = new List<string> {
-      "Fire Selected Bays", "Toggle Selected Bays", "Bombardment",
-      string.Format("Topdown [{0}]", isTopdownEnabled ? "ON" : "OFF"),
-      "PreSelect"
-    };
+                var options = new List<string>
+                {
+                    "Fire Selected Bays",
+                    "Toggle Selected Bays",
+                    "Bombardment",
+                    string.Format("Topdown [{0}]", isTopdownEnabled ? "ON" : "OFF"),
+                    "PreSelect"
+                };
                 for (int i = 0; i < missileBays.Count; i++)
                 {
                     string baySymbol = baySelected[i] ? "[X]" : "[ ]";
                     string bayStatus = missileBays[i]?.IsConnected == true ? "[ON]" : "[OFF]";
                     var mergeBlock = missileBays[i] as IMyShipMergeBlock;
                     bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
-                    char colorChar =
-                        ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
-                    options.Add(string.Format("{0}{1} {2} {3}", colorChar, baySymbol,
-                                              missileBays[i]?.CustomName ?? "Unknown Bay",
-                                              bayStatus));
+                    char colorChar = ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
+                    options.Add(
+                        string.Format(
+                            "{0}{1} {2} {3}",
+                            colorChar,
+                            baySymbol,
+                            missileBays[i]?.CustomName ?? "Unknown Bay",
+                            bayStatus
+                        )
+                    );
                 }
                 return options.ToArray();
             }
@@ -3623,7 +4002,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private void UpdateTopdownCustomData()
             {
                 var customDataLines = ParentProgram.Me.CustomData.Split(
-                    new[] { '\n' }, StringSplitOptions.None);
+                    new[] { '\n' },
+                    StringSplitOptions.None
+                );
                 bool found = false;
                 for (int i = 0; i < customDataLines.Length; i++)
                 {
@@ -3667,9 +4048,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                             ;
                             return;
                         }
-                        catch (Exception)
-                        {
-                        }
+                        catch (Exception) { }
                     }
                 }
             }
@@ -3703,22 +4082,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         if (isOn)
                         {
                             bay.Enabled = false;
-
                         }
                         else
                         {
                             bay.Enabled = true;
-
                         }
                     }
                 }
             }
             private void ExecuteBombardment()
             {
-                var cachedData =
-                    ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
+                var cachedData = ParentProgram.Me.CustomData
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
                 if (cachedData == null)
                 {
                     return;
@@ -3728,10 +4104,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     return;
                 }
-                double x, y, z;
-                if (!double.TryParse(parts[3], out x) ||
-                    !double.TryParse(parts[4], out y) ||
-                    !double.TryParse(parts[5], out z))
+                double x,
+                    y,
+                    z;
+                if (
+                    !double.TryParse(parts[3], out x)
+                    || !double.TryParse(parts[4], out y)
+                    || !double.TryParse(parts[5], out z)
+                )
                 {
                     return;
                 }
@@ -3749,7 +4129,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
             private void FireMissileFromBayWithGps(
-                int bayIndex, Vector3D targetPosition = default(Vector3D))
+                int bayIndex,
+                Vector3D targetPosition = default(Vector3D)
+            )
             {
                 try
                 {
@@ -3761,58 +4143,60 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     if (targetPosition.Equals(default(Vector3D)))
                     {
                         var customDataLines = ParentProgram.Me.CustomData.Split(
-                            new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            new[] { '\n' },
+                            StringSplitOptions.RemoveEmptyEntries
+                        );
                         var cachedData = customDataLines.FirstOrDefault(
-                            line => line.StartsWith("Cached:GPS:"));
+                            line => line.StartsWith("Cached:GPS:")
+                        );
 
                         var parts = cachedData.Split(':');
 
-                        double x, y, z;
-                        if (!double.TryParse(parts[3], out x) ||
-                            !double.TryParse(parts[4], out y) ||
-                            !double.TryParse(parts[5], out z))
+                        double x,
+                            y,
+                            z;
+                        if (
+                            !double.TryParse(parts[3], out x)
+                            || !double.TryParse(parts[4], out y)
+                            || !double.TryParse(parts[5], out z)
+                        )
                         {
                             return;
                         }
                         targetPosition = new Vector3D(x, y, z);
                     }
-                    string gpsData =
-                        string.Format("GPS:Target:{0}:{1}:{2}:#FF75C9F1:", targetPosition.X,
-                                      targetPosition.Y, targetPosition.Z);
+                    string gpsData = string.Format(
+                        "GPS:Target:{0}:{1}:{2}:#FF75C9F1:",
+                        targetPosition.X,
+                        targetPosition.Y,
+                        targetPosition.Z
+                    );
                     UpdateCustomDataWithGpsData(bayIndex, gpsData);
                     bay.ApplyAction("Fire");
-
                 }
-                catch (Exception)
-                {
-
-                }
+                catch (Exception) { }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
             {
                 try
                 {
                     var customDataLines = ParentProgram.Me.CustomData
-                                              .Split(new[] { '\n' }, StringSplitOptions.None)
-                                              .ToList();
+                        .Split(new[] { '\n' }, StringSplitOptions.None)
+                        .ToList();
                     string cacheLabel = string.Format("Cache{0}:", bayIndex);
-                    int cacheIndex =
-                        customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
+                    int cacheIndex = customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
                     if (cacheIndex != -1)
                     {
-                        customDataLines[cacheIndex] =
-                            string.Format("{0}{1}", cacheLabel, gpsData);
+                        customDataLines[cacheIndex] = string.Format("{0}{1}", cacheLabel, gpsData);
                     }
                     else
                     {
                         customDataLines.Add(string.Format("{0}{1}", cacheLabel, gpsData));
                     }
                     ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
-
                 }
                 catch (Exception)
                 {
-
                     throw;
                 }
             }
@@ -3821,13 +4205,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 try
                 {
                     var customDataLines = ParentProgram.Me.CustomData
-                                              .Split(new[] { '\n' }, StringSplitOptions.None)
-                                              .ToList();
+                        .Split(new[] { '\n' }, StringSplitOptions.None)
+                        .ToList();
                     for (int i = 0; i < customDataLines.Count; i++)
                     {
                         string cacheLabel = string.Format("Cache{0}:", i);
-                        int cacheIndex =
-                            customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
+                        int cacheIndex = customDataLines.FindIndex(
+                            line => line.StartsWith(cacheLabel)
+                        );
                         if (cacheIndex != -1)
                         {
                             var cacheLine = customDataLines[cacheIndex];
@@ -3835,29 +4220,30 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                             if (!string.IsNullOrEmpty(cacheContent))
                             {
                                 string targetLabel = string.Format("{0}:", i);
-                                int targetIndex =
-                                    customDataLines.FindIndex(line => line.StartsWith(targetLabel));
+                                int targetIndex = customDataLines.FindIndex(
+                                    line => line.StartsWith(targetLabel)
+                                );
                                 if (targetIndex != -1)
                                 {
-                                    customDataLines[targetIndex] =
-                                        string.Format("{0} {1}", targetLabel, cacheContent);
+                                    customDataLines[targetIndex] = string.Format(
+                                        "{0} {1}",
+                                        targetLabel,
+                                        cacheContent
+                                    );
                                 }
                                 else
                                 {
                                     customDataLines.Add(
-                                        string.Format("{0} {1}", targetLabel, cacheContent));
+                                        string.Format("{0} {1}", targetLabel, cacheContent)
+                                    );
                                 }
                                 customDataLines[cacheIndex] = cacheLabel;
                             }
                         }
                     }
                     ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
-
                 }
-                catch (Exception)
-                {
-
-                }
+                catch (Exception) { }
             }
             private List<Vector3D> CalculateTargetPositions(Vector3D centralTarget)
             {
@@ -3872,10 +4258,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 // Define the directions for the cross: +X, -X, +Z, -Z
                 Vector3D[] directions = new Vector3D[]
                 {
-        new Vector3D(1, 0, 0),  // +X
-        new Vector3D(-1, 0, 0), // -X
-        new Vector3D(0, 0, 1),  // +Z
-        new Vector3D(0, 0, -1)  // -Z
+                    new Vector3D(1, 0, 0), // +X
+                    new Vector3D(-1, 0, 0), // -X
+                    new Vector3D(0, 0, 1), // +Z
+                    new Vector3D(0, 0, -1) // -Z
                 };
 
                 double spacing = 4.0; // Distance between each target along the axis
@@ -3901,9 +4287,12 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private static char ColorToChar(int r, int g, int b)
             {
                 const double BIT_SPACING = 255.0 / 7.0;
-                return (char)(0xe100 + ((int)Math.Round(r / BIT_SPACING) << 6) +
-                              ((int)Math.Round(g / BIT_SPACING) << 3) +
-                              (int)Math.Round(b / BIT_SPACING));
+                return (char)(
+                    0xe100
+                    + ((int)Math.Round(r / BIT_SPACING) << 6)
+                    + ((int)Math.Round(g / BIT_SPACING) << 3)
+                    + (int)Math.Round(b / BIT_SPACING)
+                );
             }
             public override void HandleSpecialFunction(int key)
             {
@@ -3923,7 +4312,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             }
         }
 
-
         class AirtoAir : ProgramModule
         {
             private List<IMyShipMergeBlock> missileBays = new List<IMyShipMergeBlock>();
@@ -3932,7 +4320,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private bool isAirtoAirenabled = false;
             private List<string> lastPlayedSounds = new List<string>();
 
-            private List<int> lastSoundTickCounters = new List<int>(); private int tickCounter = 0;
+            private List<int> lastSoundTickCounters = new List<int>();
+            private int tickCounter = 0;
             IMyLargeTurretBase turret;
 
             MyDetectedEntityInfo detectedEntity;
@@ -4008,7 +4397,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 baySelected = new bool[missileBays.Count];
                 name = "Air To Air";
                 // Fetch sound blocks
-                program.GridTerminalSystem.GetBlocksOfType(soundblocks, b => b.CustomName.Contains("Canopy Side Plate Sound Block"));
+                program.GridTerminalSystem.GetBlocksOfType(
+                    soundblocks,
+                    b => b.CustomName.Contains("Canopy Side Plate Sound Block")
+                );
 
                 // **Initialize lastPlayedSounds with empty strings corresponding to each sound block**
                 lastPlayedSounds = new List<string>();
@@ -4028,10 +4420,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 turret = jet._radar;
             }
 
-
             public static class MathHelper
             {
-
                 public static float Clamp(float value, float min, float max)
                 {
                     if (value < min)
@@ -4071,8 +4461,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 // Assuming the forward direction is along the positive Z-axis
                 Vector3D direction = new Vector3D(
                     cosElevation * sinAzimuth, // X component
-                    sinElevation,              // Y component
-                    cosElevation * cosAzimuth  // Z component
+                    sinElevation, // Y component
+                    cosElevation * cosAzimuth // Z component
                 );
 
                 // Normalize the direction vector
@@ -4081,25 +4471,30 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 return direction;
             }
 
-
-
             public override string[] GetOptions()
             {
-                var options = new List<string> {
-      "Fire Selected Bays", "Toggle Selected Bays",
-      string.Format("Seeker [{0}]", isAirtoAirenabled ? "ON" : "OFF")
-    };
+                var options = new List<string>
+                {
+                    "Fire Selected Bays",
+                    "Toggle Selected Bays",
+                    string.Format("Seeker [{0}]", isAirtoAirenabled ? "ON" : "OFF")
+                };
                 for (int i = 0; i < missileBays.Count; i++)
                 {
                     string baySymbol = baySelected[i] ? "[X]" : "[ ]";
                     string bayStatus = missileBays[i]?.IsConnected == true ? "[ON]" : "[OFF]";
                     var mergeBlock = missileBays[i] as IMyShipMergeBlock;
                     bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
-                    char colorChar =
-                        ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
-                    options.Add(string.Format("{0}{1} {2} {3}", colorChar, baySymbol,
-                                              missileBays[i]?.CustomName ?? "Unknown Bay",
-                                              bayStatus));
+                    char colorChar = ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
+                    options.Add(
+                        string.Format(
+                            "{0}{1} {2} {3}",
+                            colorChar,
+                            baySymbol,
+                            missileBays[i]?.CustomName ?? "Unknown Bay",
+                            bayStatus
+                        )
+                    );
                 }
                 return options.ToArray();
             }
@@ -4109,7 +4504,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     ToggleSensor();
                     ToggleAirtoAirMode();
-
                 }
                 else if (index == 0)
                 {
@@ -4135,7 +4529,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 if (turret.Enabled && isAirtoAirenabled)
                 {
                     turret.Enabled = false;
-
                 }
                 else
                 {
@@ -4146,7 +4539,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private void UpdateTopdownCustomData()
             {
                 var customDataLines = ParentProgram.Me.CustomData.Split(
-                    new[] { '\n' }, StringSplitOptions.None);
+                    new[] { '\n' },
+                    StringSplitOptions.None
+                );
                 bool found = false;
                 for (int i = 0; i < customDataLines.Length; i++)
                 {
@@ -4179,7 +4574,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     }
                     else
                     {
-                        hotkeytext = "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
+                        hotkeytext =
+                            "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
                     }
                 }
 
@@ -4208,12 +4604,28 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     }
                     if (!detectedEntity.IsEmpty())
                     {
-                        var customDataLines = ParentProgram.Me.CustomData.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                        string gpsCoordinates = "Cached:GPS:Target2:" + detectedEntity.Position.X + ":" +
-                                                detectedEntity.Position.Y + ":" + detectedEntity.Position.Z + ":#FF75C9F1:";
+                        var customDataLines = ParentProgram.Me.CustomData.Split(
+                            new[] { '\n' },
+                            StringSplitOptions.RemoveEmptyEntries
+                        );
+                        string gpsCoordinates =
+                            "Cached:GPS:Target2:"
+                            + detectedEntity.Position.X
+                            + ":"
+                            + detectedEntity.Position.Y
+                            + ":"
+                            + detectedEntity.Position.Z
+                            + ":#FF75C9F1:";
 
                         // Add the speed information to be cached
-                        string cachedSpeed = "CachedSpeed:" + detectedEntity.Velocity.X + ":" + detectedEntity.Velocity.Y + ":" + detectedEntity.Velocity.Z + ":#FF75C9F1:";
+                        string cachedSpeed =
+                            "CachedSpeed:"
+                            + detectedEntity.Velocity.X
+                            + ":"
+                            + detectedEntity.Velocity.Y
+                            + ":"
+                            + detectedEntity.Velocity.Z
+                            + ":#FF75C9F1:";
 
                         UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
                     }
@@ -4229,7 +4641,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     tickCounter = 0;
                 }
             }
-
 
             private void RestartSounds()
             {
@@ -4263,7 +4674,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                     // Play the new sound once
                     block.ApplyAction("PlaySound");
-
                 }
 
                 // Update last played sound
@@ -4275,7 +4685,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 for (int i = 0; i < soundblocks.Count; i++)
                 {
                     var soundBlock = soundblocks[i];
-                    string currentSound = lastPlayedSounds.Count > i ? lastPlayedSounds[i] : string.Empty;
+                    string currentSound =
+                        lastPlayedSounds.Count > i ? lastPlayedSounds[i] : string.Empty;
 
                     if (!string.IsNullOrEmpty(currentSound))
                     {
@@ -4285,11 +4696,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     }
                 }
             }
-
-
-
-
-
 
             private void FireSelectedBays()
             {
@@ -4302,7 +4708,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         FireMissileFromBayWithGps(i);
                     }
                 }
-
             }
             private void FireNextAvailableBay()
             {
@@ -4317,9 +4722,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                             ;
                             return;
                         }
-                        catch (Exception)
-                        {
-                        }
+                        catch (Exception) { }
                     }
                 }
             }
@@ -4353,22 +4756,19 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         if (isOn)
                         {
                             bay.Enabled = false;
-
                         }
                         else
                         {
                             bay.Enabled = true;
-
                         }
                     }
                 }
             }
             private void ExecuteBombardment()
             {
-                var cachedData =
-                    ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
+                var cachedData = ParentProgram.Me.CustomData
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
                 if (cachedData == null)
                 {
                     return;
@@ -4378,10 +4778,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     return;
                 }
-                double x, y, z;
-                if (!double.TryParse(parts[3], out x) ||
-                    !double.TryParse(parts[4], out y) ||
-                    !double.TryParse(parts[5], out z))
+                double x,
+                    y,
+                    z;
+                if (
+                    !double.TryParse(parts[3], out x)
+                    || !double.TryParse(parts[4], out y)
+                    || !double.TryParse(parts[5], out z)
+                )
                 {
                     return;
                 }
@@ -4399,7 +4803,9 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
             private void FireMissileFromBayWithGps(
-                int bayIndex, Vector3D targetPosition = default(Vector3D))
+                int bayIndex,
+                Vector3D targetPosition = default(Vector3D)
+            )
             {
                 try
                 {
@@ -4411,9 +4817,12 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     if (targetPosition.Equals(default(Vector3D)))
                     {
                         var customDataLines = ParentProgram.Me.CustomData.Split(
-                            new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            new[] { '\n' },
+                            StringSplitOptions.RemoveEmptyEntries
+                        );
                         var cachedData = customDataLines.FirstOrDefault(
-                            line => line.StartsWith("Cached:GPS:"));
+                            line => line.StartsWith("Cached:GPS:")
+                        );
                         if (cachedData == null)
                         {
                             return;
@@ -4423,40 +4832,42 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         {
                             return;
                         }
-                        double x, y, z;
-                        if (!double.TryParse(parts[3], out x) ||
-                            !double.TryParse(parts[4], out y) ||
-                            !double.TryParse(parts[5], out z))
+                        double x,
+                            y,
+                            z;
+                        if (
+                            !double.TryParse(parts[3], out x)
+                            || !double.TryParse(parts[4], out y)
+                            || !double.TryParse(parts[5], out z)
+                        )
                         {
                             return;
                         }
                         targetPosition = new Vector3D(x, y, z);
                     }
-                    string gpsData =
-                        string.Format("GPS:Target:{0}:{1}:{2}:#FF75C9F1:", targetPosition.X,
-                                      targetPosition.Y, targetPosition.Z);
+                    string gpsData = string.Format(
+                        "GPS:Target:{0}:{1}:{2}:#FF75C9F1:",
+                        targetPosition.X,
+                        targetPosition.Y,
+                        targetPosition.Z
+                    );
                     UpdateCustomDataWithGpsData(bayIndex, gpsData);
                     bay.ApplyAction("Fire");
                 }
-                catch (Exception)
-                {
-
-                }
+                catch (Exception) { }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
             {
                 try
                 {
                     var customDataLines = ParentProgram.Me.CustomData
-                                              .Split(new[] { '\n' }, StringSplitOptions.None)
-                                              .ToList();
+                        .Split(new[] { '\n' }, StringSplitOptions.None)
+                        .ToList();
                     string cacheLabel = string.Format("Cache{0}:", bayIndex);
-                    int cacheIndex =
-                        customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
+                    int cacheIndex = customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
                     if (cacheIndex != -1)
                     {
-                        customDataLines[cacheIndex] =
-                            string.Format("{0}{1}", cacheLabel, gpsData);
+                        customDataLines[cacheIndex] = string.Format("{0}{1}", cacheLabel, gpsData);
                     }
                     else
                     {
@@ -4474,13 +4885,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 try
                 {
                     var customDataLines = ParentProgram.Me.CustomData
-                                              .Split(new[] { '\n' }, StringSplitOptions.None)
-                                              .ToList();
+                        .Split(new[] { '\n' }, StringSplitOptions.None)
+                        .ToList();
                     for (int i = 0; i < customDataLines.Count; i++)
                     {
                         string cacheLabel = string.Format("Cache{0}:", i);
-                        int cacheIndex =
-                            customDataLines.FindIndex(line => line.StartsWith(cacheLabel));
+                        int cacheIndex = customDataLines.FindIndex(
+                            line => line.StartsWith(cacheLabel)
+                        );
                         if (cacheIndex != -1)
                         {
                             var cacheLine = customDataLines[cacheIndex];
@@ -4488,17 +4900,22 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                             if (!string.IsNullOrEmpty(cacheContent))
                             {
                                 string targetLabel = string.Format("{0}:", i);
-                                int targetIndex =
-                                    customDataLines.FindIndex(line => line.StartsWith(targetLabel));
+                                int targetIndex = customDataLines.FindIndex(
+                                    line => line.StartsWith(targetLabel)
+                                );
                                 if (targetIndex != -1)
                                 {
-                                    customDataLines[targetIndex] =
-                                        string.Format("{0} {1}", targetLabel, cacheContent);
+                                    customDataLines[targetIndex] = string.Format(
+                                        "{0} {1}",
+                                        targetLabel,
+                                        cacheContent
+                                    );
                                 }
                                 else
                                 {
                                     customDataLines.Add(
-                                        string.Format("{0} {1}", targetLabel, cacheContent));
+                                        string.Format("{0} {1}", targetLabel, cacheContent)
+                                    );
                                 }
                                 customDataLines[cacheIndex] = cacheLabel;
                             }
@@ -4509,7 +4926,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 catch (Exception ex)
                 {
                     ParentProgram.Echo(ex.ToString());
-
                 }
             }
             private List<Vector3D> CalculateTargetPositions(Vector3D centralTarget)
@@ -4544,9 +4960,12 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private static char ColorToChar(int r, int g, int b)
             {
                 const double BIT_SPACING = 255.0 / 7.0;
-                return (char)(0xe100 + ((int)Math.Round(r / BIT_SPACING) << 6) +
-                              ((int)Math.Round(g / BIT_SPACING) << 3) +
-                              (int)Math.Round(b / BIT_SPACING));
+                return (char)(
+                    0xe100
+                    + ((int)Math.Round(r / BIT_SPACING) << 6)
+                    + ((int)Math.Round(g / BIT_SPACING) << 3)
+                    + (int)Math.Round(b / BIT_SPACING)
+                );
             }
             public override void HandleSpecialFunction(int key)
             {
@@ -4561,14 +4980,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
 
-
-            public string hotkeytext = "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
+            public string hotkeytext =
+                "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
             public override string GetHotkeys()
             {
                 return hotkeytext;
             }
         }
-
 
         public static class VectorMath
         {
@@ -4580,8 +4998,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     return a;
                 return Vector3D.Normalize(a);
             }
-            public static Vector3D Reflection(Vector3D a, Vector3D b,
-                                              double rejectionFactor = 1)
+            public static Vector3D Reflection(Vector3D a, Vector3D b, double rejectionFactor = 1)
             {
                 Vector3D proj = Projection(a, b);
                 Vector3D rej = a - proj;
@@ -4614,8 +5031,13 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 if (Vector3D.IsZero(a) || Vector3D.IsZero(b))
                     return 0;
                 else
-                    return Math.Acos(MathHelper.Clamp(
-                        a.Dot(b) / Math.Sqrt(a.LengthSquared() * b.LengthSquared()), -1, 1));
+                    return Math.Acos(
+                        MathHelper.Clamp(
+                            a.Dot(b) / Math.Sqrt(a.LengthSquared() * b.LengthSquared()),
+                            -1,
+                            1
+                        )
+                    );
             }
             public static double CosBetween(Vector3D a, Vector3D b)
             {
@@ -4623,10 +5045,12 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     return 0;
                 else
                     return MathHelper.Clamp(
-                        a.Dot(b) / Math.Sqrt(a.LengthSquared() * b.LengthSquared()), -1, 1);
+                        a.Dot(b) / Math.Sqrt(a.LengthSquared() * b.LengthSquared()),
+                        -1,
+                        1
+                    );
             }
-            public static bool IsDotProductWithinTolerance(Vector3D a, Vector3D b,
-                                                           double tolerance)
+            public static bool IsDotProductWithinTolerance(Vector3D a, Vector3D b, double tolerance)
             {
                 double dot = Vector3D.Dot(a, b);
                 double num =
@@ -4654,8 +5078,7 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             private int playerLives = 3;
             private int currentLevel = 1;
 
-            public FroggerGameControl(Program program, UIController uiController)
-                : base(program)
+            public FroggerGameControl(Program program, UIController uiController) : base(program)
             {
                 name = "Frogger Game";
                 this.uiController = uiController;
@@ -4666,7 +5089,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             {
                 player = new Player(
                     uiController.MainScreen.SurfaceSize.X / 2,
-                    uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10);
+                    uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10
+                );
                 obstacles = new List<Obstacle>();
                 playerScore = 0;
                 highestScore = 0;
@@ -4690,33 +5114,46 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     speed *= (random.Next(2) == 0 ? 1 : -1);
                     int length = random.Next(10, 30);
                     Color color = GetObstacleColorBySpeed(Math.Abs(speed), playerScore);
-                    obstacles.Add(new Obstacle(
-                        random.Next((int)uiController.MainScreen.SurfaceSize.X),
-                        i * LaneHeight, speed, length, color));
+                    obstacles.Add(
+                        new Obstacle(
+                            random.Next((int)uiController.MainScreen.SurfaceSize.X),
+                            i * LaneHeight,
+                            speed,
+                            length,
+                            color
+                        )
+                    );
                 }
             }
 
             private Color GetObstacleColorBySpeed(float speed, int score)
             {
                 int level = score / 35;
-                float greenChance, yellowChance;
+                float greenChance,
+                    yellowChance;
                 if (level < 1)
                 {
-                    greenChance = 0.7f; yellowChance = 0.2f;
+                    greenChance = 0.7f;
+                    yellowChance = 0.2f;
                 }
                 else if (level < 3)
                 {
-                    greenChance = 0.5f; yellowChance = 0.3f;
+                    greenChance = 0.5f;
+                    yellowChance = 0.3f;
                 }
                 else
                 {
-                    greenChance = 0.3f; yellowChance = 0.4f;
+                    greenChance = 0.3f;
+                    yellowChance = 0.4f;
                 }
 
                 float randomValue = (float)random.NextDouble();
-                if (randomValue < greenChance) return new Color(0, 255, 0);
-                else if (randomValue < greenChance + yellowChance) return new Color(255, 255, 0);
-                else return new Color(255, 0, 0);
+                if (randomValue < greenChance)
+                    return new Color(0, 255, 0);
+                else if (randomValue < greenChance + yellowChance)
+                    return new Color(255, 255, 0);
+                else
+                    return new Color(255, 0, 0);
             }
 
             public override string[] GetOptions() => new string[] { "Frogger Game", "Back" };
@@ -4752,7 +5189,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
             public override void HandleSpecialFunction(int key)
             {
-                if (!isGameActive || isPaused) return;
+                if (!isGameActive || isPaused)
+                    return;
 
                 switch (key)
                 {
@@ -4762,23 +5200,27 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     case 6: // Up
                         player.PositionY = Math.Max(0, player.PositionY - PlayerSpeed);
                         playerScore += 10 * currentLevel;
-                        if (playerScore > highestScore) highestScore = playerScore;
+                        if (playerScore > highestScore)
+                            highestScore = playerScore;
                         if (player.PositionY <= 0)
                         {
                             currentLevel++;
                             GenerateObstacles();
-                            player.PositionY = uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
+                            player.PositionY =
+                                uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
                         }
                         break;
                     case 7: // Right
                         player.PositionX = Math.Min(
                             uiController.MainScreen.SurfaceSize.X - PlayerSize,
-                            player.PositionX + PlayerSpeed);
+                            player.PositionX + PlayerSpeed
+                        );
                         break;
                     case 8: // Down
                         player.PositionY = Math.Min(
                             uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10,
-                            player.PositionY + PlayerSpeed);
+                            player.PositionY + PlayerSpeed
+                        );
                         playerScore = Math.Max(0, playerScore - 5 * currentLevel);
                         break;
                 }
@@ -4795,19 +5237,21 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 }
             }
 
-
             private void UpdateObstacles()
             {
                 foreach (var obstacle in obstacles)
                 {
                     obstacle.PositionX += obstacle.Speed;
-                    if (obstacle.PositionX > uiController.MainScreen.SurfaceSize.X + obstacle.Length)
+                    if (
+                        obstacle.PositionX > uiController.MainScreen.SurfaceSize.X + obstacle.Length
+                    )
                     {
                         obstacle.PositionX = -obstacle.Length;
                     }
                     else if (obstacle.PositionX < -obstacle.Length)
                     {
-                        obstacle.PositionX = uiController.MainScreen.SurfaceSize.X + obstacle.Length;
+                        obstacle.PositionX =
+                            uiController.MainScreen.SurfaceSize.X + obstacle.Length;
                     }
                 }
             }
@@ -4822,7 +5266,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         if (playerLives <= 0)
                         {
                             isGameActive = false;
-                            if (playerScore > highestScore) highestScore = playerScore;
+                            if (playerScore > highestScore)
+                                highestScore = playerScore;
                             playerScore = 0;
                             RenderMenu();
                         }
@@ -4830,7 +5275,8 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                         {
                             // Reset player position
                             player.PositionX = uiController.MainScreen.SurfaceSize.X / 2;
-                            player.PositionY = uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
+                            player.PositionY =
+                                uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
                         }
                         break;
                     }
@@ -4849,79 +5295,99 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 float obstacleTop = obstacle.PositionY;
                 float obstacleBottom = obstacle.PositionY + ObstacleHeight;
 
-                return playerLeft < obstacleRight && playerRight > obstacleLeft &&
-                       playerTop < obstacleBottom && playerBottom > obstacleTop;
+                return playerLeft < obstacleRight
+                    && playerRight > obstacleLeft
+                    && playerTop < obstacleBottom
+                    && playerBottom > obstacleTop;
             }
 
             private void RenderMenu()
             {
-                uiController.RenderCustomFrame((frame, area) =>
-                {
-                    var menuSprite = new MySprite
+                uiController.RenderCustomFrame(
+                    (frame, area) =>
                     {
-                        Type = SpriteType.TEXT,
-                        Data = "Frogger Game - Start",
-                        Position = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, uiController.MainScreen.SurfaceSize.Y / 2 - 20),
-                        RotationOrScale = 0.8f,
-                        Color = Color.White,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "White"
-                    };
-                    frame.Add(menuSprite);
+                        var menuSprite = new MySprite
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "Frogger Game - Start",
+                            Position = new Vector2(
+                                uiController.MainScreen.SurfaceSize.X / 2,
+                                uiController.MainScreen.SurfaceSize.Y / 2 - 20
+                            ),
+                            RotationOrScale = 0.8f,
+                            Color = Color.White,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        };
+                        frame.Add(menuSprite);
 
-                    var backSprite = new MySprite
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = "Back",
-                        Position = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, uiController.MainScreen.SurfaceSize.Y / 2),
-                        RotationOrScale = 0.8f,
-                        Color = Color.White,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "White"
-                    };
-                    frame.Add(backSprite);
+                        var backSprite = new MySprite
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "Back",
+                            Position = new Vector2(
+                                uiController.MainScreen.SurfaceSize.X / 2,
+                                uiController.MainScreen.SurfaceSize.Y / 2
+                            ),
+                            RotationOrScale = 0.8f,
+                            Color = Color.White,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        };
+                        frame.Add(backSprite);
 
-                    var highScoreSprite = new MySprite
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = $"High Score: {highestScore}",
-                        Position = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, uiController.MainScreen.SurfaceSize.Y / 2 + 20),
-                        RotationOrScale = 0.6f,
-                        Color = Color.Yellow,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "White"
-                    };
-                    frame.Add(highScoreSprite);
+                        var highScoreSprite = new MySprite
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = $"High Score: {highestScore}",
+                            Position = new Vector2(
+                                uiController.MainScreen.SurfaceSize.X / 2,
+                                uiController.MainScreen.SurfaceSize.Y / 2 + 20
+                            ),
+                            RotationOrScale = 0.6f,
+                            Color = Color.Yellow,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        };
+                        frame.Add(highScoreSprite);
 
-                    var latestScoreSprite = new MySprite
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = $"Latest Score: {playerScore}",
-                        Position = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, uiController.MainScreen.SurfaceSize.Y / 2 + 40),
-                        RotationOrScale = 0.6f,
-                        Color = Color.White,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "White"
-                    };
-                    frame.Add(latestScoreSprite);
-                }, new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize));
+                        var latestScoreSprite = new MySprite
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = $"Latest Score: {playerScore}",
+                            Position = new Vector2(
+                                uiController.MainScreen.SurfaceSize.X / 2,
+                                uiController.MainScreen.SurfaceSize.Y / 2 + 40
+                            ),
+                            RotationOrScale = 0.6f,
+                            Color = Color.White,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        };
+                        frame.Add(latestScoreSprite);
+                    },
+                    new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize)
+                );
             }
 
             private void RenderGame()
             {
-                uiController.RenderCustomFrame((frame, area) =>
-                {
-                    DrawBackground(frame);
-                    DrawVerticalLines(frame);
-                    DrawPlayer(frame, player);
-                    foreach (var obstacle in obstacles)
+                uiController.RenderCustomFrame(
+                    (frame, area) =>
                     {
-                        DrawObstacle(frame, obstacle);
-                    }
-                    DrawScore(frame);
-                    DrawHighestScore(frame);
-                    DrawGameInfo(frame);
-                }, new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize));
+                        DrawBackground(frame);
+                        DrawVerticalLines(frame);
+                        DrawPlayer(frame, player);
+                        foreach (var obstacle in obstacles)
+                        {
+                            DrawObstacle(frame, obstacle);
+                        }
+                        DrawScore(frame);
+                        DrawHighestScore(frame);
+                        DrawGameInfo(frame);
+                    },
+                    new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize)
+                );
             }
 
             private void DrawVerticalLines(MySpriteDrawFrame frame)
@@ -4930,7 +5396,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 for (int i = SafeZoneLines; i < numberOfLanes; i++)
                 {
-                    var linePosition = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, i * LaneHeight);
+                    var linePosition = new Vector2(
+                        uiController.MainScreen.SurfaceSize.X / 2,
+                        i * LaneHeight
+                    );
                     var line = new MySprite
                     {
                         Type = SpriteType.TEXTURE,
@@ -4950,7 +5419,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     Type = SpriteType.TEXT,
                     Data = $"High Score: {highestScore}",
-                    Position = new Vector2(uiController.MainScreen.SurfaceSize.X - 10, uiController.MainScreen.SurfaceSize.Y - 20),
+                    Position = new Vector2(
+                        uiController.MainScreen.SurfaceSize.X - 10,
+                        uiController.MainScreen.SurfaceSize.Y - 20
+                    ),
                     RotationOrScale = 0.5f,
                     Color = Color.Yellow,
                     Alignment = TextAlignment.RIGHT,
@@ -4965,7 +5437,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 {
                     Type = SpriteType.TEXTURE,
                     Data = "Gradient",
-                    Position = new Vector2(uiController.MainScreen.SurfaceSize.X / 2, uiController.MainScreen.SurfaceSize.Y / 2),
+                    Position = new Vector2(
+                        uiController.MainScreen.SurfaceSize.X / 2,
+                        uiController.MainScreen.SurfaceSize.Y / 2
+                    ),
                     Size = uiController.MainScreen.SurfaceSize,
                     Color = new Color(0, 30, 60),
                     Alignment = TextAlignment.CENTER
@@ -4999,7 +5474,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(obstacleSprite);
-
                 // Optional: Draw a trail or animation for the obstacle
             }
 
@@ -5052,7 +5526,11 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
         {
             public float PositionX;
             public float PositionY;
-            public Player(float x, float y) { PositionX = x; PositionY = y; }
+            public Player(float x, float y)
+            {
+                PositionX = x;
+                PositionY = y;
+            }
         }
 
         public class Obstacle
@@ -5062,7 +5540,14 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
             public float Speed;
             public int Length;
             public Color Color;
-            public Obstacle(float x, float y, float speed, int length, Color color) { PositionX = x; PositionY = y; Speed = speed; Length = length; Color = color; }
+            public Obstacle(float x, float y, float speed, int length, Color color)
+            {
+                PositionX = x;
+                PositionY = y;
+                Speed = speed;
+                Length = length;
+                Color = color;
+            }
         }
 
         public static class NavigationHelper
@@ -5074,7 +5559,10 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
 
                 Vector3D forwardVector = cockpit.WorldMatrix.Forward;
                 Vector3D gravity = cockpit.GetNaturalGravity();
-                Vector3D gravityDir = gravity.LengthSquared() == 0 ? cockpit.WorldMatrix.Down : Vector3D.Normalize(gravity);
+                Vector3D gravityDir =
+                    gravity.LengthSquared() == 0
+                        ? cockpit.WorldMatrix.Down
+                        : Vector3D.Normalize(gravity);
 
                 // Project forwardVector onto the horizontal plane defined by gravityDir
                 Vector3D forwardProjected = Vector3D.Reject(forwardVector, gravityDir);
@@ -5085,18 +5573,20 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 forwardProjected = Vector3D.Normalize(forwardProjected);
 
                 Vector3D northVector = new Vector3D(0, 0, -1); // Assuming Z- is North
-                double headingRadians = Math.Acos(MathHelper.Clamp(Vector3D.Dot(northVector, forwardProjected), -1.0, 1.0));
+                double headingRadians = Math.Acos(
+                    MathHelper.Clamp(Vector3D.Dot(northVector, forwardProjected), -1.0, 1.0)
+                );
 
                 // Determine the sign of the heading
                 if (Vector3D.Dot(Vector3D.Cross(northVector, forwardProjected), gravityDir) < 0)
                     headingRadians = -headingRadians;
 
                 double headingDegrees = MathHelper.ToDegrees(headingRadians);
-                if (headingDegrees < 0) headingDegrees += 360;
+                if (headingDegrees < 0)
+                    headingDegrees += 360;
                 return headingDegrees;
             }
         }
-
 
         struct Vector2I
         {
@@ -5109,7 +5599,6 @@ g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet"));
                 Y = y;
             }
         }
-
     }
     public static class RandomExtensions
     {
