@@ -2200,7 +2200,8 @@ namespace IngameScript
             // Class-level PID variables
             private float integralError = 0f;
             private float previousError = 0f;
-
+            const float PILOT_INPUT_DEADZONE = 0.001f;
+            int trimdelay = 0;
             // PID constants
             private  float Kp = 5f;
             private  float Ki = 0.0024f;
@@ -2214,27 +2215,31 @@ namespace IngameScript
             {
 
                 Vector2 pitchyaw = cockpit.RotationIndicator;
-                ParentProgram.Echo("Pilot Input: " + pitchyaw.Y); //Todo: Does not work. 
+                ParentProgram.Echo("Pilot Input: " + pitchyaw.ToString()); //Todo: Does not work. 
 
                 // Check if pilot input exists:
-                if (Math.Abs(pitchyaw.Y) > 0)
+                if (Math.Abs(pitchyaw.X) > PILOT_INPUT_DEADZONE)
                 {
-                    if(pitchyaw.Y > 0)
+                    trimdelay++;
+                    trimdelay++;
+                    if (trimdelay > 120)
                     {
-                        AdjustTrim(rightstab, pitchyaw.Y);
-                        AdjustTrim(leftstab, -pitchyaw.Y);
+                        trimdelay = 120;
                     }
-                    if (pitchyaw.Y < 0)
-                    {
-                        AdjustTrim(rightstab, -pitchyaw.Y);
-                        AdjustTrim(leftstab, pitchyaw.Y);
-                    }
+                    //    AdjustTrim(rightstab, 0);
+                    //    AdjustTrim(leftstab, 0);
+
+
                     integralError = 0;
                     previousError = 0;
                 }
                 else
                 {
-
+                    if(trimdelay > 1)
+                    {
+                        trimdelay--;
+                        return;
+                    }
                     float aoaClamped = MathHelper.Clamp((float)aoa, -MaxAOA, MaxAOA);
                     float pidOutput = PIDController(aoaClamped + myjet.offset);
 
@@ -2271,7 +2276,6 @@ namespace IngameScript
 
                 // PID output
                 float pidOutput = (Kp * currentError) + (Ki * integralError) + (Kd * derivative);
-                ParentProgram.Echo(Kp.ToString());
 
                 // Clamp PID output
                 pidOutput = MathHelper.Clamp(pidOutput, -MaxPIDOutput, MaxPIDOutput);
@@ -2287,9 +2291,6 @@ namespace IngameScript
                 foreach (var item in stabilizers)
                 {
                     currentTrim = item.GetValueFloat("Trim");
-
-                    // Limit the adjustment per tick
-
 
                     item.SetValue("Trim", desiredTrim);
 
