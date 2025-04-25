@@ -3,13 +3,13 @@ using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRage.Game.ModAPI;
 using VRageMath;
-
 namespace IngameScript
 {
     partial class Program : MyGridProgram
@@ -268,6 +268,10 @@ namespace IngameScript
             private static int soundSetupStep = 0; // 0: Idle, 1: Stop, 2: Set, 3: Play, 4: Wait
             private static List<IMyLargeGatlingTurret> radars = new List<IMyLargeGatlingTurret>();
             private static Jet _myJet;
+            private static long lastTimeTicks = 0;
+            private static double accumulatedTime = 0.0;
+            private static int tickCount = 0;
+            private static double lastFPS = 0.0;
             public static void Initialize(Program program)
             {
                 _myJet = new Jet(program.GridTerminalSystem);
@@ -478,6 +482,35 @@ namespace IngameScript
                 }
 
                 HandleSpecialFunctionInputs(argument);
+
+                // 1) How long since we last ran
+
+                if (lastTimeTicks == 0)
+                    lastTimeTicks = DateTime.UtcNow.Ticks;
+
+                // 1) Calculate delta time
+                long nowTicks = DateTime.UtcNow.Ticks;
+                long diffTicks = nowTicks - lastTimeTicks;
+                double deltaSeconds = diffTicks / (double)TimeSpan.TicksPerSecond;
+
+                // 2) Accumulate time
+                accumulatedTime += deltaSeconds;
+                tickCount++;
+                // 3) If 1 second passed, compute FPS
+                if (accumulatedTime >= 1.0)
+                {
+                    lastFPS = tickCount / accumulatedTime;
+
+                    // Reset counters
+                    accumulatedTime = 0.0;
+                    tickCount = 0;
+                }
+
+                // 4) Update the lastTime
+                lastTimeTicks = nowTicks;
+
+                // 5) Display
+                parentProgram.Echo($"Approx FPS: {lastFPS:F2}");
             }
 
             private static void HandleSpecialFunctionInputs(string argument)
@@ -1723,37 +1756,33 @@ namespace IngameScript
             IMyTextSurface hud;
             IMyTerminalBlock hudBlock;
             double peakGForce = 0;
-            const string cockpitName = "Jet Pilot Seat";
-            const string hudName = "Fighter HUD";
-            IMyGyro gyroStab;
-            float rotoracceleration = 0;
-            private PIDController aoaPIDController;
-            float absTrimDiff;
             float currentTrim;
+            double pitch = 0;
+            double roll = 0;
+            double velocity;
+            double deltaTime;
+            const double speedOfSound = 343.0; // Speed of sound in m/s at sea level
+            double mach;
             List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
             List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
             Queue<double> velocityHistory = new Queue<double>();
-            Queue<double> altitudeHistory = new Queue<double>();
-            Queue<double> gForcesHistory = new Queue<double>();
+            private Queue<AltitudeTimePoint> altitudeHistory = new Queue<AltitudeTimePoint>(); Queue<double> gForcesHistory = new Queue<double>();
             Queue<double> aoaHistory = new Queue<double>();
-            Queue<Vector3D> targetpositions = new Queue<Vector3D>();
-            Queue<Vector3D> targetvelocities = new Queue<Vector3D>();
             private List<IMyThrust> thrusters = new List<IMyThrust>();
             private List<IMyGasTank> tanks = new List<IMyGasTank>();
             private List<IMyDoor> airbreaks = new List<IMyDoor>();
             const int smoothingWindowSize = 10;
             double smoothedVelocity = 0;
             double smoothedAltitude = 0;
-            float maxMultiplier;
             double smoothedGForces = 0;
             double smoothedAoA = 0;
             double smoothedThrottle = 0;
-            double delay = 0;
             float throttlecontrol = 0f;
             bool hydrogenswitch = false;
             Vector3D previousVelocity = Vector3D.Zero;
             string hotkeytext = "Test";
             Jet myjet;
+            private TimeSpan totalElapsedTime = TimeSpan.Zero;
             public HUDModule(Program program, Jet jet) : base(program)
             {
                 cockpit = jet._cockpit;
@@ -1818,61 +1847,23 @@ namespace IngameScript
                 }
             }
             private void DrawLeadingPip(
-                MySpriteDrawFrame frame,
-                Vector3D targetPosition,
-                Vector3D targetVelocity,
-                Vector3D shooterPosition,
-                Vector3D shooterVelocity,
-                double projectileSpeed,
-                Vector3D gravityDirection
-            )
+                            MySpriteDrawFrame frame,
+                            Vector3D targetPosition,
+                            Vector3D targetVelocity,
+                            Vector3D shooterPosition,
+                            Vector3D shooterVelocity,
+                            double projectileSpeed,
+                            Vector3D gravity // Pass the gravity vector directly
+                        )
             {
-                // Use a fixed-size circular buffer for efficiency
-                const int historySize = 5;
-                CircularBuffer<Vector3D> velocityHistory = new CircularBuffer<Vector3D>(
-                    historySize
-                );
+                // Estimate time to intercept based on current positions and velocities (ignoring acceleration for initial estimate)
+                Vector3D initialDeltaPosition = targetPosition - shooterPosition;
+                double estimatedTime = initialDeltaPosition.Length() / projectileSpeed;
 
-                velocityHistory.Enqueue(targetVelocity);
+                // Predict target position at the estimated time
+                Vector3D predictedTargetPosition = targetPosition + targetVelocity * estimatedTime; // Simple linear prediction
 
-                // Calculate average acceleration
-                Vector3D averageAcceleration = Vector3D.Zero;
-                double deltaT = 1.0 / 60.0; // Time between ticks in seconds
-                if (velocityHistory.Count >= 2)
-                {
-                    Vector3D velocityChange = velocityHistory.Last() - velocityHistory.First();
-                    double totalDeltaT = (velocityHistory.Count - 1) * deltaT;
-                    averageAcceleration = velocityChange / totalDeltaT;
-                }
-
-                // Estimate time to intercept (iterative for gravity)
-                double t_pred = 0;
-                Vector3D predictedTargetPosition = targetPosition;
-                int iterations = 0;
-                const int maxIterations = 5; // Limit iterations to prevent infinite loops
-                const double tolerance = 0.1; // Acceptable error in intercept time
-
-                do
-                {
-                    double distanceToTarget = (predictedTargetPosition - shooterPosition).Length();
-                    t_pred = distanceToTarget / projectileSpeed;
-
-                    predictedTargetPosition =
-                        targetPosition
-                        + targetVelocity * t_pred
-                        + 0.5 * averageAcceleration * t_pred * t_pred;
-                    iterations++;
-                } while (
-                    Math.Abs(
-                        (predictedTargetPosition - shooterPosition).Length()
-                            - projectileSpeed * t_pred
-                    ) > tolerance
-                    && iterations < maxIterations
-                );
-
-                Vector3D predictedTargetVelocity = targetVelocity + averageAcceleration * t_pred;
-
-                // Calculate the intercept point using predicted values
+                // Calculate the intercept point using the more accurate CalculateInterceptPoint
                 Vector3D interceptPoint;
 
                 if (
@@ -1880,25 +1871,30 @@ namespace IngameScript
                         shooterPosition,
                         shooterVelocity,
                         projectileSpeed,
-                        predictedTargetPosition,
-                        predictedTargetVelocity,
-                        gravityDirection,
-                        out interceptPoint
+                        targetPosition, // Pass current target position
+                        targetVelocity, // Pass current target velocity
+                        gravity, // Pass gravity vector
+                        out interceptPoint // This will be the calculated intercept point if successful
                     )
                 )
                 {
+                    // If CalculateInterceptPoint fails, maybe draw an indicator towards the current target or nothing.
+                    // For now, just return as in the original code.
                     return;
                 }
+
 
                 // Calculate the direction to the intercept point
                 Vector3D directionToIntercept = interceptPoint - shooterPosition;
 
+                // ... rest of the drawing code using 'interceptPoint' to determine HUD position
                 // Transform direction to local cockpit coordinates
                 MatrixD cockpitMatrix = cockpit.WorldMatrix;
                 Vector3D localDirectionToIntercept = Vector3D.TransformNormal(
                     directionToIntercept,
                     MatrixD.Transpose(cockpitMatrix)
                 );
+
                 // Define line thickness and reticle size as a fraction of the screen size
                 float lineThickness = hud.SurfaceSize.Y * 0.01f; // 1% of screen height
                 float reticleSize = hud.SurfaceSize.Y * 0.05f; // 5% of screen height
@@ -1915,6 +1911,8 @@ namespace IngameScript
                 double angleDegrees = MathHelper.ToDegrees(angleRadians);
 
                 // Calculate screen coordinates for the intercept point
+                // These calculations project the 3D point onto a 2D plane.
+                // The division by -localDirectionToIntercept.Z performs the perspective projection.
                 float zoomFactor = 4f; // Increase zoom factor to make the leading pip more prominent
                 float screenX =
                     (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z)
@@ -1937,27 +1935,38 @@ namespace IngameScript
                     && screenY <= hud.SurfaceSize.Y
                 );
                 // Check if the target is behind
-                if (localDirectionToIntercept.Z >= 0)
+                if (localDirectionToIntercept.Z >= 0) // Target is behind the cockpit's local Z=0 plane
                 {
+                    // Draw a simple indicator for targets behind you, e.g., a dot in the center
                     var horizontalLine = new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
                         Position = new Vector2(centerX, centerY),
-                        Size = new Vector2(20, 1),
-                        Color = Color.White,
+                        Size = new Vector2(20, 1), // Simple line for indication
+                        Color = Color.Red, // Red indicates target is behind
                         Alignment = TextAlignment.CENTER
                     };
                     frame.Add(horizontalLine);
+                    var verticalLine = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(centerX, centerY),
+                        Size = new Vector2(1, 20), // Simple line for indication
+                        Color = Color.Red, // Red indicates target is behind
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(verticalLine);
                 }
-                else
+                else // Target is in front
                 {
                     if (isOnScreen)
                     {
-                        // Draw the leading pip as a red "X" using diagonal lines
-                        float pipSize = reticleSize; // Size of the pip's diagonal lines
+                        // Draw the leading pip as a red "X" and hollow square when on screen
+                        float pipSize = reticleSize;
 
-                        // First diagonal line (\) at the intercept point
+                        // First diagonal line (\)
                         var pipDiagonalLine1 = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
@@ -1970,7 +1979,7 @@ namespace IngameScript
                         };
                         frame.Add(pipDiagonalLine1);
 
-                        // Second diagonal line (/) at the intercept point
+                        // Second diagonal line (/)
                         var pipDiagonalLine2 = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
@@ -2034,7 +2043,8 @@ namespace IngameScript
                             Alignment = TextAlignment.CENTER
                         };
                         frame.Add(rightLine);
-                        // Draw the central plus sign
+
+                        // Draw the central aiming reticle (plus sign)
                         var verticalLine = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
@@ -2056,9 +2066,12 @@ namespace IngameScript
                             Alignment = TextAlignment.CENTER
                         };
                         frame.Add(horizontalLine);
+
+
                     }
                     else
                     {
+                        // Draw an arrow pointing towards the off-screen target
                         float dx = screenX - centerX;
                         float dy = screenY - centerY;
                         Vector2 direction = new Vector2(dx, dy);
@@ -2070,23 +2083,25 @@ namespace IngameScript
 
                             // Adjust the arrow length based on the angle to the target
                             // Define minimum and maximum arrow lengths
-                            float minArrowLength = hud.SurfaceSize.Y * 0.1f; // Minimum arrow length when looking directly at the target
-                            float maxArrowLength = hud.SurfaceSize.Y * 0.4f; // Maximum arrow length when looking away from the target
+                            float minArrowLength = hud.SurfaceSize.Y * 0.1f;
+                            float maxArrowLength = hud.SurfaceSize.Y * 0.4f;
 
                             // Clamp the angle to a reasonable range (0 to 90 degrees)
                             double clampedAngle = MathHelper.Clamp(angleDegrees, 0, 90);
 
                             // Map the angle to the arrow length (larger angle means longer arrow)
-                            float angleFactor = (float)(clampedAngle / 90.0); // Normalized between 0 and 1
+                            float angleFactor = (float)(clampedAngle / 90.0);
                             float arrowLength =
                                 angleFactor * (maxArrowLength - minArrowLength) + minArrowLength;
+
 
                             // Compute the end point of the arrow within the screen
                             Vector2 lineEndPoint = center + direction * arrowLength;
 
-                            // Clamp the line end point to screen boundaries
+                            // Clamp the line end point to screen boundaries to ensure it stays on screen
                             lineEndPoint.X = MathHelper.Clamp(lineEndPoint.X, 0, hud.SurfaceSize.X);
                             lineEndPoint.Y = MathHelper.Clamp(lineEndPoint.Y, 0, hud.SurfaceSize.Y);
+
 
                             // Draw the line from the center to the arrow end point
                             Vector2 toPoint = lineEndPoint - center;
@@ -2094,11 +2109,13 @@ namespace IngameScript
 
                             Vector2 linePosition = center + toPoint / 2; // Midpoint of the line
 
+                            // Calculate rotation for the line to point towards the target
                             float rotation =
-                                (float)Math.Atan2(toPoint.Y, toPoint.X) + (float)Math.PI / 2;
+                                (float)Math.Atan2(toPoint.Y, toPoint.X) + (float)Math.PI / 2; // Add PI/2 because SquareSimple is oriented vertically
 
                             // Adjust line thickness as needed
                             float lineThicknessOffScreen = hud.SurfaceSize.Y * 0.005f;
+
 
                             // Draw the arrow shaft
                             var lineSprite = new MySprite()
@@ -2108,22 +2125,22 @@ namespace IngameScript
                                 Position = linePosition,
                                 Size = new Vector2(lineThicknessOffScreen, length),
                                 RotationOrScale = rotation,
-                                Color = Color.Red,
+                                Color = Color.Red, // Red for off-screen target
                                 Alignment = TextAlignment.CENTER
                             };
                             frame.Add(lineSprite);
 
                             // Draw an arrowhead at the end of the line
-                            float arrowSize = reticleSize * 0.5f; // Adjust arrow size as needed
+                            float arrowSize = reticleSize * 0.5f; // Adjust arrow size
 
                             var arrowSprite = new MySprite()
                             {
                                 Type = SpriteType.TEXTURE,
-                                Data = "Triangle",
+                                Data = "Triangle", // Use Triangle texture for arrowhead
                                 Position = lineEndPoint,
                                 Size = new Vector2(arrowSize, arrowSize),
-                                RotationOrScale = rotation,
-                                Color = Color.Red,
+                                RotationOrScale = rotation, // Same rotation as the line
+                                Color = Color.Red, // Red arrowhead
                                 Alignment = TextAlignment.CENTER
                             };
                             frame.Add(arrowSprite);
@@ -2131,7 +2148,6 @@ namespace IngameScript
                     }
                 }
             }
-
             private bool CalculateInterceptPoint(
                 Vector3D shooterPosition,
                 Vector3D shooterVelocity,
@@ -2203,9 +2219,9 @@ namespace IngameScript
             const float PILOT_INPUT_DEADZONE = 0.001f;
             int trimdelay = 0;
             // PID constants
-            private  float Kp = 5f;
-            private  float Ki = 0.0024f;
-            private  float Kd = 1f;
+            private float Kp = 5f;
+            private float Ki = 0.0024f;
+            private float Kd = 1f;
 
             // PID limits
             private const float MaxPIDOutput = 60f;
@@ -2213,9 +2229,8 @@ namespace IngameScript
 
             private void AdjustStabilizers(double aoa, Jet myjet)
             {
-
                 Vector2 pitchyaw = cockpit.RotationIndicator;
-                ParentProgram.Echo("Pilot Input: " + pitchyaw.ToString()); //Todo: Does not work. 
+                ParentProgram.Echo("Pilot Input: " + pitchyaw.ToString()); //Todo: Does not work.
 
                 // Check if pilot input exists:
                 if (Math.Abs(pitchyaw.X) > PILOT_INPUT_DEADZONE)
@@ -2235,7 +2250,7 @@ namespace IngameScript
                 }
                 else
                 {
-                    if(trimdelay > 1)
+                    if (trimdelay > 1)
                     {
                         trimdelay--;
                         return;
@@ -2245,32 +2260,29 @@ namespace IngameScript
 
                     AdjustTrim(rightstab, pidOutput);
                     AdjustTrim(leftstab, -pidOutput);
-
-                    
                 }
-
             }
 
             private float PIDController(float currentError)
             {
-                var cachedData = ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var cachedData = ParentProgram.Me.CustomData.Split(
+                    new[] { '\n' },
+                    StringSplitOptions.RemoveEmptyEntries
+                );
                 foreach (var line in cachedData)
                 {
                     if (line.StartsWith("KPI:"))
                     {
                         string[] parts = line.Split(':');
 
-
-                        Kp = float.Parse( parts[1]);
-            Ki = float.Parse(parts[2]);
-                              Kd = float.Parse(parts[3]);
-
+                        Kp = float.Parse(parts[1]);
+                        Ki = float.Parse(parts[2]);
+                        Kd = float.Parse(parts[3]);
                     }
                 }
-                    // Integral term calculation
-                    integralError += currentError;
-                integralError = MathHelper.Clamp(integralError,-500, 500);
+                // Integral term calculation
+                integralError += currentError;
+                integralError = MathHelper.Clamp(integralError, -200, 200);
                 // Derivative term calculation
                 float derivative = currentError - previousError;
 
@@ -2287,87 +2299,100 @@ namespace IngameScript
 
             private void AdjustTrim(IEnumerable<IMyTerminalBlock> stabilizers, float desiredTrim)
             {
-
                 foreach (var item in stabilizers)
                 {
                     currentTrim = item.GetValueFloat("Trim");
 
                     item.SetValue("Trim", desiredTrim);
-
                 }
             }
 
             public override void Tick()
             {
+                // Return early if cockpit or HUD is missing
                 if (cockpit == null || hud == null)
-                {
                     return;
-                }
-
+                totalElapsedTime += ParentProgram.Runtime.TimeSinceLastRun;
+                // Return early if cockpit or HUD is not functional
                 if (!cockpit.IsFunctional || !hudBlock.IsFunctional)
-                {
                     return;
-                }
 
-                var worldMatrix = cockpit.WorldMatrix;
-                var forwardVector = worldMatrix.Forward;
-                var upVector = worldMatrix.Up;
-                var leftVector = worldMatrix.Left;
+                // --------------------------------------------------------------------------
+                // 1. Retrieve world matrix and direction vectors
+                // --------------------------------------------------------------------------
+                MatrixD worldMatrix = cockpit.WorldMatrix;
+                Vector3D forwardVector = worldMatrix.Forward;
+                Vector3D upVector = worldMatrix.Up;
+                Vector3D leftVector = worldMatrix.Left;
 
+                // --------------------------------------------------------------------------
+                // 2. Gravity checks
+                // --------------------------------------------------------------------------
                 Vector3D gravity = cockpit.GetNaturalGravity();
-                Vector3D gravityDirection = Vector3D.Zero;
                 bool inGravity = gravity.LengthSquared() > 0;
-                if (inGravity)
-                {
-                    gravityDirection = Vector3D.Normalize(gravity);
-                }
+                Vector3D gravityDirection = inGravity ? Vector3D.Normalize(gravity) : Vector3D.Zero;
 
-                double pitch = 0;
-                double roll = 0;
+                // --------------------------------------------------------------------------
+                // 3. Pitch and roll calculations (only if in gravity)
+                // --------------------------------------------------------------------------
+
                 if (inGravity)
                 {
-                    pitch = (
-                        Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI)
-                    );
-                    roll = (
+                    pitch =
+                        Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI);
+                    roll =
                         Math.Atan2(
                             Vector3D.Dot(leftVector, gravityDirection),
                             Vector3D.Dot(upVector, gravityDirection)
-                        ) * (180 / Math.PI)
-                    );
+                        ) * (180 / Math.PI);
+
+                    // Normalize roll to [0, 360)
                     if (roll < 0)
-                    {
                         roll += 360;
-                    }
                 }
 
-                double velocity = cockpit.GetShipSpeed();
-                double velocityKnots = velocity * 1.94384;
+                // --------------------------------------------------------------------------
+                // 4. Basic speed and Mach calculation
+                // --------------------------------------------------------------------------
+                velocity = cockpit.GetShipSpeed();
+                mach = velocity / speedOfSound;
 
-                const double speedOfSound = 343.0; // Speed of sound in m/s at sea level
-                double mach = velocity / speedOfSound; // Calculate Mach number
+                // --------------------------------------------------------------------------
+                // 5. Acceleration and G-force calculations
+                // --------------------------------------------------------------------------
                 Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
-                double deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
+                deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
+
+                // Fallback to ~1/60th of a second if deltaTime is not valid
                 if (deltaTime <= 0)
                     deltaTime = 0.0167;
 
                 Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
                 double gForces = acceleration.Length() / 9.81;
                 previousVelocity = currentVelocity;
+
+                // Track peak G-forces
                 if (gForces > peakGForce)
-                {
                     peakGForce = gForces;
-                }
+
+                // --------------------------------------------------------------------------
+                // 6. Heading, altitude, angle of attack
+                // --------------------------------------------------------------------------
                 double heading = CalculateHeading();
                 double altitude = GetAltitude();
                 double aoa = CalculateAngleOfAttack(
                     cockpit.WorldMatrix.Forward,
-                    cockpit.GetShipVelocities().LinearVelocity, upVector
+                    cockpit.GetShipVelocities().LinearVelocity,
+                    upVector
                 );
 
+                // --------------------------------------------------------------------------
+                // 7. Throttle and other final values
+                // --------------------------------------------------------------------------
                 double throttle = cockpit.MoveIndicator.Z * -1; // Assuming Z-axis throttle control
-                double jumpthrottle = cockpit.MoveIndicator.Y; // Assuming Z-axis throttle control
+                double jumpthrottle = cockpit.MoveIndicator.Y; // Assuming Y-axis for jump throttle
                 double velocityKPH = velocity * 3.6; // Convert m/s to KPH
+
                 if (throttle == 1f)
                 {
                     throttlecontrol += 0.01f;
@@ -2440,10 +2465,41 @@ namespace IngameScript
 
                 UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttle);
                 AdjustStabilizers(aoa, myjet);
+
+                float centerX = hud.SurfaceSize.X / 2;
+                float centerY = hud.SurfaceSize.Y / 2;
+                float pixelsPerDegree = hud.SurfaceSize.Y / 16f; // F18-like scaling
+
                 using (var frame = hud.DrawFrame())
                 {
-                    DrawArtificialHorizon(frame, (float)pitch, (float)roll);
-                    //DrawHeadingTape(frame, heading); //No clue what it does
+                    DrawArtificialHorizon(
+                        frame,
+                        (float)pitch,
+                        (float)roll,
+                        centerX,
+                        centerY,
+                        pixelsPerDegree
+                    );
+                    DrawFlightPathMarker(
+                        frame,
+                        currentVelocity,
+                        worldMatrix,
+                        roll,
+                        centerX,
+                        centerY,
+                        pixelsPerDegree
+                    );
+                    DrawLeftInfoBox(
+                        frame,
+                        smoothedVelocity,
+                        centerX,
+                        centerY,
+                        pixelsPerDegree,
+                        new LabelValue("T", throttle * 100),
+                        new LabelValue("H", heading),
+                        new LabelValue("aoa", aoa),
+                        new LabelValue("trim", currentTrim)
+                    );
                     DrawFlightInfo(
                         frame,
                         smoothedVelocity,
@@ -2454,14 +2510,17 @@ namespace IngameScript
                         smoothedThrottle,
                         mach
                     );
-                    DrawFlightPathMarker(frame, currentVelocity, worldMatrix, roll);
+
+                    //DrawArtificialHorizon(frame, (float)pitch, (float)roll);
+
+                    DrawRadar(frame, myjet,centerX - centerX * 0.85f,
+                        centerY + centerY * 0.1f, 70, 30,
+                        pixelsPerDegree);
                     DrawCompass(frame, heading);
-                    //DrawRollIndicator(frame, (float)roll);
-                    DrawAirspeedIndicator(frame, smoothedVelocity);
                     DrawAltitudeIndicator(frame, smoothedAltitude);
-                    DrawAOABracket(frame, aoa);
-                    DrawTrim(frame, aoa);
-                    DrawBomb(frame, aoa);
+                    //DrawAOABracket(frame, aoa);
+                    //DrawTrim(frame, aoa);
+                    //DrawBomb(frame, aoa);
                     DrawGForceIndicator(frame, gForces, peakGForce);
                     var cachedData = ParentProgram.Me.CustomData
                         .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
@@ -2542,7 +2601,7 @@ namespace IngameScript
                     Data = gForceText,
                     Position = new Vector2(padding, hud.SurfaceSize.Y - padding - 20f),
                     RotationOrScale = textScale,
-                    Color = Color.White,
+                    Color = Color.Lime,
                     Alignment = TextAlignment.LEFT,
                     FontId = "White"
                 };
@@ -2556,63 +2615,313 @@ namespace IngameScript
                     Data = peakGText,
                     Position = new Vector2(padding, hud.SurfaceSize.Y - padding - 40f),
                     RotationOrScale = textScale,
-                    Color = Color.White,
+                    Color = Color.Lime,
                     Alignment = TextAlignment.LEFT,
                     FontId = "White"
                 };
                 frame.Add(peakGSprite);
             }
             private double smoothAirspeed = 0;
-
-            private void DrawAirspeedIndicator(MySpriteDrawFrame frame, double airspeed)
+            public struct LabelValue
             {
-                float scaleX = 60f;
-                float centerY = hud.SurfaceSize.Y / 2;
-                float scaleHeight = hud.SurfaceSize.Y * 0.7f;
-                float pixelsPerUnit = scaleHeight / 200f;
+                public string Label;
+                public double Value;
 
-                // Smooth the airspeed
-                smoothAirspeed += (airspeed - smoothAirspeed) * 0.1;
-                int airspeedRounded = (int)Math.Round(smoothAirspeed);
-
-                // Current speed indicator box
-                var speedBox = new MySprite()
+                public LabelValue(string label, double value)
                 {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareHollow",
-                    Position = new Vector2(scaleX - 20f, centerY - 20f),
-                    Size = new Vector2(80f, 30f),
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(speedBox);
+                    Label = label;
+                    Value = value;
+                }
+            }
+            private void DrawLeftInfoBox(
+                MySpriteDrawFrame frame,
+                double airspeed,
+                float centerX,
+                float centerY,
+                double pixelsPerDegree,
+                params LabelValue[] extraValues
+            )
+            {
+                float yOffsetPerValue = 30f;
+                float xoffset = centerX - centerX * 0.75f;
+                float yoffset = centerY - centerY * 0.5f;
+                // 2) Render each label+value line, padding the label so that the numbers line up
+                // 1) Find the longest label, to align all numeric columns
+                // Decide on fixed offsets for your two “columns”
+                float labelColumnX = xoffset - 40f; // try adjusting
+                float numberColumnX = xoffset + 40f; // try adjusting
 
-                // Current airspeed
-                var airspeedLabel = new MySprite()
+                for (int i = 0; i < extraValues.Length; i++)
                 {
-                    Type = SpriteType.TEXT,
-                    Data = airspeedRounded.ToString(),
-                    Position = new Vector2(scaleX - 20f, centerY - 30f),
-                    RotationOrScale = 0.8f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                };
-                frame.Add(airspeedLabel);
+                    string labelText = extraValues[i].Label;
+                    double numericValue = extraValues[i].Value;
+
+                    // 1) Draw the label at labelColumnX, left-aligned
+                    var labelSprite = new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = labelText,
+                        Position = new Vector2(labelColumnX, yoffset + i * yOffsetPerValue),
+                        RotationOrScale = 0.75f,
+                        Color = Color.Lime,
+                        Alignment = TextAlignment.LEFT,
+                        FontId = "White"
+                    };
+                    frame.Add(labelSprite);
+
+                    // 2) Draw the numeric value at numberColumnX
+                    //    You can use LEFT or RIGHT alignment.
+                    //    If you choose RIGHT alignment, the text anchor is at that X,
+                    //    and the characters extend to the left of that point.
+                    var valueSprite = new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = numericValue.ToString("F1"),
+                        Position = new Vector2(numberColumnX, yoffset + i * yOffsetPerValue),
+                        RotationOrScale = 0.75f,
+                        Color = Color.Lime,
+                        Alignment = TextAlignment.RIGHT, // or LEFT if you prefer
+                        FontId = "White"
+                    };
+                    frame.Add(valueSprite);
+                }
+            }
+            // --- Define a simple struct to hold Timestamp and Altitude ---
+            struct AltitudeTimePoint
+            {
+                public readonly TimeSpan Time;
+                public readonly double Altitude;
+
+                public AltitudeTimePoint(TimeSpan time, double altitude)
+                {
+                    Time = time;
+                    Altitude = altitude;
+                }
+            }
+            private void UpdateAltitudeHistory(double currentAltitude, TimeSpan currentTime)
+            {
+                // Add current altitude and time using our struct
+                altitudeHistory.Enqueue(new AltitudeTimePoint(currentTime, currentAltitude));
+                // Remove old entries
+                // Use Peek() without Dequeue first to check the condition
+                while (altitudeHistory.Count > 1 && currentTime - altitudeHistory.Peek().Time > historyDuration)
+                {
+                    altitudeHistory.Dequeue();
+                }
             }
 
+            private double CalculateVerticalVelocity(double currentAltitude, TimeSpan currentTime)
+            {
+                // Ensure queue has enough items AND is not empty before peeking
+                if (altitudeHistory.Count < 2)
+                {
+                    return 0; // Not enough data
+                }
+
+                // Peek retrieves an AltitudeTimePoint
+                AltitudeTimePoint oldestData = altitudeHistory.Peek(); // oldestData is type AltitudeTimePoint
+
+                // Access data using struct properties .Time and .Altitude
+                TimeSpan oldestTime = oldestData.Time;         // Correctly accessing .Time
+                double oldestAltitude = oldestData.Altitude;   // Correctly accessing .Altitude
+
+                TimeSpan timeDifference = currentTime - oldestTime;
+                if (timeDifference.TotalSeconds < 0.01)
+                {
+                    return 0;
+                }
+
+                double altitudeChange = currentAltitude - oldestAltitude;
+                double vvi = altitudeChange / timeDifference.TotalSeconds;
+
+                return vvi;
+            }
+            private TimeSpan historyDuration = TimeSpan.FromSeconds(1); // How far back to calculate VVI from
+             private const float TAPE_HEIGHT_PIXELS = 200f; // Total visible height of the tape
+             private const float ALTITUDE_UNITS_PER_TAPE_HEIGHT = 1000f; // How many altitude units the full tape height represents
+             private const float PIXELS_PER_ALTITUDE_UNIT = TAPE_HEIGHT_PIXELS / ALTITUDE_UNITS_PER_TAPE_HEIGHT;
+             private const float TICK_INTERVAL = 100f; // Draw a tick mark every 100 altitude units
+             private const float MAJOR_TICK_INTERVAL = 500f; // Draw a number every 500 altitude units
+             private Color hudColor = Color.Lime; // Standard HUD color
+             private string FONT = "Monospace"; // Use a monospaced font for alignment
+
+            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
+            {
+                // --- 1. Update History and Calculate VVI ---
+                UpdateAltitudeHistory(currentAltitude, currentTime); // Make sure this is called
+                double verticalVelocity = CalculateVerticalVelocity(currentAltitude, currentTime);
+
+                // --- 2. Define Positions & Sizes ---
+                float screenWidth = hud.SurfaceSize.X;
+                float screenHeight = hud.SurfaceSize.Y;
+                float centerY = screenHeight / 2f;
+
+                // Right side positioning (adjust margin as needed)
+                float tapeRightMargin = 30f;
+                float tapeNumberMargin = 10f; // Space between tape line and numbers
+                float tapeWidth = 2f; // Width of the main tape line
+                float tickLength = 10f; // Length of the tick marks
+                float majorTickLength = 15f; // Length of major tick marks
+
+                float tapeLineX = screenWidth - tapeRightMargin; // X position of the main vertical tape line
+                float digitalAltBoxWidth = 80f;
+                float digitalAltBoxHeight = 30f;
+                float digitalAltBoxX = tapeLineX - tapeNumberMargin - digitalAltBoxWidth; // Box left of the tape line
+                float vviTextYOffset = digitalAltBoxHeight * 0.6f; // Place VVI below the altitude box
+
+                // --- 3. Draw Altitude Tape ---
+                // Draw main vertical line
+                var tapeLine = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple", // Use a simple square texture stretched into a line
+                    Position = new Vector2(tapeLineX, centerY),
+                    Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
+                    Color = hudColor,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(tapeLine);
+
+                // Draw Ticks and Numbers
+                float tapeTopAlt = (float)currentAltitude + (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
+                float tapeBottomAlt = (float)currentAltitude - (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
+
+                // Determine the first tick mark value to draw above the bottom
+                // Corrected Ceiling calculation for negative altitudes too
+                float startTickAlt = (float)(Math.Floor(tapeBottomAlt / TICK_INTERVAL) * TICK_INTERVAL);
+                if (startTickAlt < tapeBottomAlt) // Ensure we start at or above the bottom
+                    startTickAlt += TICK_INTERVAL;
+
+
+                for (float altMark = startTickAlt; altMark <= tapeTopAlt + (TICK_INTERVAL * 0.5f); altMark += TICK_INTERVAL) // Add half interval to ensure top tick draws
+                {
+                    // Prevent potential infinite loops with float inaccuracies if TICK_INTERVAL is 0 or negative
+                    if (TICK_INTERVAL <= 0) break;
+
+                    // Calculate Y position relative to the center based on altitude difference
+                    float yOffset = (float)(currentAltitude - altMark) * PIXELS_PER_ALTITUDE_UNIT;
+                    float yPos = centerY + yOffset;
+
+                    // Check if the tick is within the visible tape area (add small buffer for half line widths)
+                    float tapeTopY = centerY - TAPE_HEIGHT_PIXELS / 2f;
+                    float tapeBottomY = centerY + TAPE_HEIGHT_PIXELS / 2f;
+
+                    if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
+                    {
+                        bool isMajorTick = Math.Abs(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f); // Tolerance relative to tick interval
+                        float currentTickLength = isMajorTick ? majorTickLength : tickLength;
+
+                        // Draw Tick Mark (line pointing left from the tape line)
+                        var tickMark = new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
+                            Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
+                            Color = hudColor,
+                            Alignment = TextAlignment.CENTER // Align to its center
+                        };
+                        // Clamp tick position to tape bounds vertically if needed (optional aesthetic)
+                        // tickMark.Position = new Vector2(tickMark.Position.Value.X, MathHelper.Clamp(yPos, tapeTopY, tapeBottomY));
+                        frame.Add(tickMark);
+
+                        // Draw Number for Major Ticks
+                        if (isMajorTick)
+                        {
+                            string altText = altMark.ToString("F0"); // Format altitude number
+                            var numberLabel = new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = altText,
+                                Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos), // Position left of the tick
+                                RotationOrScale = 0.8f, // Slightly smaller font for tape numbers
+                                Color = hudColor,
+                                Alignment = TextAlignment.RIGHT, // Align text to the right, so it ends before the margin
+                                FontId = FONT
+                            };
+                            // Clamp number position too if desired
+                            // numberLabel.Position = new Vector2(numberLabel.Position.Value.X, MathHelper.Clamp(yPos, tapeTopY, tapeBottomY));
+                            frame.Add(numberLabel);
+                        }
+                    }
+                }
+
+                // --- 4. Draw Digital Altitude Readout ---
+                // Box (optional, but common)
+                // Draw outline using lines (example)
+                DrawRectangleOutline(frame, digitalAltBoxX, centerY - digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, hudColor);
+
+
+                // Altitude Text
+                string currentAltitudeText = currentAltitude.ToString("F0");
+                var altitudeLabel = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = currentAltitudeText,
+                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth / 2f, centerY), // Centered in the box area
+                    RotationOrScale = 1.0f, // Main font size
+                    Color = hudColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                };
+                frame.Add(altitudeLabel);
+
+                // --- 5. Draw Caret ---
+                var caret = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = "<", // Caret pointing from the box to the tape
+                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 2f, centerY), // Just right of the box
+                    RotationOrScale = 1.0f,
+                    Color = hudColor,
+                    Alignment = TextAlignment.LEFT, // Align left so it starts right next to the box
+                    FontId = FONT
+                };
+                frame.Add(caret);
+
+                // --- 6. Draw Vertical Velocity (VVI) ---
+                // Display below the altitude box
+                string vviText = verticalVelocity.ToString("F0"); // Format VVI (e.g., m/s or ft/min)
+                                                                  // Add +/- sign explicitly if desired
+                                                                  // string vviText = (verticalVelocity >= 0 ? "+" : "") + verticalVelocity.ToString("F0");
+                var vviLabel = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = vviText,
+                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth / 2f, centerY + vviTextYOffset), // Below alt box
+                    RotationOrScale = 0.8f, // Smaller font size for VVI
+                    Color = hudColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                };
+                frame.Add(vviLabel);
+            }
+
+
+            // Helper function to draw a rectangle outline using lines (if needed)
+            private void DrawRectangleOutline(MySpriteDrawFrame frame, float x, float y, float width, float height, float lineWidth, Color color)
+            {
+                // Top line
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width / 2f, y), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
+                // Bottom line
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width / 2f, y + height), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
+                // Left line
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
+                // Right line
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
+            }
             private void DrawAltitudeIndicator(MySpriteDrawFrame frame, double currentAltitude)
             {
                 // Calculate total altitude change over the tick window
                 double totalAltitudeChange = 0;
                 if (altitudeHistory.Count > 1)
                 {
-                    double oldestAltitude = altitudeHistory.Peek();
+                    double oldestAltitude = altitudeHistory.Peek().Altitude;
                     totalAltitudeChange = currentAltitude - oldestAltitude;
                 }
 
                 // Display on HUD
-                float scaleX = hud.SurfaceSize.X - 120f;
+                float scaleX = hud.SurfaceSize.X - hud.SurfaceSize.X * 0.75f;
                 float centerY = hud.SurfaceSize.Y / 2;
 
                 // Draw current altitude
@@ -2623,7 +2932,7 @@ namespace IngameScript
                     Data = altitudeText,
                     Position = new Vector2(scaleX, centerY),
                     RotationOrScale = 1f,
-                    Color = Color.White,
+                    Color = Color.Lime,
                     Alignment = TextAlignment.CENTER,
                     FontId = "White"
                 };
@@ -2662,14 +2971,20 @@ namespace IngameScript
                     velocityHistory.Dequeue();
                 }
                 smoothedVelocity = velocityHistory.Average();
-
-                altitudeHistory.Enqueue(altitude);
+                altitudeHistory.Enqueue(new AltitudeTimePoint(totalElapsedTime, altitude));
                 if (altitudeHistory.Count > smoothingWindowSize)
                 {
                     altitudeHistory.Dequeue();
                 }
-                smoothedAltitude = altitudeHistory.Average();
-
+                if (altitudeHistory.Any()) // Or altitudeHistory.Count > 0
+                {
+                    smoothedAltitude = altitudeHistory.Average(point => point.Altitude);
+                }
+                else
+                {
+                    // Handle the case where history is empty, perhaps use the current raw altitude
+                    // smoothedAltitude = currentAltitude; // Or 0, or some default
+                }
                 gForcesHistory.Enqueue(gForces);
                 if (gForcesHistory.Count > smoothingWindowSize)
                 {
@@ -2715,17 +3030,6 @@ namespace IngameScript
                 );
                 float maxWidth = maxTextSize.X + boxPadding * 2;
 
-                // Now draw each piece of information with a box around it
-                DrawTextWithManualBox(
-                    frame,
-                    surface,
-                    $"M {mach:F2}",
-                    new Vector2(padding, infoY + textHeight),
-                    TextAlignment.LEFT,
-                    boxPadding,
-                    maxWidth,
-                    textScale
-                );
                 DrawThrottleBarWithBox(
                     frame,
                     surface,
@@ -2775,7 +3079,7 @@ namespace IngameScript
                         Data = text,
                         Position = textPosition, // Position the text based on padding
                         RotationOrScale = textScale,
-                        Color = Color.White,
+                        Color = Color.Lime,
                         Alignment = alignment,
                         FontId = "White"
                     }
@@ -2796,8 +3100,8 @@ namespace IngameScript
             )
             {
                 // Set default colors if not provided
-                barColor = barColor == default(Color) ? Color.White : barColor;
-                boxColor = boxColor == default(Color) ? Color.White : boxColor;
+                barColor = barColor == default(Color) ? Color.Lime : barColor;
+                boxColor = boxColor == default(Color) ? Color.Lime : boxColor;
 
                 // Calculate box size
                 Vector2 boxSize = new Vector2(
@@ -2854,7 +3158,7 @@ namespace IngameScript
                 // Calculate the filled height based on throttle
                 float filledHeight = barHeight * throttle;
                 Vector2 filledSize = new Vector2(maxWidth * 100, filledHeight * boxSize.Y * 1.25f);
-                barColor = throttle > 0.8f ? Color.Yellow : Color.White;
+                barColor = throttle > 0.8f ? Color.Yellow : Color.Lime;
 
                 // Draw the filled throttle bar
                 frame.Add(
@@ -2922,12 +3226,14 @@ namespace IngameScript
                 MySpriteDrawFrame frame,
                 Vector3D currentVelocity,
                 MatrixD worldMatrix,
-                double roll
+                double roll,
+                float centerX,
+                float centerY,
+                float pixelsPerDegree
             )
             {
-                // Constants for degree-radian conversion and marker properties
+                // Constants
                 const double DegToRad = Math.PI / 180.0;
-                const double RadToDeg = 180.0 / Math.PI;
                 const float MarkerSize = 20f;
                 const float WingLength = 15f;
                 const float WingThickness = 2f;
@@ -2936,37 +3242,36 @@ namespace IngameScript
                 // Normalize current velocity
                 Vector3D velocityDirection = Vector3D.Normalize(currentVelocity);
 
-                // Transform velocity into local coordinates
+                // Convert velocity vector from world space to local space
                 Vector3D localVelocity = Vector3D.TransformNormal(
                     velocityDirection,
                     MatrixD.Transpose(worldMatrix)
                 );
 
                 // Compute yaw and pitch from local velocity (in degrees)
-                double velocityYaw = Math.Atan2(localVelocity.X, -localVelocity.Z) * RadToDeg;
-                double velocityPitch = Math.Atan2(localVelocity.Y, -localVelocity.Z) * RadToDeg;
+                double velocityYaw =
+                    Math.Atan2(localVelocity.X, -localVelocity.Z) * 180.0 / Math.PI;
+                double velocityPitch =
+                    Math.Atan2(localVelocity.Y, -localVelocity.Z) * 180.0 / Math.PI;
 
-                // Convert degrees to pixels based on HUD size
-                float pixelsPerDegreeX = hud.SurfaceSize.X / 60f; // Adjust as needed
-                float pixelsPerDegreeY = hud.SurfaceSize.Y / 45f; // Adjust as needed
-
-                // Calculate marker offset in pixels
-                Vector2 markerOffset = new Vector2(
-                    (float)(-velocityYaw * pixelsPerDegreeX),
-                    (float)(velocityPitch * pixelsPerDegreeY)
-                );
-
-                // Convert roll to radians
+                // Convert roll to radians for rotation
                 float rollRad = (float)(roll * DegToRad);
 
-                // Rotate the marker offset by negative roll angle
+                // 1) Determine how many pixels per degree we move in X/Y
+                //    *Using the same 'pixelsPerDegree' you’re using in your pitch ladder*
+                //    Negative sign on yaw to match typical HUD conventions
+                Vector2 markerOffset = new Vector2(
+                    (float)(-velocityYaw * pixelsPerDegree), // X offset
+                    (float)(velocityPitch * pixelsPerDegree) // Y offset
+                );
+
+                // 2) Rotate marker offset by negative roll to “tilt” with aircraft roll
                 Vector2 rotatedOffset = RotatePoint(markerOffset, Vector2.Zero, -rollRad);
 
-                // Determine the final marker position
-                Vector2 hudCenter = hud.SurfaceSize / 2f;
-                Vector2 markerPosition = hudCenter + rotatedOffset;
+                // 3) Final marker position relative to center
+                Vector2 markerPosition = new Vector2(centerX, centerY) + rotatedOffset;
 
-                // Draw the Flight Path Marker (circle)
+                // --- Draw the flight path marker (circle) ---
                 var marker = new MySprite
                 {
                     Type = SpriteType.TEXTURE,
@@ -2978,11 +3283,12 @@ namespace IngameScript
                 };
                 frame.Add(marker);
 
-                // Wing offsets before rotation
+                // --- Draw “wings” on the marker ---
+                // Offsets before roll
                 Vector2 leftWingOffset = new Vector2(-WingLength / 2 - WingOffsetX, 0f);
                 Vector2 rightWingOffset = new Vector2(WingLength / 2 + WingOffsetX, 0f);
 
-                // Rotate wing offsets
+                // Rotate them around the same center
                 Vector2 rotatedLeftWingOffset = RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
                 Vector2 rotatedRightWingOffset = RotatePoint(
                     rightWingOffset,
@@ -2990,7 +3296,7 @@ namespace IngameScript
                     -rollRad
                 );
 
-                // Create and add left wing sprite
+                // Left wing
                 var leftWing = new MySprite
                 {
                     Type = SpriteType.TEXTURE,
@@ -3003,7 +3309,7 @@ namespace IngameScript
                 };
                 frame.Add(leftWing);
 
-                // Create and add right wing sprite
+                // Right wing
                 var rightWing = new MySprite
                 {
                     Type = SpriteType.TEXTURE,
@@ -3055,7 +3361,6 @@ namespace IngameScript
                 float aoaOffsetY = (float)(aoa * pixelsPerDegreeY);
 
                 Vector2 bracketPosition = new Vector2(centerX - 100f, centerY);
-
 
                 // Display the numeric AOA value
                 var aoaText = new MySprite()
@@ -3174,6 +3479,104 @@ namespace IngameScript
                 );
                 return rotatedPoint + pivot;
             }
+            private void DrawRadar(
+    MySpriteDrawFrame frame,
+    Jet myjet,
+    float boxCenterX,
+    float boxCenterY,
+    float boxWidth,
+    float boxHeight,
+    float pixelPerDegree)
+            {
+                // Half the width/height for positioning convenience:
+                float halfWidth = boxWidth * 0.5f;
+                float halfHeight = boxHeight * 0.5f;
+
+                // Pulling Azimuth and Elevation from your jet
+                double radarX = myjet._radar.Azimuth;    // -1.0 ... +1.0
+                double radarY = myjet._radar.Elevation;  // -1.0 ... +1.0
+
+                // --- Draw boundary lines ---------------------------------
+
+                // Top horizontal line
+                MySprite topLineSprite = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(boxCenterX, boxCenterY - halfHeight),
+                    Size = new Vector2(boxWidth, 2),
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(topLineSprite);
+
+                // Bottom horizontal line
+                MySprite bottomLineSprite = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(boxCenterX, boxCenterY + halfHeight),
+                    Size = new Vector2(boxWidth, 2),
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(bottomLineSprite);
+
+                // Left vertical line
+                MySprite leftLineSprite = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(boxCenterX - halfWidth, boxCenterY),
+                    Size = new Vector2(2, boxHeight),
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(leftLineSprite);
+
+                // Right vertical line
+                MySprite rightLineSprite = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(boxCenterX + halfWidth, boxCenterY),
+                    Size = new Vector2(2, boxHeight),
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(rightLineSprite);
+                string targetName = "null";
+                if(!myjet._radar.GetTargetedEntity().IsEmpty())
+                    targetName = myjet._radar.GetTargetedEntity().Name.ToString();
+                MySprite targettext = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = "Tar:" + targetName,
+                    Position = new Vector2(boxCenterX + boxCenterX * 1f, boxCenterY + halfHeight * 1.5f),
+                    RotationOrScale = 0.75f,
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "White"
+                };
+                frame.Add(targettext);
+
+                // --- Draw radar dot --------------------------------------
+                // If radarX = -1 => far left; +1 => far right, etc.
+                // If radarY = -1 => top; +1 => bottom.
+                MySprite radarDot = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(
+                        boxCenterX + (float)radarX * halfWidth * -1,
+                        boxCenterY + (float)radarY * halfHeight * -1
+                    ),
+                    Size = new Vector2(4, 4),
+                    Color = Color.Lime,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(radarDot);
+            }
 
             private double CalculateHeading()
             {
@@ -3190,128 +3593,177 @@ namespace IngameScript
                 return altitude;
             }
 
-            private double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity, Vector3D upVector)
+            private double CalculateAngleOfAttack(
+                Vector3D forwardVector,
+                Vector3D velocity,
+                Vector3D upVector
+            )
             {
+                if (velocity.LengthSquared() < 0.01)
+                    return 0;
+
+                Vector3D velocityDirection = Vector3D.Normalize(velocity);
+
+                // Calculate the angle between the velocity and the forward vector in the plane defined by the up vector
 
 
-
-
-
-                    if (velocity.LengthSquared() < 0.01) return 0;
-
-
-                    Vector3D velocityDirection = Vector3D.Normalize(velocity);
-
-
-
-
-
-                    // Calculate the angle between the velocity and the forward vector in the plane defined by the up vector
-
-
-                    double angleOfAttack = Math.Atan2(
-
-
+                double angleOfAttack =
+                    Math.Atan2(
                         Vector3D.Dot(velocityDirection, upVector),
-
-
                         Vector3D.Dot(velocityDirection, forwardVector)
-
-
                     ) * (180 / Math.PI);
 
-
-
-
-
-                    return angleOfAttack;
-
-
-                
+                return angleOfAttack;
             }
 
-            private void DrawArtificialHorizon(MySpriteDrawFrame frame, float pitch, float roll)
+            private void DrawArtificialHorizon(
+                MySpriteDrawFrame frame,
+                float pitch,
+                float roll,
+                float centerX,
+                float centerY,
+                float pixelsPerDegree
+            )
             {
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
-                float pixelsPerDegree = hud.SurfaceSize.Y / 40f; // F18-like scaling
-
                 List<MySprite> sprites = new List<MySprite>();
 
-                // Pitch ladder
+                // Typical F-16 pitch lines are drawn every 10 degrees (±80, ±70, ..., ±10)
+                // Horizon is at 0, so we skip i == 0
                 for (int i = -90; i <= 90; i += 5)
                 {
+                    if (i == 0)
+                        continue; // skip horizon line here, we draw a dedicated line below
+
+                    // Calculate vertical position for this pitch line
                     float markerY = centerY - (i - pitch) * pixelsPerDegree;
+
+                    // Skip if off-screen by a bit
                     if (markerY < -100 || markerY > hud.SurfaceSize.Y + 100)
                         continue;
 
-                    bool majorLine = i % 10 == 0;
-                    float lineWidth = majorLine ? 150f : 75f;
-                    float lineThickness = majorLine ? 3f : 1f;
-                    Color lineColor = majorLine ? Color.Lime : Color.Gray;
+                    // F-16 style: positive pitch lines angle down, negative pitch lines angle up
+                    bool isPositive = (i > 0);
 
-                    // Pitch ladder line
+                    // Common line settings
+                    float lineWidth = 90f; // total width of the pitch line
+                    float lineThickness = 2f; // thickness of the center segment
+                    Color lineColor = Color.Lime; // or another color you prefer
+
+                    // 1) MAIN HORIZONTAL SEGMENT
+                    float halfWidth = lineWidth * 1.225f; //So it clips a tiny bit
                     sprites.Add(
                         new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = new Vector2(centerX, markerY),
+                            Position = new Vector2(centerX * 0.75f, markerY),
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
                             Alignment = TextAlignment.CENTER
                         }
                     );
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(centerX * 1.25f, markerY),
+                            Size = new Vector2(lineWidth, lineThickness),
+                            Color = lineColor,
+                            Alignment = TextAlignment.CENTER
+                        }
+                    );
+                    // 2) ANGLING THE TIPS (“wings”)
+                    float tipLength = 12f; // how “long” each angled tip extends
+                    float tipThickness = 2f; // thickness of the tip lines
+                    // For a “V,” use ±45° angles. Negative pitch inverts the direction
+                    float tipAngle = MathHelper.ToRadians(isPositive ? 45f : -45f);
 
-                    // Labels for major lines
-                    if (majorLine && i != 0)
-                    {
-                        string label = Math.Abs(i).ToString();
+                    // Left tip
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(centerX - halfWidth, markerY),
+                            Size = new Vector2(tipLength, tipThickness),
+                            Color = lineColor,
+                            Alignment = TextAlignment.CENTER,
+                            RotationOrScale = tipAngle
+                        }
+                    );
+                    // Right tip
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(centerX + halfWidth, markerY),
+                            Size = new Vector2(tipLength, tipThickness),
+                            Color = lineColor,
+                            Alignment = TextAlignment.CENTER,
+                            RotationOrScale = -tipAngle
+                        }
+                    );
 
-                        sprites.Add(
-                            new MySprite()
-                            {
-                                Type = SpriteType.TEXT,
-                                Data = label,
-                                Position = new Vector2(centerX - lineWidth / 2 - 30, markerY - 12),
-                                RotationOrScale = 0.6f,
-                                Color = lineColor,
-                                Alignment = TextAlignment.RIGHT,
-                                FontId = "White"
-                            }
-                        );
+                    // 3) PITCH LABELS
+                    string label = Math.Abs(i).ToString();
+                    float labelOffsetX = halfWidth + tipLength + 10f; // a bit to the outside
+                    float labelOffsetY = 0f;
 
-                        sprites.Add(
-                            new MySprite()
-                            {
-                                Type = SpriteType.TEXT,
-                                Data = label,
-                                Position = new Vector2(centerX + lineWidth / 2 + 30, markerY - 12),
-                                RotationOrScale = 0.6f,
-                                Color = lineColor,
-                                Alignment = TextAlignment.LEFT,
-                                FontId = "White"
-                            }
-                        );
-                    }
+                    // Left label
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = label,
+                            Position = new Vector2(centerX - labelOffsetX, markerY + labelOffsetY),
+                            RotationOrScale = 0.8f,
+                            Color = lineColor,
+                            Alignment = TextAlignment.RIGHT,
+                            FontId = "White"
+                        }
+                    );
+                    // Right label
+                    sprites.Add(
+                        new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = label,
+                            Position = new Vector2(centerX + labelOffsetX, markerY + labelOffsetY),
+                            RotationOrScale = 0.8f,
+                            Color = lineColor,
+                            Alignment = TextAlignment.LEFT,
+                            FontId = "White"
+                        }
+                    );
                 }
 
-                // Distinct Horizon line
+                // --- DISTINCT HORIZON LINE (at 0 deg pitch) ---
                 float horizonY = centerY + pitch * pixelsPerDegree;
-                // Distinct Horizon line
                 sprites.Add(
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(centerX, horizonY),
-                        Size = new Vector2(hud.SurfaceSize.X, 4f),
-                        Color = Color.White,
+                        Position = new Vector2(centerX * 1.75f, horizonY),
+                        Size = new Vector2(hud.SurfaceSize.X * 0.5f, 4f),
+                        Color = Color.LimeGreen,
                         Alignment = TextAlignment.CENTER
                     }
                 );
-
-                // F18-style center marker (-^-)
+                sprites.Add(
+                    new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(centerX * 0.25f, horizonY),
+                        Size = new Vector2(hud.SurfaceSize.X * 0.5f, 4f),
+                        Color = Color.LimeGreen,
+                        Alignment = TextAlignment.CENTER
+                    }
+                );
+                // --- F18/F16 style center marker, e.g. -^- or similar ---
                 sprites.Add(
                     new MySprite()
                     {
@@ -3325,25 +3777,37 @@ namespace IngameScript
                     }
                 );
 
-                // Apply roll rotation
+                // --- APPLY ROLL ROTATION to everything ---
                 float rollRad = MathHelper.ToRadians(-roll);
                 float cosRoll = (float)Math.Cos(rollRad);
                 float sinRoll = (float)Math.Sin(rollRad);
 
-                for (int i = 0; i < sprites.Count; i++)
+                // Use a normal for-loop (not foreach) to transform and add
+                for (int s = 0; s < sprites.Count; s++)
                 {
-                    MySprite sprite = sprites[i];
-                    Vector2 offset =
-                        (sprite.Position ?? Vector2.Zero) - new Vector2(centerX, centerY);
-                    sprite.Position = new Vector2(
-                        offset.X * cosRoll - offset.Y * sinRoll + centerX,
-                        offset.X * sinRoll + offset.Y * cosRoll + centerY
+                    MySprite sprite = sprites[s];
+                    Vector2 pos = sprite.Position ?? Vector2.Zero;
+                    Vector2 offset = pos - new Vector2(centerX, centerY);
+
+                    // Rotate around center
+                    Vector2 rotated = new Vector2(
+                        offset.X * cosRoll - offset.Y * sinRoll,
+                        offset.X * sinRoll + offset.Y * cosRoll
                     );
 
-                    if (sprite.Type == SpriteType.TEXTURE)
-                        sprite.RotationOrScale = rollRad;
+                    sprite.Position = rotated + new Vector2(centerX, centerY);
 
-                    sprites[i] = sprite;
+                    // For TEXTURE sprites, add the roll to the sprite's existing rotation
+                    if (sprite.Type == SpriteType.TEXTURE)
+                    {
+                        float existing = sprite.RotationOrScale;
+                        sprite.RotationOrScale = existing + rollRad;
+                    }
+
+                    // Store updated sprite back
+                    sprites[s] = sprite;
+
+                    // Add sprite to the frame
                     frame.Add(sprite);
                 }
             }
@@ -3379,7 +3843,7 @@ namespace IngameScript
                         float markerX = centerX + (float)deltaHeading * headingScale;
                         float markerHeight =
                             (markerHeading % 10 == 0) ? compassHeight * 0.6f : compassHeight * 0.4f;
-                        Color markerColor = (markerHeading % 90 == 0) ? Color.Cyan : Color.White;
+                        Color markerColor = (markerHeading % 90 == 0) ? Color.Green : Color.Lime;
 
                         // Draw the marker line
                         var markerLine = new MySprite()
@@ -3400,7 +3864,7 @@ namespace IngameScript
                                 (markerHeading % 90 == 0)
                                     ? GetCompassDirection(markerHeading)
                                     : markerHeading.ToString();
-                            Color textColor = (markerHeading % 90 == 0) ? Color.Cyan : Color.White;
+                            Color textColor = (markerHeading % 90 == 0) ? Color.Green : Color.Lime;
 
                             var markerText = new MySprite()
                             {
@@ -4324,7 +4788,7 @@ namespace IngameScript
             private List<int> lastSoundTickCounters = new List<int>();
             private int tickCounter = 0;
             IMyLargeTurretBase turret;
-
+            private int ticket = 0;
             MyDetectedEntityInfo detectedEntity;
             private enum SearchDirection
             {
@@ -4565,7 +5029,7 @@ namespace IngameScript
             public override void Tick()
             {
                 detectedEntity = turret.GetTargetedEntity();
-
+                ticket++;
                 // Update hotkey text based on detected entity and mode
                 if (isAirtoAirenabled)
                 {
@@ -4577,6 +5041,50 @@ namespace IngameScript
                     {
                         hotkeytext =
                             "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
+                        if(ticket % 16 == 0)
+                        {
+                            //turret.Enabled = !turret.Enabled;
+                            if(turret.Enabled)
+                            {
+                                turret.ShootOnce();
+                            }
+                        }
+                        if(ticket % 32 == 0)
+                        {
+                            // Define how many steps we want along each axis.
+                            int xCount = 7;  // steps in azimuth
+                            int yCount = 6;  // steps in elevation
+
+                            // Calculate total points in one full pass.
+                            int totalPoints = xCount * yCount;
+
+                            // Current position in the overall pattern.
+                            long cycle = ticket/128 % totalPoints;
+
+                            // Determine the "row" (yIndex) and "column" (xIndex).
+                            int yIndex = (int)(cycle / xCount);
+                            int xIndex = (int)(cycle % xCount);
+
+                            // Convert xIndex and yIndex into fractional positions [0..1].
+                            // (xCount - 1) because e.g. 7 steps create 6 intervals, etc.
+                            float fracX = (float)xIndex / (xCount - 1);
+                            float fracY = (float)yIndex / (yCount - 1);
+
+                            // Map fractions to actual turret angles:
+                            //  Azimuth: from -0.7 to +0.7  => total range = 1.4
+                            //  Elevation: from -0.3 to +0.3 => total range = 0.6
+                            float azimuth = -0.7f + 1.4f * fracX;
+                            float elevation = -0.3f + 0.6f * fracY;
+
+                            // Now set the turret angles accordingly.
+                            // E.g., MyTurret.Azimuth = azimuth;
+                            //       MyTurret.Elevation = elevation;
+                            turret.Azimuth = azimuth;
+                            turret.Elevation = elevation;
+                            turret.SyncAzimuth();
+                            turret.SyncElevation();
+                        }
+                        
                     }
                 }
 
