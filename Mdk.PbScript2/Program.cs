@@ -49,13 +49,17 @@ namespace IngameScript
             public IMyTextSurface hud;
             public List<IMyGasTank> tanks = new List<IMyGasTank>();
             public int offset = 0;
+            public bool manualfire = false; // Set to true if you want to fire the guns manually, false if you want to use the radar system
+            public List<IMySmallGatlingGun> _gatlings = new List<IMySmallGatlingGun>();
             // Constructor: gather all relevant blocks
             public Jet(IMyGridTerminalSystem grid)
             {
                 // Find the cockpit
                 _cockpit = grid.GetBlockWithName("Jet Pilot Seat") as IMyCockpit;
-
-                // Thrusters (non-Sci-Fi, on same grid)
+                grid.GetBlocksOfType(
+                                    _gatlings,
+                                    t => t.CubeGrid == _cockpit.CubeGrid 
+                                );                
                 _thrusters = new List<IMyThrust>();
                 grid.GetBlocksOfType(
                     _thrusters,
@@ -182,34 +186,7 @@ namespace IngameScript
                 }
             }
 
-            // ------------------------------
-            // SOUND BLOCKS
-            // ------------------------------
 
-            /// <summary>
-            /// Plays a specified sound on all Sound Block Warning blocks.
-            /// </summary>
-            public void PlayWarningSound(string soundName)
-            {
-                foreach (var soundBlock in _soundBlocks)
-                {
-                    soundBlock.Stop(); // Stop any currently playing
-                    soundBlock.SelectedSound = soundName;
-                    soundBlock.Play();
-                }
-            }
-
-            /// <summary>
-            /// Stops any currently playing sound on all Sound Block Warning blocks.
-            /// </summary>
-            public void StopWarningSounds()
-            {
-                foreach (var soundBlock in _soundBlocks)
-                {
-                    soundBlock.Stop();
-                    soundBlock.SelectedSound = "";
-                }
-            }
 
             // ------------------------------
             // RADARS / TURRETS
@@ -262,7 +239,6 @@ namespace IngameScript
             private static String module_sound;
             private static int lastSoundTick = -500; // Initialize to -500 to allow instant play when damaged
             private static bool isPlayingSound = false;
-            private static bool soundNeedsToPlay = false; // Track if sound is currently playing
             private static string previousSelectedSound;
             private static int soundStartTick = 0;
             private static int soundSetupStep = 0; // 0: Idle, 1: Stop, 2: Set, 3: Play, 4: Wait
@@ -738,7 +714,17 @@ namespace IngameScript
                             new Vector2I(0, 1),
                             new Vector2I(0, -1)
                         };
-
+                        MySprite targettext = new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "Manual Fire:" + _myJet.manualfire,
+                            Position = new Vector2(220,40),
+                            RotationOrScale = 1f,
+                            Color = Color.White,
+                            Alignment = TextAlignment.RIGHT,
+                            FontId = "White"
+                        };
+                        frame.Add(targettext);
                         // Step 4: Draw only outline blocks
                         for (int x = 0; x < width; x++)
                         {
@@ -815,6 +801,7 @@ namespace IngameScript
                         ReturnToMainMenu();
                         break;
                     case "5":
+                        break;
                     case "6":
                         _myJet.offset += -1;
                         break;
@@ -1846,380 +1833,359 @@ namespace IngameScript
                     }
                 }
             }
-            private void DrawLeadingPip(
-                            MySpriteDrawFrame frame,
-                            Vector3D targetPosition,
-                            Vector3D targetVelocity,
-                            Vector3D shooterPosition,
-                            Vector3D shooterVelocity,
-                            double projectileSpeed,
-                            Vector3D gravity // Pass the gravity vector directly
-                        )
+
+// --- Constants ---
+const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calculation
+    const double MIN_Z_FOR_PROJECTION = 0.1; // Minimum absolute Z value for safe projection
+    const string TEXTURE_SQUARE = "SquareSimple";
+    const string TEXTURE_CIRCLE = "CircleHollow"; // Assumes you have this texture
+    const string TEXTURE_TRIANGLE = "Triangle";
+
+    // --- Assume these are accessible class members or passed in ---
+    // IMyCockpit cockpit; // The cockpit block
+    // IMyTextSurface hud; // The surface provider (e.g., cockpit HUD)
+    // Color pipColor = Color.LimeGreen;
+    // Color offScreenColor = Color.Yellow;
+    // Color behindColor = Color.Red;
+    // Color reticleColor = Color.Cyan;
+
+    // Helper function for drawing lines (assuming SquareSimple texture)
+    private void AddLineSprite(MySpriteDrawFrame frame, Vector2 start, Vector2 end, float thickness, Color color)
+    {
+        Vector2 delta = end - start;
+        float length = delta.Length();
+        if (length < 0.1f) return; // Don't draw zero-length lines
+
+        Vector2 position = start + delta / 2f; // Center of the line
+        float rotation = (float)Math.Atan2(delta.Y, delta.X) - (float)Math.PI / 2f; // Rotation to align the square
+
+        var line = new MySprite()
+        {
+            Type = SpriteType.TEXTURE,
+            Data = TEXTURE_SQUARE,
+            Position = position,
+            Size = new Vector2(thickness, length),
+            Color = color,
+            RotationOrScale = rotation,
+            Alignment = TextAlignment.CENTER
+        };
+        frame.Add(line);
+    }
+
+
+    /// <summary>
+    /// Calculates the intercept point for a projectile affected by gravity hitting a target moving at constant velocity.
+    /// Uses an iterative approach.
+    /// </summary>
+    /// <returns>True if a solution was found, false otherwise.</returns>
+    private bool CalculateInterceptPointIterative(
+        Vector3D shooterPosition,
+        Vector3D shooterVelocity, // Current shooter velocity (affects initial projectile velocity)
+        double projectileSpeed,   // Muzzle speed relative to the shooter
+        Vector3D targetPosition,
+        Vector3D targetVelocity,
+        Vector3D gravity,         // Gravity vector (e.g., new Vector3D(0, -9.81, 0))
+        int maxIterations,
+        out Vector3D interceptPoint,
+        out double timeToIntercept)
+    {
+        interceptPoint = Vector3D.Zero;
+        timeToIntercept = -1;
+
+        Vector3D relativePosition = targetPosition - shooterPosition;
+        Vector3D relativeVelocity = targetVelocity - shooterVelocity; // Target velocity relative to shooter
+
+        // Initial guess for timeToIntercept using simple non-gravity calculation
+        // Solve |P_tgt + V_rel*t| = S_proj*t -> |P_tgt|^2 + 2*P_tgt.V_rel*t + |V_rel|^2*t^2 = S_proj^2*t^2
+        double a = relativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed;
+        double b = 2 * Vector3D.Dot(relativePosition, relativeVelocity);
+        double c = relativePosition.LengthSquared();
+        double t_guess = -1;
+
+        // Use quadratic formula to find initial guess time (ignore gravity for guess)
+        if (Math.Abs(a) < 1e-6) // Linear case
+        {
+            if (Math.Abs(b) > 1e-6) t_guess = -c / b;
+        }
+        else
+        {
+            double discriminant = b * b - 4 * a * c;
+            if (discriminant >= 0)
             {
-                // Estimate time to intercept based on current positions and velocities (ignoring acceleration for initial estimate)
-                Vector3D initialDeltaPosition = targetPosition - shooterPosition;
-                double estimatedTime = initialDeltaPosition.Length() / projectileSpeed;
-
-                // Predict target position at the estimated time
-                Vector3D predictedTargetPosition = targetPosition + targetVelocity * estimatedTime; // Simple linear prediction
-
-                // Calculate the intercept point using the more accurate CalculateInterceptPoint
-                Vector3D interceptPoint;
-
-                if (
-                    !CalculateInterceptPoint(
-                        shooterPosition,
-                        shooterVelocity,
-                        projectileSpeed,
-                        targetPosition, // Pass current target position
-                        targetVelocity, // Pass current target velocity
-                        gravity, // Pass gravity vector
-                        out interceptPoint // This will be the calculated intercept point if successful
-                    )
-                )
-                {
-                    // If CalculateInterceptPoint fails, maybe draw an indicator towards the current target or nothing.
-                    // For now, just return as in the original code.
-                    return;
-                }
-
-
-                // Calculate the direction to the intercept point
-                Vector3D directionToIntercept = interceptPoint - shooterPosition;
-
-                // ... rest of the drawing code using 'interceptPoint' to determine HUD position
-                // Transform direction to local cockpit coordinates
-                MatrixD cockpitMatrix = cockpit.WorldMatrix;
-                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(
-                    directionToIntercept,
-                    MatrixD.Transpose(cockpitMatrix)
-                );
-
-                // Define line thickness and reticle size as a fraction of the screen size
-                float lineThickness = hud.SurfaceSize.Y * 0.01f; // 1% of screen height
-                float reticleSize = hud.SurfaceSize.Y * 0.05f; // 5% of screen height
-
-                // Calculate center position
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
-                Vector2 center = new Vector2(centerX, centerY);
-
-                // Calculate the angle between the forward vector and the direction to the intercept point
-                Vector3D forwardVector = new Vector3D(0, 0, -1); // Forward direction in local coordinates
-                Vector3D normalizedDirection = Vector3D.Normalize(localDirectionToIntercept);
-                double angleRadians = Math.Acos(Vector3D.Dot(forwardVector, normalizedDirection));
-                double angleDegrees = MathHelper.ToDegrees(angleRadians);
-
-                // Calculate screen coordinates for the intercept point
-                // These calculations project the 3D point onto a 2D plane.
-                // The division by -localDirectionToIntercept.Z performs the perspective projection.
-                float zoomFactor = 4f; // Increase zoom factor to make the leading pip more prominent
-                float screenX =
-                    (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z)
-                        * hud.SurfaceSize.X
-                        / 2
-                        * zoomFactor
-                    + hud.SurfaceSize.X / 2;
-                float screenY =
-                    (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z)
-                        * hud.SurfaceSize.Y
-                        / 2
-                        * zoomFactor
-                    + hud.SurfaceSize.Y / 2;
-
-                // Check if the pip is within the screen bounds
-                bool isOnScreen = (
-                    screenX >= 0
-                    && screenX <= hud.SurfaceSize.X
-                    && screenY >= 0
-                    && screenY <= hud.SurfaceSize.Y
-                );
-                // Check if the target is behind
-                if (localDirectionToIntercept.Z >= 0) // Target is behind the cockpit's local Z=0 plane
-                {
-                    // Draw a simple indicator for targets behind you, e.g., a dot in the center
-                    var horizontalLine = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(centerX, centerY),
-                        Size = new Vector2(20, 1), // Simple line for indication
-                        Color = Color.Red, // Red indicates target is behind
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(horizontalLine);
-                    var verticalLine = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(centerX, centerY),
-                        Size = new Vector2(1, 20), // Simple line for indication
-                        Color = Color.Red, // Red indicates target is behind
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(verticalLine);
-                }
-                else // Target is in front
-                {
-                    if (isOnScreen)
-                    {
-                        // Draw the leading pip as a red "X" and hollow square when on screen
-                        float pipSize = reticleSize;
-
-                        // First diagonal line (\)
-                        var pipDiagonalLine1 = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX, screenY),
-                            Size = new Vector2(lineThickness, pipSize),
-                            RotationOrScale = MathHelper.ToRadians(45),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(pipDiagonalLine1);
-
-                        // Second diagonal line (/)
-                        var pipDiagonalLine2 = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX, screenY),
-                            Size = new Vector2(lineThickness, pipSize),
-                            RotationOrScale = MathHelper.ToRadians(-45),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(pipDiagonalLine2);
-
-                        // Define the size of the hollow square
-                        float squareSize = pipSize * 2; // Adjust as needed
-                        float halfSquareSize = squareSize / 2;
-
-                        // Top line of the hollow square
-                        var topLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX, screenY - halfSquareSize),
-                            Size = new Vector2(squareSize, lineThickness),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(topLine);
-
-                        // Bottom line of the hollow square
-                        var bottomLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX, screenY + halfSquareSize),
-                            Size = new Vector2(squareSize, lineThickness),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(bottomLine);
-
-                        // Left line of the hollow square
-                        var leftLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX - halfSquareSize, screenY),
-                            Size = new Vector2(lineThickness, squareSize),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(leftLine);
-
-                        // Right line of the hollow square
-                        var rightLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(screenX + halfSquareSize, screenY),
-                            Size = new Vector2(lineThickness, squareSize),
-                            Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(rightLine);
-
-                        // Draw the central aiming reticle (plus sign)
-                        var verticalLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(centerX, centerY),
-                            Size = new Vector2(lineThickness, reticleSize * 2),
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(verticalLine);
-
-                        var horizontalLine = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(centerX, centerY),
-                            Size = new Vector2(reticleSize * 2, lineThickness),
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        frame.Add(horizontalLine);
-
-
-                    }
-                    else
-                    {
-                        // Draw an arrow pointing towards the off-screen target
-                        float dx = screenX - centerX;
-                        float dy = screenY - centerY;
-                        Vector2 direction = new Vector2(dx, dy);
-
-                        // Normalize direction
-                        if (direction.LengthSquared() > 0)
-                        {
-                            direction.Normalize();
-
-                            // Adjust the arrow length based on the angle to the target
-                            // Define minimum and maximum arrow lengths
-                            float minArrowLength = hud.SurfaceSize.Y * 0.1f;
-                            float maxArrowLength = hud.SurfaceSize.Y * 0.4f;
-
-                            // Clamp the angle to a reasonable range (0 to 90 degrees)
-                            double clampedAngle = MathHelper.Clamp(angleDegrees, 0, 90);
-
-                            // Map the angle to the arrow length (larger angle means longer arrow)
-                            float angleFactor = (float)(clampedAngle / 90.0);
-                            float arrowLength =
-                                angleFactor * (maxArrowLength - minArrowLength) + minArrowLength;
-
-
-                            // Compute the end point of the arrow within the screen
-                            Vector2 lineEndPoint = center + direction * arrowLength;
-
-                            // Clamp the line end point to screen boundaries to ensure it stays on screen
-                            lineEndPoint.X = MathHelper.Clamp(lineEndPoint.X, 0, hud.SurfaceSize.X);
-                            lineEndPoint.Y = MathHelper.Clamp(lineEndPoint.Y, 0, hud.SurfaceSize.Y);
-
-
-                            // Draw the line from the center to the arrow end point
-                            Vector2 toPoint = lineEndPoint - center;
-                            float length = toPoint.Length();
-
-                            Vector2 linePosition = center + toPoint / 2; // Midpoint of the line
-
-                            // Calculate rotation for the line to point towards the target
-                            float rotation =
-                                (float)Math.Atan2(toPoint.Y, toPoint.X) + (float)Math.PI / 2; // Add PI/2 because SquareSimple is oriented vertically
-
-                            // Adjust line thickness as needed
-                            float lineThicknessOffScreen = hud.SurfaceSize.Y * 0.005f;
-
-
-                            // Draw the arrow shaft
-                            var lineSprite = new MySprite()
-                            {
-                                Type = SpriteType.TEXTURE,
-                                Data = "SquareSimple",
-                                Position = linePosition,
-                                Size = new Vector2(lineThicknessOffScreen, length),
-                                RotationOrScale = rotation,
-                                Color = Color.Red, // Red for off-screen target
-                                Alignment = TextAlignment.CENTER
-                            };
-                            frame.Add(lineSprite);
-
-                            // Draw an arrowhead at the end of the line
-                            float arrowSize = reticleSize * 0.5f; // Adjust arrow size
-
-                            var arrowSprite = new MySprite()
-                            {
-                                Type = SpriteType.TEXTURE,
-                                Data = "Triangle", // Use Triangle texture for arrowhead
-                                Position = lineEndPoint,
-                                Size = new Vector2(arrowSize, arrowSize),
-                                RotationOrScale = rotation, // Same rotation as the line
-                                Color = Color.Red, // Red arrowhead
-                                Alignment = TextAlignment.CENTER
-                            };
-                            frame.Add(arrowSprite);
-                        }
-                    }
-                }
+                double sqrtDiscriminant = Math.Sqrt(discriminant);
+                double t1 = (-b - sqrtDiscriminant) / (2 * a);
+                double t2 = (-b + sqrtDiscriminant) / (2 * a);
+                if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
+                else t_guess = Math.Max(t1, t2); // Take the positive one if only one is positive
             }
-            private bool CalculateInterceptPoint(
-                Vector3D shooterPosition,
-                Vector3D shooterVelocity,
-                double projectileSpeed,
-                Vector3D targetPosition,
-                Vector3D targetVelocity,
-                Vector3D gravityDirection,
-                out Vector3D interceptPoint
-            )
+        }
+
+        if (t_guess <= 0) return false; // No initial solution / target moving away too fast
+
+        timeToIntercept = t_guess;
+
+        // --- Iterative Refinement ---
+        for (int i = 0; i < maxIterations; ++i)
+        {
+            if (timeToIntercept <= 0) break; // Safety check
+
+            // 1. Predict target position at the current estimated time t
+            Vector3D predictedTargetPos = targetPosition + targetVelocity * timeToIntercept;
+
+            // 2. Calculate the displacement needed for the projectile
+            Vector3D projectileDisplacement = predictedTargetPos - shooterPosition;
+
+            // 3. Calculate the required initial velocity (V_launch) to cover that displacement
+            //    accounting for gravity: displacement = V_launch * t + 0.5 * g * t^2
+            //    => V_launch = (displacement - 0.5 * g * t^2) / t
+            Vector3D requiredLaunchVel = (projectileDisplacement - 0.5 * gravity * timeToIntercept * timeToIntercept) / timeToIntercept;
+
+            // 4. The *direction* is correct, but the *speed* might not match projectileSpeed.
+            //    Find the *actual* launch velocity: direction * projectileSpeed + shooterVelocity
+            Vector3D launchDirection = Vector3D.Normalize(requiredLaunchVel);
+            Vector3D actualLaunchVel = launchDirection * projectileSpeed + shooterVelocity; // Absolute initial velocity
+
+            // 5. Re-calculate timeToIntercept. This is tricky. A common simplification is to use
+            //    the distance to the *predicted* target point and the projectile *speed*.
+            //    A more complex approach involves solving the kinematic equation again.
+            //    Let's use a simpler distance/speed update for the *time* estimate.
+            //    Note: This simplification might lose some accuracy compared to a full kinematic solve.
+
+            // Calculate new relative velocity considering the *actual* launch velocity
+            Vector3D newRelativeVelocity = targetVelocity - actualLaunchVel;
+
+            // Re-solve the quadratic using the original relative position but the *new* relative velocity
+            // This refines the time estimate based on the required launch direction.
+            a = newRelativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed; // This 'a' might be less stable, consider alternative time updates if issues arise.
+            b = 2 * Vector3D.Dot(relativePosition, newRelativeVelocity);
+            c = relativePosition.LengthSquared();
+
+            t_guess = -1;
+            if (Math.Abs(a) < 1e-6) { if (Math.Abs(b) > 1e-6) t_guess = -c / b; }
+            else
             {
-                // Relative position and velocity
-                Vector3D relativePosition = targetPosition - shooterPosition;
-                Vector3D relativeVelocity = targetVelocity - shooterVelocity - gravityDirection;
-
-                double relativeSpeedSquared = relativeVelocity.LengthSquared();
-                double projectileSpeedSquared = projectileSpeed * projectileSpeed;
-
-                double a = relativeSpeedSquared - projectileSpeedSquared;
-                double b = 2 * Vector3D.Dot(relativePosition, relativeVelocity);
-                double c = relativePosition.LengthSquared();
-
                 double discriminant = b * b - 4 * a * c;
-
-                double t;
-                if (Math.Abs(a) < 1e-6)
+                if (discriminant >= 0)
                 {
-                    // When 'a' is near zero, handle as linear equation
-                    t = -c / b;
-                    if (t <= 0)
-                    {
-                        interceptPoint = Vector3D.Zero;
-                        return false;
-                    }
-                }
-                else if (discriminant >= 0)
-                {
-                    // Two possible solutions, select the smallest positive time
                     double sqrtDiscriminant = Math.Sqrt(discriminant);
                     double t1 = (-b - sqrtDiscriminant) / (2 * a);
                     double t2 = (-b + sqrtDiscriminant) / (2 * a);
+                    if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
+                    else t_guess = Math.Max(t1, t2);
+                }
+            }
 
-                    t = double.PositiveInfinity;
-                    if (t1 > 0 && t1 < t)
-                        t = t1;
-                    if (t2 > 0 && t2 < t)
-                        t = t2;
+            if (t_guess <= 0)
+            {
+                // Lost solution during iteration, maybe return last valid? Or fail.
+                // Let's fail for now. Consider fallback if needed.
+                return false;
+            }
+            timeToIntercept = t_guess; // Update time for next iteration
+        }
 
-                    if (double.IsInfinity(t))
+        // After iterations, calculate the final intercept point
+        interceptPoint = targetPosition + targetVelocity * timeToIntercept;
+        return timeToIntercept > 0;
+    }
+
+
+    private void DrawLeadingPip(
+        MySpriteDrawFrame frame,
+        IMyCockpit cockpit, // Pass cockpit for world matrix
+        IMyTextSurface hud,   // Pass HUD surface for size/center
+        Vector3D targetPosition,
+        Vector3D targetVelocity,
+        Vector3D shooterPosition,
+        Vector3D shooterVelocity,
+        double projectileSpeed,
+        Vector3D gravity,         // World gravity vector
+        Color pipColor,           // Customizable colors
+        Color offScreenColor,
+        Color behindColor,
+        Color reticleColor
+    )
+    {
+        if (cockpit == null || hud == null) return; // Safety check
+
+        Vector3D interceptPoint;
+        double timeToIntercept;
+                bool isAimingAtPip = false; // Initialize the output parameter to false
+                                       // Use the iterative solver
+                if (!CalculateInterceptPointIterative(
+                shooterPosition,
+                shooterVelocity,
+                projectileSpeed,
+                targetPosition,
+                targetVelocity,
+                gravity,
+                INTERCEPT_ITERATIONS,
+                out interceptPoint,
+                out timeToIntercept
+            ))
+        {
+            // Cannot calculate intercept. Optionally draw something else,
+            // like a marker at the current target position, or just return.
+            // For now, just return. Consider adding a "No Solution" indicator.
+            return;
+        }
+
+        // --- Projection onto HUD ---
+        Vector3D directionToIntercept = interceptPoint - shooterPosition;
+        MatrixD worldToCockpitMatrix = MatrixD.Transpose(cockpit.WorldMatrix); // Transpose for World -> Local
+        Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+
+        // Screen center and size
+        Vector2 surfaceSize = hud.SurfaceSize;
+        Vector2 center = surfaceSize / 2f;
+        float viewportMinDim = Math.Min(surfaceSize.X, surfaceSize.Y);
+
+        // Define sizes relative to screen dimensions for scalability
+        float lineThickness = Math.Max(1f, viewportMinDim * 0.004f);
+        float pipBaseSize = viewportMinDim * 0.03f; // Base size for the pip circle/diamond
+        float reticleArmLength = viewportMinDim * 0.025f;
+        float arrowSize = viewportMinDim * 0.04f;
+        float arrowHeadSize = viewportMinDim * 0.025f;
+
+        // Check if target is behind
+        if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION) // Target is behind (positive Z in local coords)
+        {
+            // Draw "Behind" indicator (e.g., simple Red cross at center)
+            AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, behindColor);
+            AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, behindColor);
+            return; // Don't draw main reticle or pip if target is behind
+        }
+
+        // --- Draw Central Reticle (Always visible when target is in front hemisphere) ---
+        AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, reticleColor);
+        AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, reticleColor);
+
+        // --- Perspective Projection ---
+        // Prevent division by zero/very small numbers if target is near perpendicular
+        if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
+        {
+            // Target is nearly 90 degrees off - treat as off-screen edge case
+            localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION; // Project as if slightly in front
+        }
+
+        // Calculate screen coordinates using perspective projection
+        // The factor of surfaceSize.Y / 2 is common for FOV scaling, adjust if needed based on game's projection
+        float scale = surfaceSize.Y / 2.0f; // Or adjust based on actual FOV / projection method
+        float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scale;
+        float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scale; // Y is inverted in screen space
+        Vector2 pipScreenPos = new Vector2(screenX, screenY);
+
+        // Check if the pip is within the screen bounds
+        bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
+                          pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
+                float distanceToPip = Vector2.Distance(center, pipScreenPos);
+                float pipRadius = pipBaseSize / 2f; // Assuming pipBaseSize is the diameter
+
+                // Check if the distance is less than or equal to the pip's radius
+                if (distanceToPip <= pipRadius)
+                {
+                    isAimingAtPip = true;
+                    // Optional: Change pip color or add another visual cue when aiming
+                    // pipSprite.Color = Color.Lime; // Example: Turn pip green
+                }
+                if (isAimingAtPip)
+                {
+                    for (int i = 0; i < myjet._gatlings.Count; i++)
                     {
-                        interceptPoint = Vector3D.Zero;
-                        return false;
+                        myjet._gatlings[i].Enabled = true;
                     }
                 }
                 else
                 {
-                    // No real solution, cannot intercept
-                    interceptPoint = Vector3D.Zero;
-                    return false;
+                    if (myjet.manualfire == false)
+                    {
+                        for (int i = 0; i < myjet._gatlings.Count; i++)
+                        {
+                            myjet._gatlings[i].Enabled = false;
+                        }
+                    }
                 }
+                if (isOnScreen)
+        {
+            // --- Draw On-Screen Pip (e.g., Hollow Circle) ---
+            var pipSprite = new MySprite()
+            {
+                Type = SpriteType.TEXTURE,
+                Data = TEXTURE_CIRCLE, // Use a hollow circle texture
+                Position = pipScreenPos,
+                Size = new Vector2(pipBaseSize, pipBaseSize),
+                Color = pipColor,
+                Alignment = TextAlignment.CENTER
+            };
+            frame.Add(pipSprite);
+                    // ***** AIMING CHECK *****
+                    // Calculate distance between screen center (reticle) and pip center
+                    
+                    // Optional: Add time-to-intercept text
+                    // var timeText = MySprite.CreateText($"{timeToIntercept:F1}s", "Debug", Color.White, 0.5f, TextAlignment.CENTER);
+                    // timeText.Position = pipScreenPos + new Vector2(0, pipBaseSize * 0.6f); // Position below pip
+                    // frame.Add(timeText);
+                }
+        else
+        {
+            // --- Draw Off-Screen Indicator (Arrow from edge) ---
+            // Calculate direction vector from center to the raw off-screen position
+            Vector2 direction = pipScreenPos - center;
+            direction.Normalize(); // Make it a unit vector
 
-                // Calculate intercept point
-                interceptPoint = targetPosition + targetVelocity * t;
+            // Calculate intersection point with screen edges
+            // This is a simplified approach; a more robust one might use line-rect intersection
+            float maxDistX = surfaceSize.X / 2f - arrowSize / 2f; // Leave margin for arrow
+            float maxDistY = surfaceSize.Y / 2f - arrowSize / 2f;
+            float angle = (float)Math.Atan2(direction.Y, direction.X);
 
-                return true;
+            float edgeX = (float)Math.Cos(angle) * maxDistX;
+            float edgeY = (float)Math.Sin(angle) * maxDistY;
+
+            // Find which edge is hit first based on aspect ratio and angle
+            Vector2 edgePoint;
+            if (Math.Abs(edgeX / maxDistX) > Math.Abs(edgeY / maxDistY))
+            {
+                // Hit left/right edge
+                edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / Math.Abs(edgeX)));
             }
-            // Class-level PID variables
-            private float integralError = 0f;
+            else
+            {
+                // Hit top/bottom edge
+                edgePoint = new Vector2(center.X + edgeX * (maxDistY / Math.Abs(edgeY)), center.Y + Math.Sign(edgeY) * maxDistY);
+            }
+
+
+            // Clamp point rigorously just in case
+            edgePoint.X = MathHelper.Clamp(edgePoint.X, arrowSize / 2f, surfaceSize.X - arrowSize / 2f);
+            edgePoint.Y = MathHelper.Clamp(edgePoint.Y, arrowSize / 2f, surfaceSize.Y - arrowSize / 2f);
+
+
+            // Draw the arrow head (Triangle) pointing inward
+            float arrowRotation = (float)Math.Atan2(direction.Y, direction.X); // Point towards center
+            var arrowSprite = new MySprite()
+            {
+                Type = SpriteType.TEXTURE,
+                Data = TEXTURE_TRIANGLE, // Use Triangle texture
+                Position = edgePoint,    // Position at the clamped edge point
+                Size = new Vector2(arrowHeadSize, arrowHeadSize),
+                Color = offScreenColor,
+                RotationOrScale = arrowRotation + (float)Math.PI / 2f, // Point inward (adjust angle based on Triangle sprite orientation)
+                Alignment = TextAlignment.CENTER
+            };
+            frame.Add(arrowSprite);
+        }
+    }
+    // Class-level PID variables
+    private float integralError = 0f;
             private float previousError = 0f;
             const float PILOT_INPUT_DEADZONE = 0.001f;
-            int trimdelay = 0;
-            // PID constants
-            private float Kp = 5f;
+            int pidResumeDelayCounter = 0; // Renamed for clarity
+            const int MAX_PID_RESUME_DELAY = 60; // Reduced delay, adjust as needed (maybe even 0?)
+            bool wasPilotInputActive = false; // Flag to track transition
+
+            // PID constants (Consider loading these once in constructor or setup method)
+            private float Kp = 2f;
             private float Ki = 0.0024f;
             private float Kd = 1f;
 
@@ -2227,36 +2193,106 @@ namespace IngameScript
             private const float MaxPIDOutput = 60f;
             private const float MaxAOA = 36f;
 
+            // Constructor or Setup Method (Example - Call this once)
+            // public Program() // If this is your main Program class
+            // {
+            //     LoadPIDConstants();
+            // }
+
+            // private void LoadPIDConstants()
+            // {
+            //      // Load Kp, Ki, Kd from CustomData here ONCE
+            //      // Handle potential errors during parsing
+            //      // Example (simplified):
+            //      string[] lines = Me.CustomData.Split('\n');
+            //      foreach (var line in lines) {
+            //          if (line.StartsWith("KPI:")) {
+            //              string[] parts = line.Split(':');
+            //              if (parts.Length >= 4) {
+            //                   float.TryParse(parts[1], out Kp);
+            //                   float.TryParse(parts[2], out Ki);
+            //                   float.TryParse(parts[3], out Kd);
+            //                   // Add error handling/logging if parse fails
+            //                   break; // Assuming only one KPI line
+            //              }
+            //          }
+            //      }
+            //      // Set default values if not found or parse failed
+            // }
+
+
             private void AdjustStabilizers(double aoa, Jet myjet)
             {
-                Vector2 pitchyaw = cockpit.RotationIndicator;
-                ParentProgram.Echo("Pilot Input: " + pitchyaw.ToString()); //Todo: Does not work.
+                // Ensure cockpit is valid before accessing properties
+                if (cockpit == null)
+                {
+                    // Handle the error appropriately, maybe disable stabilization
+                    return;
+                }
 
-                // Check if pilot input exists:
+                Vector2 pitchyaw = cockpit.RotationIndicator;
+                // Echo($"Pilot Input: {pitchyaw.X:F4}"); // Use $ for string interpolation, format output
+
+                // Check if pilot pitch input exists:
                 if (Math.Abs(pitchyaw.X) > PILOT_INPUT_DEADZONE)
                 {
-                    trimdelay++;
-                    trimdelay++;
-                    if (trimdelay > 120)
+                    // Pilot is actively controlling pitch
+
+                    // Increment delay counter, but maybe less aggressively?
+                    pidResumeDelayCounter += 2; // Original logic had trimdelay++ twice
+                    if (pidResumeDelayCounter > MAX_PID_RESUME_DELAY)
                     {
-                        trimdelay = 120;
+                        pidResumeDelayCounter = MAX_PID_RESUME_DELAY;
                     }
-                    //    AdjustTrim(rightstab, 0);
-                    //    AdjustTrim(leftstab, 0);
 
+                    // // Option 1: Disable Trim Adjustments during pilot input (like original commented code)
+                    // AdjustTrim(rightstab, 0);
+                    // AdjustTrim(leftstab, 0);
 
-                    integralError = 0;
-                    previousError = 0;
+                    // // Option 2: Freeze PID state (might be smoother than resetting)
+                    // // Do nothing here to integralError / previousError
+
+                    wasPilotInputActive = true; // Mark that pilot was active
                 }
                 else
                 {
-                    if (trimdelay > 1)
+                    // Pilot is NOT actively controlling pitch
+
+                    // If the pilot JUST stopped controlling, reset the PID state ONCE
+                    if (wasPilotInputActive)
                     {
-                        trimdelay--;
-                        return;
+                        integralError = 0f;
+                        // We don't necessarily need to reset previousError.
+                        // The next PID calculation will establish a new derivative.
+                        // Or, set previousError based on the current error *now*? Needs testing.
+                        // previousError = MathHelper.Clamp((float)aoa, -MaxAOA, MaxAOA) + myjet.offset; // Option: Initialize previousError
+
+                        wasPilotInputActive = false; // Reset the flag
+                                                     // Consider if you want the delay to start counting down *only* after input stops
+                                                     // pidResumeDelayCounter = MAX_PID_RESUME_DELAY; // Uncomment to *start* delay countdown now
                     }
-                    float aoaClamped = MathHelper.Clamp((float)aoa, -MaxAOA, MaxAOA);
-                    float pidOutput = PIDController(aoaClamped + myjet.offset);
+
+
+                    // Wait for the delay countdown (if any)
+                    if (pidResumeDelayCounter > 0) // Changed from > 1 to > 0
+                    {
+                        pidResumeDelayCounter--;
+                        // Option: Still apply zero trim during delay?
+                        // AdjustTrim(rightstab, 0);
+                        // AdjustTrim(leftstab, 0);
+                        return; // Wait until delay finishes
+                    }
+
+                    // Delay is over, engage PID trim
+                    float targetAoa = MathHelper.Clamp((float)aoa, -MaxAOA, MaxAOA) + myjet.offset;
+                    float pidOutput = PIDController(targetAoa); // Pass the target AOA (which is current error if setpoint is 0)
+
+                    // Ensure previousError is initialized correctly on the very first run after reset
+                    if (previousError == 0 && integralError == 0)
+                    {
+                        previousError = targetAoa; // Initialize previousError for first derivative calculation
+                    }
+
 
                     AdjustTrim(rightstab, pidOutput);
                     AdjustTrim(leftstab, -pidOutput);
@@ -2265,37 +2301,36 @@ namespace IngameScript
 
             private float PIDController(float currentError)
             {
-                var cachedData = ParentProgram.Me.CustomData.Split(
-                    new[] { '\n' },
-                    StringSplitOptions.RemoveEmptyEntries
-                );
-                foreach (var line in cachedData)
-                {
-                    if (line.StartsWith("KPI:"))
-                    {
-                        string[] parts = line.Split(':');
+                // *** IMPORTANT: Load Kp, Ki, Kd ONCE in a setup method/constructor ***
+                // Reading from CustomData every tick is very inefficient.
+                // Assume Kp, Ki, Kd are already loaded into class variables here.
 
-                        Kp = float.Parse(parts[1]);
-                        Ki = float.Parse(parts[2]);
-                        Kd = float.Parse(parts[3]);
-                    }
-                }
                 // Integral term calculation
                 integralError += currentError;
-                integralError = MathHelper.Clamp(integralError, -200, 200);
+                integralError = MathHelper.Clamp(integralError, -200, 200); // Keep clamping
+
                 // Derivative term calculation
                 float derivative = currentError - previousError;
 
-                // PID output
-                float pidOutput = (Kp * currentError) + (Ki * integralError) + (Kd * derivative);
+                // PID output calculation
+                float proportionalTerm = Kp * currentError;
+                float integralTerm = Ki * integralError;
+                float derivativeTerm = Kd * derivative;
+                float pidOutput = proportionalTerm + integralTerm + derivativeTerm;
 
                 // Clamp PID output
                 pidOutput = MathHelper.Clamp(pidOutput, -MaxPIDOutput, MaxPIDOutput);
 
+                // Store current error for next derivative calculation
                 previousError = currentError;
+
+                // Optional: Log PID terms for debugging
+                // Echo($" P: {proportionalTerm:F2}, I: {integralTerm:F2}, D: {derivativeTerm:F2}");
 
                 return pidOutput;
             }
+
+
 
             private void AdjustTrim(IEnumerable<IMyTerminalBlock> stabilizers, float desiredTrim)
             {
@@ -2442,7 +2477,17 @@ namespace IngameScript
                         airbreaks[i].CloseDoor();
                     }
                 }
-
+                if(jumpthrottle < -0.01f)
+                {
+                    myjet.manualfire = !myjet.manualfire;
+                }
+                if(myjet.manualfire)
+                {
+                    for (int i = 0; i < myjet._gatlings.Count; i++)
+                    {
+                        myjet._gatlings[i].Enabled = true;
+                    }
+                }
                 for (int i = 0; i < thrusters.Count; i++)
                 {
                     float scaledThrottle;
@@ -2495,8 +2540,8 @@ namespace IngameScript
                         centerX,
                         centerY,
                         pixelsPerDegree,
-                        new LabelValue("T", throttle * 100),
-                        new LabelValue("H", heading),
+                        new LabelValue("T", myjet.offset),
+                        new LabelValue("kph", myjet.GetVelocity()),
                         new LabelValue("aoa", aoa),
                         new LabelValue("trim", currentTrim)
                     );
@@ -2517,7 +2562,7 @@ namespace IngameScript
                         centerY + centerY * 0.1f, 70, 30,
                         pixelsPerDegree);
                     DrawCompass(frame, heading);
-                    DrawAltitudeIndicator(frame, smoothedAltitude);
+                    DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
                     //DrawAOABracket(frame, aoa);
                     //DrawTrim(frame, aoa);
                     //DrawBomb(frame, aoa);
@@ -2575,13 +2620,13 @@ namespace IngameScript
 
                     // Call the DrawLeadingPip function
                     DrawLeadingPip(
-                        frame,
+                        frame,cockpit, hud,
                         targetPosition,
                         targetVelocity,
                         shooterPosition,
-                        currentVelocity,
+                        currentVelocity, 
                         muzzleVelocity,
-                        gravityDirection
+                        gravityDirection, Color.Red, Color.Yellow, Color.Black, Color.White
                     );
                 }
             }
@@ -2621,7 +2666,6 @@ namespace IngameScript
                 };
                 frame.Add(peakGSprite);
             }
-            private double smoothAirspeed = 0;
             public struct LabelValue
             {
                 public string Label;
@@ -2757,7 +2801,7 @@ namespace IngameScript
                 float centerY = screenHeight / 2f;
 
                 // Right side positioning (adjust margin as needed)
-                float tapeRightMargin = 30f;
+                float tapeRightMargin = 10f;
                 float tapeNumberMargin = 10f; // Space between tape line and numbers
                 float tapeWidth = 2f; // Width of the main tape line
                 float tickLength = 10f; // Length of the tick marks
@@ -2833,8 +2877,8 @@ namespace IngameScript
                             {
                                 Type = SpriteType.TEXT,
                                 Data = altText,
-                                Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos), // Position left of the tick
-                                RotationOrScale = 0.8f, // Slightly smaller font for tape numbers
+                                Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f), // Position left of the tick
+                                RotationOrScale = 0.5f, // Slightly smaller font for tape numbers
                                 Color = hudColor,
                                 Alignment = TextAlignment.RIGHT, // Align text to the right, so it ends before the margin
                                 FontId = FONT
@@ -2849,7 +2893,7 @@ namespace IngameScript
                 // --- 4. Draw Digital Altitude Readout ---
                 // Box (optional, but common)
                 // Draw outline using lines (example)
-                DrawRectangleOutline(frame, digitalAltBoxX, centerY - digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, hudColor);
+                DrawRectangleOutline(frame, digitalAltBoxX - 20, centerY - digitalAltBoxHeight - 225 / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, hudColor);
 
 
                 // Altitude Text
@@ -2858,8 +2902,8 @@ namespace IngameScript
                 {
                     Type = SpriteType.TEXT,
                     Data = currentAltitudeText,
-                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth / 2f, centerY), // Centered in the box area
-                    RotationOrScale = 1.0f, // Main font size
+                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY  - 140), // Centered in the box area
+                    RotationOrScale = 0.8f, // Main font size
                     Color = hudColor,
                     Alignment = TextAlignment.CENTER,
                     FontId = FONT
@@ -2871,30 +2915,15 @@ namespace IngameScript
                 {
                     Type = SpriteType.TEXT,
                     Data = "<", // Caret pointing from the box to the tape
-                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 2f, centerY), // Just right of the box
-                    RotationOrScale = 1.0f,
+                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f), // Just right of the box
+                    RotationOrScale = 0.5f,
                     Color = hudColor,
                     Alignment = TextAlignment.LEFT, // Align left so it starts right next to the box
                     FontId = FONT
                 };
                 frame.Add(caret);
 
-                // --- 6. Draw Vertical Velocity (VVI) ---
-                // Display below the altitude box
-                string vviText = verticalVelocity.ToString("F0"); // Format VVI (e.g., m/s or ft/min)
-                                                                  // Add +/- sign explicitly if desired
-                                                                  // string vviText = (verticalVelocity >= 0 ? "+" : "") + verticalVelocity.ToString("F0");
-                var vviLabel = new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = vviText,
-                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth / 2f, centerY + vviTextYOffset), // Below alt box
-                    RotationOrScale = 0.8f, // Smaller font size for VVI
-                    Color = hudColor,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = FONT
-                };
-                frame.Add(vviLabel);
+                
             }
 
 
@@ -3746,8 +3775,8 @@ namespace IngameScript
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(centerX * 1.75f, horizonY),
-                        Size = new Vector2(hud.SurfaceSize.X * 0.5f, 4f),
+                        Position = new Vector2(centerX * 1.25f, horizonY),
+                        Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = Color.LimeGreen,
                         Alignment = TextAlignment.CENTER
                     }
@@ -3757,8 +3786,8 @@ namespace IngameScript
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(centerX * 0.25f, horizonY),
-                        Size = new Vector2(hud.SurfaceSize.X * 0.5f, 4f),
+                        Position = new Vector2(centerX * 0.75f, horizonY),
+                        Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = Color.LimeGreen,
                         Alignment = TextAlignment.CENTER
                     }
