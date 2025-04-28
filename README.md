@@ -1,166 +1,130 @@
-# JetOS - A Modular Space Engineers Flight & Combat System
+# JetOS - Advanced Jet Control System for Space Engineers
 
-This script (commonly referred to as **JetOS**) is an **Ingame Script** written for **Space Engineers**. It integrates a variety of features for piloting, combat, and gameplay enhancements—ranging from custom HUDs and thruster overrides to guided missile systems, radar toggling, and even a mini “Frogger” game. Below is an overview of how it is structured and what each major part of the code does.
+This script provides a comprehensive operating system (JetOS) for fighter jets in Space Engineers, offering advanced flight control, targeting, HUD management, and weapon system integration.
 
----
+## Features
 
-## Table of Contents
+* **System Manager:** Core handler for different modules and user interface.
+* **Modular Design:** Supports various modules like:
+    * Air-to-Ground (ATG)
+    * Air-to-Air (ATA)
+    * Targeting Pod Control (RaycastCameraControl)
+    * Heads-Up Display (HUDModule)
+    * Screensaver/Logo Display
+    * Mini-game (Frogger)
+* **Advanced HUD (`HUDModule`):**
+    * Displays critical flight information: Speed (kph/knots/Mach), Altitude, G-Force (current & peak), Heading, Angle of Attack (AoA), Throttle percentage.
+    * Artificial Horizon with pitch and roll indication.
+    * Flight Path Marker.
+    * Compass Tape.
+    * Altitude Tape (F-18 Style) with Vertical Velocity Indicator (VVI).
+    * G-Force Indicator.
+    * Throttle Bar.
+    * AoA Bracket and Trim information.
+    * Radar indicator box.
+    * Leading Pip calculation for gun targeting based on target position, velocity, and projectile speed.
+    * Automatic stabilizer adjustment (PID-based) for maintaining Angle of Attack (AoA) based on user-defined offset.
+    * Manual Gatling fire override.
+* **Targeting Pod (`RaycastCameraControl`):**
+    * Uses a designated camera to perform raycasts and identify targets.
+    * Saves target coordinates to the Programmable Block's Custom Data (`Cached:GPS:Target2:...`).
+    * Features GPS locking and target tracking using rotors/hinges.
+    * Displays targeting information on a designated LCD.
+* **Weapon Systems:**
+    * **Air-to-Ground (`AirToGround`):** Manages missile bays (Merge Blocks named "Bay X"), allowing selection, firing, bombardment patterns, and top-down attack mode. Transfers GPS coordinates from `Cached:GPS:...` to bay-specific `CacheX:` entries before firing.
+    * **Air-to-Air (`AirtoAir`):** Manages missile bays for air combat, integrates with a turret ("JetNoseRad") for target seeking/locking, and provides audio cues (AIM9Lock/AIM9Search). Caches target position and velocity (`Cached:GPS:Target2:...`, `CachedSpeed:...").
+* **UI Controller:** Renders menus and information on multiple LCD panels of a cockpit. Supports main menu navigation and module-specific options/hotkeys.
+* **Jet Class:** Encapsulates core jet components like Cockpit, Thrusters, Sound Blocks, Radars, Merge Blocks (Bays), Stabilizers, and HUD elements for easy access.
+* **Sound System:** Provides audible warnings (e.g., low altitude/high speed) and target lock sounds.
+* **Utilities:** Includes PID controllers, vector math functions, and navigation helpers.
 
-- [General Overview](#general-overview)
-- [Key Components and Modules](#key-components-and-modules)
-  - [Jet Class](#jet-class)
-  - [SystemManager](#systemmanager)
-  - [Modules Overview](#modules-overview)
-    - [Air To Ground (ATG)](#air-to-ground-atg)
-    - [Air To Air (ATA)](#air-to-air-ata)
-    - [RaycastCameraControl](#raycastcameracontrol)
-    - [HUDModule](#hudmodule)
-    - [LogoDisplay (Screen Saver)](#logodisplay-screen-saver)
-    - [FroggerGameControl](#froggergamecontrol)
-- [Setting Up Blocks and Naming Conventions](#setting-up-blocks-and-naming-conventions)
-- [Hotkeys / Input Usage](#hotkeys--input-usage)
-- [Custom Data Configuration](#custom-data-configuration)
-- [Installation Instructions](#installation-instructions)
-- [Troubleshooting Tips](#troubleshooting-tips)
-- [License](#license)
+## Setup
 
----
+1.  **Load the Script:** Place the `JetOS file.cs` script into a Programmable Block on your jet.
+2.  **Block Naming:** Ensure the following blocks are present and named correctly on the **same grid** as the Programmable Block:
+    * **Cockpit:** "Jet Pilot Seat" (Must have `IMyTextSurfaceProvider`)
+    * **Main OS Screen:** The cockpit named "JetOS" is used for the main UI (Surface 0) and secondary info (Surface 1).
+    * **HUD Block:** A block named "Fighter HUD" (must implement `IMyTextSurface` or `IMyTextSurfaceProvider`).
+    * **Thrusters:** Standard thrusters (non-"Sci-Fi"). Thrusters for reverse/braking need "Backward" in their `GridThrustDirection`. Hydrogen tanks need "Jet" in their name.
+    * **Gatling Guns:** Standard `IMySmallGatlingGun` blocks.
+    * **Sound Blocks:** At least one named "Sound Block Warning" for altitude/speed warnings. Others named "Canopy Side Plate Sound Block" for Air-to-Air sounds.
+    * **Radar Turret(s):** At least one `IMyLargeGatlingTurret` named "JetNoseRad" for primary radar/targeting. Additional turrets named "Radar" can be used.
+    * **Missile Bays:** `IMyShipMergeBlock` blocks named "Bay X" (e.g., "Bay 1", "Bay 2") sorted numerically.
+    * **Stabilizers:** Blocks named "invertedstab" and "normalstab" for AoA control.
+    * **Targeting Pod (Optional):**
+        * Camera: "Camera Targeting Turret"
+        * LCD: "LCD Targeting Pod"
+        * Remote Control: "Remote Control"
+        * Rotor: "Targeting Rotor"
+        * Hinge: "Targeting Hinge"
+    * **Airbrakes (Optional):** `IMyDoor` blocks.
+3.  **Custom Data:** Add the following lines to the Programmable Block's Custom Data:
+    * `Cached:GPS:` (Leave empty initially)
+    * `CachedSpeed:` (Leave empty initially)
+    * `Topdown:false` (Or `true` if you want ATG topdown by default)
+    * `AntiAir:false` (Or `true` if you want ATA mode by default)
+    * `CacheGPS0:` (Leave empty)
+    * `CacheGPS1:` (Leave empty)
+    * ... up to `CacheGPS3:`
+    * `DataSlot0:` (Leave empty)
+    * ... up to the highest missile bay number.
+4.  **Compile & Run:** Check the code and run it.
 
-## General Overview
+## Usage
 
-**JetOS** is designed to be placed in a programmable block (`PB`) in Space Engineers. Once compiled and run, it initializes multiple sub-systems (“modules”) responsible for different functionalities such as:
+* Interact with the script via the cockpit's control panel (Toolbar actions assigned to the Programmable Block with arguments 1-9).
+* **1:** Navigate Up
+* **2:** Navigate Down
+* **3:** Select/Execute
+* **4:** Back/Deselect Module
+* **5-8:** Module-Specific Hotkeys (See Module Hotkeys section in UI) or Special Functions (e.g., Raycast, Adjust Trim Offset)
+* **9:** Return to Main Menu
+* Use the UI displayed on the "JetOS" cockpit screens to select modules and execute actions.
+* The HUD on the "Fighter HUD" block will display flight information automatically.
+* Use the Targeting Pod module to acquire and lock GPS coordinates.
+* Use the ATG/ATA modules to manage and fire weapons from the bays.
 
-- Managing thrusters and controlling flight characteristics
-- Handling radar blocks and toggling them at certain intervals
-- Providing a custom cockpit HUD (speed, altitude, AoA, G-forces, etc.)
-- Launching air-to-ground or air-to-air guided munitions
-- Raycasting for target detection
-- A mini “Frogger” game rendered on an LCD panel (just for fun!)
-- Displaying a custom screensaver or “logo display”
+## Detailed Explanations
 
-The script is quite extensive and relies on specific block names to function properly.
+Here's a breakdown of how some key functionalities work:
 
----
-
-## Key Components and Modules
-
-### Jet Class
-
-The **Jet** class is responsible for collecting references to important blocks in your grid (e.g., the cockpit, thrusters, sound blocks, radar turrets, merge blocks for missile bays, and hydrogen tanks). 
-
-- It identifies your **“Jet Pilot Seat”** as the main cockpit and fetches:
-  - **All thrusters** on the same grid that _aren’t_ named “Sci-Fi”
-  - **Sound blocks** that contain “Sound Block Warning” in the name
-  - **Radar turrets** (any Gatling turret named with “Radar” or specifically `"JetNoseRad"`)
-  - **Ship merge blocks** named with “Bay” (used for missiles)
-  - **Stabilizer blocks** named `normalstab` or `invertedstab` (left and right stabs)
-  - An LCD or text surface named **“Fighter HUD”** for your custom heads-up display
-  - **Gas tanks** that contain `"Jet"` in their name
-
-These references are used throughout the script to handle all flight and combat operations.
-
-### SystemManager
-
-**SystemManager** is a static class that orchestrates which “module” is currently active and handles user input (like pressing keys `1`-`9` on the cockpit’s Custom Data or via the game’s terminal controls). It also:
-
-- Updates each module every tick (via `Tick()` methods)
-- Displays a main menu on an LCD (usually titled “JetOS” or “Jet Pilot Seat” sub-surface)
-- Renders additional screens (like extra status or a custom UI) on a secondary LCD surface if available
-- Manages global states, such as toggling radars or playing warning sounds
-
-### Modules Overview
-
-A **module** is a distinct feature set that you can switch between at runtime:
-
-1. **Air To Ground (ATG)**
-   - Manages missile launch for ground targets
-   - “Bombardment” functionality for placing multiple GPS offsets around a central target
-   - Supports toggling “Topdown” bombing logic via Custom Data
-
-2. **Air To Air (ATA)**
-   - Similar to ATG, but geared towards aerial targets
-   - Hooks into a turret for target data (search and track)
-   - Plays “seeker” or “lock” sounds via `IMySoundBlock`s (like an AIM-9 missile lock tone)
-   - Allows firing selected or “next available bay” for missiles
-
-3. **RaycastCameraControl**
-   - Performs a raycast from a specified camera block (“Camera Targeting Turret”)
-   - If a target is detected, it prints or caches GPS data for that target
-   - Animates a “crosshair” on an LCD to indicate lock-on / scanning
-
-4. **HUDModule**
-   - Draws an extensive pilot HUD on the **“Fighter HUD”** panel
-   - Displays altitude, airspeed (knots, KPH), AoA (angle of attack), G-forces, trim, heading tape, compass, etc.
-   - Manages thruster override percentages (like afterburner logic) and automatically toggles hydrogen tanks if you push beyond 80% throttle
-
-5. **LogoDisplay (Screen Saver)**
-   - Renders a colorful, animated “screensaver” on the main or extra LCD
-   - Cycles between motivational texts and “evil corporate” texts
-   - Creates dancing particle effects, star-like or dust-like visuals
-
-6. **FroggerGameControl**
-   - A fully rendered mini “Frogger” game on the LCD
-   - Move up, down, left, right to avoid obstacles
-   - Score points each time you cross lanes
-   - Lose lives if colliding with an obstacle
-
----
-
-## Setting Up Blocks and Naming Conventions
-
-To get the most out of this script, set up your blocks with the following **exact** or **partial** names:
-
-1. **Cockpit**  
-   - Name: **“Jet Pilot Seat”**  
-     - Or, have a cockpit that contains “Jet Pilot Seat” in its name.
-
-2. **HUD Text Surface**  
-   - Name: **“Fighter HUD”**  
-   - Must be on the same grid as the cockpit or accessible from your programmable block’s grid.
-
-3. **Camera** (optional)  
-   - Name: **“Camera Targeting Turret”**  
-   - If you plan on using the Raycast features.
-
-4. **Sound Blocks**  
-   - For warnings: name contains **“Sound Block Warning”**  
-   - For A2A seeker tones: name contains **“Canopy Side Plate Sound Block”** (or adapt the relevant filter in the code if needed).
-
-5. **Missile Bays**  
-   - Merge blocks whose names contain **“Bay”**.  
-   - These are used by the AirToGround or AirToAir modules for firing.
-
-6. **Radars**  
-   - Gatling turret blocks with **“Radar”** in the name or specifically “JetNoseRad”.
-
-7. **Stabilizer Hinges / Rotors**  
-   - Named with “normalstab” or “invertedstab” for correct handling of trim logic.
-
-8. **Gas Tanks**  
-   - Must contain **“Jet”** in their custom name (e.g., “Jet Hydrogen Tank”).
-
-If any of these names are missing, the associated feature might fail or be skipped.
-
----
-
-## Hotkeys / Input Usage
-
-While the script runs, you can pass **arguments** (e.g., `1`, `2`, `3`, etc.) to the programmable block to navigate or trigger certain actions:
-
-- **`1`** – Navigate **Up** in the menu  
-- **`2`** – Navigate **Down**  
-- **`3`** – Select current menu option  
-- **`4`** – Go back to the previous menu (or deselect current module)  
-- **`5` / `6` / `7` / `8`** – Often mapped to special module functions (like launching missiles, toggling something, etc.)  
-- **`9`** – Return to the main menu  
-
-These are read by `HandleInput(string argument)` in **SystemManager**.
-
-
----
-
-## License
-
-This script is shared **as-is** within the Space Engineers community. Feel free to modify or adapt it for your personal or server use. Much love to Whiplash141
-
-Enjoy your enhanced flight control and combat systems with **JetOS**!
+* **HUD - Artificial Horizon (`DrawArtificialHorizon`):**
+    * Calculates the vertical position of pitch lines based on the difference between the line's degree value (e.g., -80, -70 ... +70, +80) and the aircraft's current pitch, scaled by `pixelsPerDegree`.
+    * Draws horizontal segments and angled "tips" for each pitch line, styling positive and negative pitch lines differently (like F-16/F-18).
+    * Adds numeric labels next to the lines.
+    * Draws a distinct, wider horizon line at 0 degrees pitch.
+    * Adds a central aiming reticle (`-^-`).
+    * Finally, rotates all drawn sprites (lines, labels, reticle) around the HUD center based on the aircraft's current roll angle to simulate the horizon tilting.
+* **HUD - Flight Path Marker (`DrawFlightPathMarker`):**
+    * Takes the aircraft's current velocity vector and transforms it into the cockpit's local coordinate system.
+    * Calculates the yaw and pitch angles *of the velocity vector* relative to the cockpit's forward direction.
+    * Determines the screen offset (X, Y) for the marker based on these velocity angles, scaled by `pixelsPerDegree`.
+    * Rotates this screen offset based on the aircraft's roll angle.
+    * Draws the central marker (circle) at the final calculated screen position (HUD Center + Rotated Offset).
+    * Draws small horizontal "wings" attached to the marker, also rotated by the aircraft's roll.
+* **HUD - Stabilizer PID Control (`AdjustStabilizers`, `PIDController`):**
+    * Reads pilot pitch input (`cockpit.RotationIndicator.X`).
+    * If the pilot is actively pitching (input > deadzone), the PID control is paused, and a delay counter (`pidResumeDelayCounter`) increases. Stabilizer trim might be set to 0 during this time.
+    * If the pilot is *not* pitching:
+        * If the pilot *just stopped* pitching, the PID's integral error is reset to prevent windup from the manual input phase.
+        * If the delay counter is active, it counts down. Trim might still be held at 0.
+        * Once the delay is over, the PID engages.
+        * The **error** for the PID is calculated as the current Angle of Attack (AoA) plus a user-defined offset (`myjet.offset`). The goal is implicitly to drive this error towards zero (maintain the desired AoA).
+        * The `PIDController` function calculates the output based on Proportional (Kp * error), Integral (Ki * accumulated error), and Derivative (Kd * change in error) terms.
+        * The calculated PID output (clamped between limits) is applied as the `Trim` value to the left and right stabilizer groups (with opposite signs).
+* **HUD - Leading Pip (`DrawLeadingPip`, `CalculateInterceptPointIterative`):**
+    * **Intercept Calculation:** Uses an iterative method (`CalculateInterceptPointIterative`) to predict where a target (moving at a constant velocity) will be when the projectile reaches it, considering projectile speed, shooter velocity, target velocity, and gravity. It refines the time-to-intercept estimate over several iterations.
+    * **Projection:** Calculates the direction vector from the shooter to the predicted intercept point. Transforms this world-space vector into the cockpit's local coordinate system.
+    * **Screen Coordinates:** Uses perspective projection (dividing local X/Y by negative local Z and scaling) to determine where the intercept point appears on the 2D HUD surface.
+    * **Drawing:**
+        * Draws a central aiming reticle.
+        * If the intercept point projects onto the screen bounds, it draws the pip (e.g., a circle) at that location.
+        * If the intercept point is off-screen, it calculates the direction from the center to the off-screen point and draws an arrow indicator at the edge of the screen pointing towards the pip's direction.
+        * If the target is behind the shooter (positive local Z), it draws a simple "behind" indicator instead.
+    * **Gatling Control:** Compares the distance between the HUD center (reticle) and the calculated pip position. If the distance is within the pip's radius (meaning the player is aiming correctly), it enables the gatling guns (unless manual fire is active). Otherwise, it disables them (if manual fire is off).
+* **Targeting Pod & Data Flow (`RaycastCameraControl`, `AirToGround`, `AirtoAir`):**
+    * **Acquisition (Raycast):** The `RaycastCameraControl` module uses the "Camera Targeting Turret" to perform a raycast. If it hits something, the hit position's GPS coordinates are formatted and stored in the *JetOS* Programmable Block's Custom Data under the `Cached:GPS:Target2:...` key.
+    * **Air-to-Air Update:** The `AirtoAir` module, when active, uses the "JetNoseRad" turret. If this turret locks onto a target (`GetTargetedEntity`), it continuously updates the `Cached:GPS:Target2:...` and `CachedSpeed:...` entries in the JetOS Custom Data with the locked target's current position and velocity.
+    * **Missile Prep (ATG/ATA):** When preparing to fire, both `AirToGround` and `AirtoAir` modules read the *latest* coordinates from `Cached:GPS:Target2:...` (or `Cached:GPS:...` if `Target2` isn't the intended source for ATG).
+    * **Bay Caching:** Before firing a specific bay (e.g., Bay 1), the script copies the retrieved target GPS string from `Cached:GPS:...` into a bay-specific cache line, like `Cache1:GPS:Target:...`. This is done for *each selected bay* before the firing command.
+    * **Launch & Transfer:** The `FireSelectedBays` (or similar) function triggers the merge block disconnect for the selected bays (`ApplyAction("Fire")` seems to be used, likely triggering a timer or sensor on the missile itself to disconnect). Immediately after initiating the launch sequence for all selected bays, the `TransferCacheToSlots` function is called. This function reads the data from each `CacheX:GPS:...` line and writes it to the *final* destination line that the missile script will read, formatted as `<BayNumber>:GPS:Target:...` (e.g., `1:GPS:Target:...`). It then clears the `CacheX:` line. This ensures each missile gets its intended target data written just before it's expected to read it upon launch.
