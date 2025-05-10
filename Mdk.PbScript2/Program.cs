@@ -1,5 +1,8 @@
-﻿using Sandbox.ModAPI.Ingame;
+﻿using BulletXNA;
+using Sandbox.Game.Entities;
+using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
+using SpaceEngineers.Game.EntityComponents.Blocks;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
@@ -9,6 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRage.Game.ModAPI;
+using VRage.Game.VisualScripting.Utils;
 using VRageMath;
 namespace IngameScript
 {
@@ -248,8 +252,123 @@ namespace IngameScript
             private static double accumulatedTime = 0.0;
             private static int tickCount = 0;
             private static double lastFPS = 0.0;
+            private static int blockcount = 0;
+            private static List<IMyTerminalBlock> gridBlocks = new List<IMyTerminalBlock>(); // Cache the block list
+            private static List<Vector2> cachedOutlineDrawPositions = null; // Cache final draw positions
+            private static Vector2 cachedOutlineSpriteSize = Vector2.Zero; // Cache sprite size
+            private static bool gridStructureDirty = true; // Flag to trigger recalculation
+            private static List<MySprite> cachedSprites = new List<MySprite>(); // Cache the draw frame
+            private static void RecalculateShipOutline(RectangleF renderArea)
+            {
+                // Only fetch blocks if the list is empty or flagged as dirty
+                // (You might add more sophisticated checks later, e.g., grid block count changes)
+                if (gridBlocks.Count == 0 || gridStructureDirty)
+                {
+                    gridBlocks.Clear();
+                    // Use the parentProgram reference to access GridTerminalSystem
+                    parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(gridBlocks, b => b.CubeGrid == parentProgram.Me.CubeGrid); // Get blocks from the specific grid
+                    gridStructureDirty = false; // Reset flag after fetching
+                }
+
+                if (gridBlocks.Count == 0)
+                {
+                    cachedOutlineDrawPositions = new List<Vector2>(); // Ensure list exists but is empty
+                    return; // No blocks to draw
+                }
+
+                // Step 1: Get X/Z bounds (Only if recalculating)
+                int minX = int.MaxValue, maxX = int.MinValue;
+                int minZ = int.MaxValue, maxZ = int.MinValue;
+
+                foreach (var block in gridBlocks)
+                {
+                    var pos = block.Position;
+                    if (pos.X < minX) minX = pos.X;
+                    if (pos.X > maxX) maxX = pos.X;
+                    if (pos.Z < minZ) minZ = pos.Z;
+                    if (pos.Z > maxZ) maxZ = pos.Z;
+                }
+
+                int width = maxX - minX + 1;
+                int height = maxZ - minZ + 1;
+
+                // Avoid division by zero if grid is 1D
+                if (width <= 0 || height <= 0)
+                {
+                    cachedOutlineDrawPositions = new List<Vector2>();
+                    return;
+                }
+
+                // Step 2: Build occupancy grid (Only if recalculating)
+                bool[,] occupancyGrid = new bool[width, height];
+                foreach (var block in gridBlocks)
+                {
+                    int x = block.Position.X - minX;
+                    int z = block.Position.Z - minZ;
+                    // Check bounds before accessing array
+                    if (x >= 0 && x < width && z >= 0 && z < height)
+                    {
+                        occupancyGrid[x, z] = true;
+                    }
+                }
+
+                // Step 3: Calculate drawing area and scaling (Only if recalculating)
+                float padding = 10f;
+                // Use renderArea passed in, maybe adjust scaling factors
+                float availableWidth = renderArea.Size.X * 0.4f; // Example: Use 40% of width
+                float availableHeight = renderArea.Size.Y * 0.4f; // Example: Use 40% of height
+                float cellSizeX = availableWidth / width;
+                float cellSizeY = availableHeight / height;
+                float cachedCellSize = Math.Min(cellSizeX, cellSizeY); // Use the smaller scale factor
+
+                Vector2 boxSize = new Vector2(width * cachedCellSize, height * cachedCellSize);
+                // Adjust center position based on where you want the radar (e.g., bottom right)
+                Vector2 renderCenter = renderArea.Position + new Vector2(renderArea.Size.X * 0.8f, renderArea.Size.Y * 0.8f); // Example: Bottom right
+                Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
+
+                cachedOutlineSpriteSize = new Vector2(cachedCellSize, cachedCellSize); // Store sprite size
+
+                // Directions to check neighbors
+                Vector2I[] directions = new Vector2I[]
+                {
+                    new Vector2I(1, 0), new Vector2I(-1, 0),
+                    new Vector2I(0, 1), new Vector2I(0, -1)
+                };
+
+                // Step 4: Calculate and cache outline block positions (Only if recalculating)
+                cachedOutlineDrawPositions = new List<Vector2>();
+                for (int x = 0; x < width; x++)
+                {
+                    for (int z = 0; z < height; z++)
+                    {
+                        if (!occupancyGrid[x, z]) continue;
+
+                        bool isOutline = false;
+                        foreach (var dir in directions)
+                        {
+                            int nx = x + dir.X;
+                            int nz = z + dir.Y;
+                            if (nx < 0 || nx >= width || nz < 0 || nz >= height || !occupancyGrid[nx, nz])
+                            {
+                                isOutline = true;
+                                break;
+                            }
+                        }
+
+                        if (!isOutline) continue;
+
+                        // Rotate 90 degrees clockwise for drawing
+                        int rotatedX = z;
+                        int rotatedZ = width - 1 - x;
+
+                        Vector2 drawPos = boxTopLeft + new Vector2(rotatedX * cachedCellSize, rotatedZ * cachedCellSize);
+                        cachedOutlineDrawPositions.Add(drawPos + cachedOutlineSpriteSize / 2f); // Cache the final sprite center position
+                    }
+                }
+            }
             public static void Initialize(Program program)
             {
+
                 _myJet = new Jet(program.GridTerminalSystem);
                 var cockpit =
                     program.GridTerminalSystem.GetBlockWithName("JetOS") as IMyTextSurfaceProvider;
@@ -659,123 +778,134 @@ namespace IngameScript
 
                             directionIndex++;
                         }
-                        var blocks = new List<IMyTerminalBlock>();
+                        List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();   
                         parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks);
-
-                        // Step 1: Get X/Z bounds
-                        int minX = int.MaxValue,
-                            maxX = int.MinValue;
-                        int minZ = int.MaxValue,
-                            maxZ = int.MinValue;
-
-                        foreach (var block in blocks)
+                        parentProgram.Echo(blockcount.ToString());
+                        if (blockcount == 0 || blockcount != blocks.Count)
                         {
-                            var pos = block.Position;
-                            if (pos.X < minX)
-                                minX = pos.X;
-                            if (pos.X > maxX)
-                                maxX = pos.X;
-                            if (pos.Z < minZ)
-                                minZ = pos.Z;
-                            if (pos.Z > maxZ)
-                                maxZ = pos.Z;
-                        }
+                            blockcount = blocks.Count;
+                            parentProgram.Echo("Now");
+                            
+                            // Step 1: Get X/Z bounds
+                            int minX = int.MaxValue,
+                                maxX = int.MinValue;
+                            int minZ = int.MaxValue,
+                                maxZ = int.MinValue;
+                            cachedSprites.Clear();
+                            foreach (var block in blocks)
+                            {
+                                var pos = block.Position;
+                                if (pos.X < minX)
+                                    minX = pos.X;
+                                if (pos.X > maxX)
+                                    maxX = pos.X;
+                                if (pos.Z < minZ)
+                                    minZ = pos.Z;
+                                if (pos.Z > maxZ)
+                                    maxZ = pos.Z;
+                            }
 
-                        int width = maxX - minX + 1;
-                        int height = maxZ - minZ + 1;
+                            int width = maxX - minX + 1;
+                            int height = maxZ - minZ + 1;
 
-                        // Step 2: Build occupancy grid
-                        bool[,] occupancyGrid = new bool[width, height];
-                        foreach (var block in blocks)
-                        {
-                            int x = block.Position.X - minX;
-                            int z = block.Position.Z - minZ;
-                            occupancyGrid[x, z] = true;
-                        }
+                            // Step 2: Build occupancy grid
+                            bool[,] occupancyGrid = new bool[width, height];
+                            foreach (var block in blocks)
+                            {
+                                int x = block.Position.X - minX;
+                                int z = block.Position.Z - minZ;
+                                occupancyGrid[x, z] = true;
+                            }
 
-                        // Step 3: Calculate drawing area and scaling
-                        float padding = 10f;
-                        float cellSizeX = (renderArea.X - padding * 2) / width;
-                        float cellSizeY = (renderArea.Y - padding * 2) / height;
-                        float cellSize = Math.Min(cellSizeX, cellSizeY) * 10; // Ensure square blocks
+                            // Step 3: Calculate drawing area and scaling
+                            float padding = 10f;
+                            float cellSizeX = (renderArea.X - padding * 2) / width;
+                            float cellSizeY = (renderArea.Y - padding * 2) / height;
+                            float cellSize = Math.Min(cellSizeX, cellSizeY) * 10; // Ensure square blocks
 
-                        Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
-                        Vector2 renderCenter =
-                            renderArea.Position
-                            + new Vector2(renderArea.Size.X * 0.225f, renderArea.Size.Y * 0.12f)
-                            + renderArea.Size / 2f;
-                        Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
+                            Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
+                            Vector2 renderCenter =
+                                renderArea.Position
+                                + new Vector2(renderArea.Size.X * 0.225f, renderArea.Size.Y * 0.12f)
+                                + renderArea.Size / 2f;
+                            Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
 
-                        // Directions to check neighbors (4 cardinal directions)
-                        Vector2I[] directions = new Vector2I[]
-                        {
+                            // Directions to check neighbors (4 cardinal directions)
+                            Vector2I[] directions = new Vector2I[]
+                            {
                             new Vector2I(1, 0),
                             new Vector2I(-1, 0),
                             new Vector2I(0, 1),
                             new Vector2I(0, -1)
-                        };
-                        MySprite targettext = new MySprite()
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = "Manual Fire:" + _myJet.manualfire,
-                            Position = new Vector2(220,40),
-                            RotationOrScale = 1f,
-                            Color = Color.White,
-                            Alignment = TextAlignment.RIGHT,
-                            FontId = "White"
-                        };
-                        frame.Add(targettext);
-                        // Step 4: Draw only outline blocks
-                        for (int x = 0; x < width; x++)
-                        {
-                            for (int z = 0; z < height; z++)
+                            };
+                            MySprite targettext = new MySprite()
                             {
-                                if (!occupancyGrid[x, z])
-                                    continue;
-
-                                bool isOutline = false;
-                                foreach (var dir in directions)
+                                Type = SpriteType.TEXT,
+                                Data = "Manual Fire:" + _myJet.manualfire,
+                                Position = new Vector2(220, 40),
+                                RotationOrScale = 1f,
+                                Color = Color.White,
+                                Alignment = TextAlignment.RIGHT,
+                                FontId = "White"
+                            };
+                            cachedSprites.Add(targettext);
+                            // Step 4: Draw only outline blocks
+                            for (int x = 0; x < width; x++)
+                            {
+                                for (int z = 0; z < height; z++)
                                 {
-                                    int nx = x + dir.X;
-                                    int nz = z + dir.Y;
+                                    if (!occupancyGrid[x, z])
+                                        continue;
 
-                                    if (
-                                        nx < 0
-                                        || nx >= width
-                                        || nz < 0
-                                        || nz >= height
-                                        || !occupancyGrid[nx, nz]
-                                    )
+                                    bool isOutline = false;
+                                    foreach (var dir in directions)
                                     {
-                                        isOutline = true;
-                                        break;
+                                        int nx = x + dir.X;
+                                        int nz = z + dir.Y;
+
+                                        if (
+                                            nx < 0
+                                            || nx >= width
+                                            || nz < 0
+                                            || nz >= height
+                                            || !occupancyGrid[nx, nz]
+                                        )
+                                        {
+                                            isOutline = true;
+                                            break;
+                                        }
                                     }
+
+                                    if (!isOutline)
+                                        continue;
+
+                                    // Rotate 90 degrees clockwise
+                                    int localX = z;
+                                    int localZ = width - x - 1;
+
+                                    Vector2 drawPos =
+                                        boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
+
+                                    cachedSprites.Add(
+                                        new MySprite()
+                                        {
+                                            Type = SpriteType.TEXTURE,
+                                            Data = "SquareSimple",
+                                            Position =
+                                                drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
+                                            Size = new Vector2(cellSize * 5f, cellSize * 2f),
+                                            Color = Color.LightGray,
+                                            Alignment = TextAlignment.CENTER
+                                        }
+                                    );
                                 }
-
-                                if (!isOutline)
-                                    continue;
-
-                                // Rotate 90 degrees clockwise
-                                int localX = z;
-                                int localZ = width - x - 1;
-
-                                Vector2 drawPos =
-                                    boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
-
-                                frame.Add(
-                                    new MySprite()
-                                    {
-                                        Type = SpriteType.TEXTURE,
-                                        Data = "SquareSimple",
-                                        Position =
-                                            drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
-                                        Size = new Vector2(cellSize * 5f, cellSize * 2f),
-                                        Color = Color.LightGray,
-                                        Alignment = TextAlignment.CENTER
-                                    }
-                                );
                             }
                         }
+                        for (int i = 0; i < cachedSprites.Count; i++)
+                        {
+                            frame.Add(cachedSprites[i]);
+                        }
+
                     },
                     area
                 );
@@ -1770,6 +1900,7 @@ namespace IngameScript
             string hotkeytext = "Test";
             Jet myjet;
             private TimeSpan totalElapsedTime = TimeSpan.Zero;
+
             public HUDModule(Program program, Jet jet) : base(program)
             {
                 cockpit = jet._cockpit;
@@ -1835,7 +1966,7 @@ namespace IngameScript
             }
 
 // --- Constants ---
-const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calculation
+const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calculation
     const double MIN_Z_FOR_PROJECTION = 0.1; // Minimum absolute Z value for safe projection
     const string TEXTURE_SQUARE = "SquareSimple";
     const string TEXTURE_CIRCLE = "CircleHollow"; // Assumes you have this texture
@@ -1989,8 +2120,53 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
         return timeToIntercept > 0;
     }
 
+            bool WorldPositionToScreenPosition(Vector3D worldPosition, IMyCockpit cam, IMyTextPanel screen, out Vector2 screenPositionPx)
+            {
+                screenPositionPx = Vector2.Zero;
 
-    private void DrawLeadingPip(
+                Vector3D cameraPos = cam.GetPosition() + cam.WorldMatrix.Forward * 1; // There is a ~0.25 meter forward offset for the view origin of cameras
+                Vector3D screenPosition = screen.GetPosition() + screen.WorldMatrix.Forward * 0.5 * screen.CubeGrid.GridSize;
+                Vector3D normal = screen.WorldMatrix.Forward;
+                Vector3D cameraToScreen = screenPosition - cameraPos;
+                double distanceToScreen = Math.Abs(Vector3D.Dot(cameraToScreen, normal));
+
+                Vector3D viewCenterWorld = distanceToScreen * cam.WorldMatrix.Forward;
+
+                // Project direction onto the screen plane (world coords)
+                Vector3D direction = worldPosition - cameraPos;
+                Vector3D directionParallel = direction.Dot(normal) * normal;
+                double distanceRatio = distanceToScreen / directionParallel.Length();
+
+                Vector3D directionOnScreenWorld = distanceRatio * direction;
+
+                // If we are pointing backwards, ignore
+                if (directionOnScreenWorld.Dot(screen.WorldMatrix.Forward) < 0)
+                {
+                    return false;
+                }
+
+                Vector3D planarCameraToScreen = cameraToScreen - Vector3D.Dot(cameraToScreen, normal) * normal;
+                directionOnScreenWorld -= planarCameraToScreen;
+
+                // Convert location to be screen local (world coords)
+                Vector2 directionOnScreenLocal = new Vector2(
+                    (float)directionOnScreenWorld.Dot(screen.WorldMatrix.Right),
+                    (float)directionOnScreenWorld.Dot(screen.WorldMatrix.Down));
+
+                // ASSUMPTION:
+                // The screen is square
+                double screenWidthInMeters = 1f; // My magic number for large grid
+                float metersToPx = (float)(screen.TextureSize.X / screenWidthInMeters);
+
+                // Convert dorection to be screen local (pixel coords)
+                directionOnScreenLocal *= metersToPx;
+
+                // Get final location on screen
+                Vector2 screenCenterPx = screen.TextureSize * 0.5f;
+                screenPositionPx = screenCenterPx + directionOnScreenLocal;
+                return true;
+            }
+            private void DrawLeadingPip(
         MySpriteDrawFrame frame,
         IMyCockpit cockpit, // Pass cockpit for world matrix
         IMyTextSurface hud,   // Pass HUD surface for size/center
@@ -2007,8 +2183,12 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
     )
     {
         if (cockpit == null || hud == null) return; // Safety check
+                const float MIN_DISTANCE_FOR_SCALING = 50f;  // Target closer than this uses max pip size (e.g., 500 meters)
+                const float MAX_DISTANCE_FOR_SCALING = 3000f; // Target farther than this uses min pip size (e.g., 3000 meters)
+                const float MAX_PIP_SIZE_FACTOR = 0.1f;      // Pip size factor at min distance (relative to viewportMinDim)
+                const float MIN_PIP_SIZE_FACTOR = 0.001f;     // Pip size factor at max distance (relative to viewportMinDim)
 
-        Vector3D interceptPoint;
+                Vector3D interceptPoint;
         double timeToIntercept;
                 bool isAimingAtPip = false; // Initialize the output parameter to false
                                        // Use the iterative solver
@@ -2030,25 +2210,37 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
             return;
         }
 
-        // --- Projection onto HUD ---
-        Vector3D directionToIntercept = interceptPoint - shooterPosition;
-        MatrixD worldToCockpitMatrix = MatrixD.Transpose(cockpit.WorldMatrix); // Transpose for World -> Local
-        Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+                // --- Projection onto HUD ---
+                Vector3D directionToIntercept = interceptPoint - shooterPosition;
+                // MatrixD worldToCockpitMatrix = MatrixD.Transpose(cockpit.WorldMatrix); // OLD
+                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix); // TRY THIS INSTEAD
+                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix); // Transform direction
+                                                                                                                           // OR if transforming a POINT is needed (less likely for direction vector, but consider):
+                                                                                                                           // Vector3D localInterceptPoint = Vector3D.Transform(interceptPoint, worldToCockpitMatrix);
+                                                                                                                           // Vector3D localShooterPosition = Vector3D.Transform(shooterPosition, worldToCockpitMatrix);
+                                                                                                                           // Vector3D localDirectionToIntercept = localInterceptPoint - localShooterPosition;
 
-        // Screen center and size
-        Vector2 surfaceSize = hud.SurfaceSize;
-        Vector2 center = surfaceSize / 2f;
-        float viewportMinDim = Math.Min(surfaceSize.X, surfaceSize.Y);
+                // --- Screen center and size ---
+                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 center = surfaceSize / 2f;
+                float viewportMinDim = Math.Min(surfaceSize.X, surfaceSize.Y);
+                float targetMarkerSize = viewportMinDim * 0.02f; // Size of the arms of the 'X'
+                                                                 // Define sizes relative to screen dimensions for scalability
+                float lineThickness = Math.Max(1f, viewportMinDim * 0.004f);
+                // float pipBaseSize = viewportMinDim * 0.03f; // <<< REMOVE OR COMMENT OUT THIS LINE
+                float reticleArmLength = viewportMinDim * 0.025f;
+                float arrowSize = viewportMinDim * 0.04f;
+                float arrowHeadSize = viewportMinDim * 0.025f;
+                double distanceToIntercept = Vector3D.Distance(shooterPosition, interceptPoint);
+                // Calculate scaling factor (0 = max distance, 1 = min distance)
+                float distanceScaleFactor = (float)MathHelper.Clamp((MAX_DISTANCE_FOR_SCALING - distanceToIntercept) / (MAX_DISTANCE_FOR_SCALING - MIN_DISTANCE_FOR_SCALING), 0.0, 1.0);
+                // Interpolate between min and max size factors based on distance
+                float currentPipSizeFactor = MathHelper.Lerp(MIN_PIP_SIZE_FACTOR, MAX_PIP_SIZE_FACTOR, distanceScaleFactor);
+                float dynamicPipSize = viewportMinDim * currentPipSizeFactor; // <<< THIS IS YOUR NEW DYNAMIC SIZE
 
-        // Define sizes relative to screen dimensions for scalability
-        float lineThickness = Math.Max(1f, viewportMinDim * 0.004f);
-        float pipBaseSize = viewportMinDim * 0.03f; // Base size for the pip circle/diamond
-        float reticleArmLength = viewportMinDim * 0.025f;
-        float arrowSize = viewportMinDim * 0.04f;
-        float arrowHeadSize = viewportMinDim * 0.025f;
 
-        // Check if target is behind
-        if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION) // Target is behind (positive Z in local coords)
+                // Check if target is behind
+                if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION) // Target is behind (positive Z in local coords)
         {
             // Draw "Behind" indicator (e.g., simple Red cross at center)
             AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, behindColor);
@@ -2068,19 +2260,20 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
             localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION; // Project as if slightly in front
         }
 
-        // Calculate screen coordinates using perspective projection
-        // The factor of surfaceSize.Y / 2 is common for FOV scaling, adjust if needed based on game's projection
-        float scale = surfaceSize.Y / 2.0f; // Or adjust based on actual FOV / projection method
-        float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scale;
+                // Calculate screen coordinates using perspective projection
+                // The factor of surfaceSize.Y / 2 is common for FOV scaling, adjust if needed based on game's projection
+                //Todo: X and Y are probably not tthe same length, so the FOV might be different. 
+
+                float scale = surfaceSize.Y / (0.3555f); // Or adjust based on actual FOV / projection method
+                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scale;
         float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scale; // Y is inverted in screen space
         Vector2 pipScreenPos = new Vector2(screenX, screenY);
 
-        // Check if the pip is within the screen bounds
-        bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
-                          pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
+                bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
+                                  pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
                 float distanceToPip = Vector2.Distance(center, pipScreenPos);
-                float pipRadius = pipBaseSize / 2f; // Assuming pipBaseSize is the diameter
-
+                // float pipRadius = pipBaseSize / 2f; // <<< REMOVE OR COMMENT OUT THIS LINE
+                float pipRadius = dynamicPipSize / 2f; // <<< USE THE NEW DYNAMIC SIZE FOR AIMING CHECK
                 // Check if the distance is less than or equal to the pip's radius
                 if (distanceToPip <= pipRadius)
                 {
@@ -2113,14 +2306,70 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                 Type = SpriteType.TEXTURE,
                 Data = TEXTURE_CIRCLE, // Use a hollow circle texture
                 Position = pipScreenPos,
-                Size = new Vector2(pipBaseSize, pipBaseSize),
-                Color = pipColor,
+                Size = new Vector2(dynamicPipSize, dynamicPipSize), // <<< USE THE NEW DYNAMIC SIZE FOR DRAWING
+                                                                    Color = pipColor,
                 Alignment = TextAlignment.CENTER
             };
             frame.Add(pipSprite);
+                    // --- ADDED: Draw Target Marker and Line if BOTH Pip and Target are On Screen ---
+                    Vector2 targetScreenPos = Vector2.Zero; // Initialize
+                    const float velocityIndicatorScale = 20f; // Example: Represents 0.3 seconds of travel
+                    // --- ADDED: Calculate Projection for the Target's Current Position ---
+                    // --- ADDED: Calculate projection for the Target Velocity Indicator ---
+                    // 1. Define a point offset from the INTERCEPT point by the target's velocity (scaled by time)
+                    //    This represents where the target would be 'velocityIndicatorScale' seconds AFTER intercept.
+                    Vector3D targetVelocityEndPointWorld = interceptPoint + targetVelocity * velocityIndicatorScale;
+
+                    // 2. Transform this world point into local cockpit coordinates
+                    //    Use Transform for points, TransformNormal for direction vectors
+                    // Calculate the proper inverse matrix
+                    MatrixD worldToLocalMatrix = MatrixD.Invert(cockpit.WorldMatrix); // <<< KEEP THIS LINE (needed below)                    // Transform the world point to local point using the inverse matrix
+                    Vector3D localTargetVelocityEndPoint = Vector3D.Transform(targetVelocityEndPointWorld, worldToLocalMatrix); // <<< REMOVE/COMMENT OUT                    // 3. Project this local point onto the screen
+                    // --- MODIFY this section ---
+                    Vector2 targetVelEndPointScreenPos = Vector2.Zero; // Initialize
+                    bool isVelEndPointProjectable = false; // <<< ADD THIS FLAG
+
+                    if (localTargetVelocityEndPoint.Z < -MIN_Z_FOR_PROJECTION) // Check if it's in front // <<< REMOVE/COMMENT OUT BLOCK
+                    {
+                        float screenX_vel = center.X + (float)(localTargetVelocityEndPoint.X / -localTargetVelocityEndPoint.Z) * scale;
+                        float screenY_vel = center.Y + (float)(-localTargetVelocityEndPoint.Y / -localTargetVelocityEndPoint.Z) * scale; // Y inverted
+                        targetVelEndPointScreenPos = new Vector2(screenX_vel, screenY_vel);
+                        isVelEndPointProjectable = true;
+                    } // <<< REMOVE/COMMENT OUT BLOCK
+                      // --- END MODIFY ---
+                    Vector3D directionToTarget = targetPosition - shooterPosition;
+                    Vector3D localDirectionToTarget = Vector3D.TransformNormal(directionToTarget, worldToLocalMatrix);
+
+                    Vector2 currentTargetScreenPos = Vector2.Zero; // Initialize
+                    bool isCurrentTargetProjectable = false; // Flag to check if projection is valid
+
+                    // Check if the current target direction is in front of the cockpit view
+                    if (localDirectionToTarget.Z < -MIN_Z_FOR_PROJECTION)
+                    {
+                        // Prevent division by zero/small numbers if near perpendicular
+                        // (Technically handled by the check above, but good practice)
+                        // float zClamped = Math.Max(Math.Abs((float)localDirectionToTarget.Z), (float)MIN_Z_FOR_PROJECTION);
+
+                        // Calculate screen coordinates using perspective projection
+                        float screenX_tgt = center.X + (float)(localDirectionToTarget.X / -localDirectionToTarget.Z) * scale;
+                        float screenY_tgt = center.Y + (float)(-localDirectionToTarget.Y / -localDirectionToTarget.Z) * scale; // Y inverted
+                        currentTargetScreenPos = new Vector2(screenX_tgt, screenY_tgt);
+                        isCurrentTargetProjectable = true; // Mark as projectable
+                    }
+                    // Screen center and size
+                    float halfMark = targetMarkerSize / 2f;
+                    if (isOnScreen)
+                    {
+                        // Draw Yellow 'X' at the current target's screen position
+                        AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow); // Use targetIndicatorColor?
+                        AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow); // Use targetIndicatorColor?
+
+                        // Draw Yellow line connecting the aiming PIP to the current target 'X'
+                        AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow); // Use targetIndicatorColor?
+                    }
                     // ***** AIMING CHECK *****
                     // Calculate distance between screen center (reticle) and pip center
-                    
+
                     // Optional: Add time-to-intercept text
                     // var timeText = MySprite.CreateText($"{timeToIntercept:F1}s", "Debug", Color.White, 0.5f, TextAlignment.CENTER);
                     // timeText.Position = pipScreenPos + new Vector2(0, pipBaseSize * 0.6f); // Position below pip
@@ -2176,8 +2425,261 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
             frame.Add(arrowSprite);
         }
     }
-    // Class-level PID variables
-    private float integralError = 0f;
+
+
+
+            // Class-level PID variables
+            // --- Add these constants somewhere accessible ---
+            const float RADAR_RANGE_METERS = 15000f; // How many meters the radar edge represents (adjust!)
+            const float RADAR_BOX_SIZE_PX = 100f;   // Size of the radar square in pixels (adjust!)
+            const float RADAR_BORDER_MARGIN = 10f;  // Margin from screen bottom-left (adjust!)
+
+            private void DrawTopDownRadar(
+                MySpriteDrawFrame frame,
+                IMyCockpit cockpit,
+                IMyTextSurface hud,
+                Vector3D targetPosition, // Only need target position for this
+                Color radarBgColor,
+                Color radarBorderColor,
+                Color playerColor,
+                Color targetColor, Vector3D targetPosition2, Vector3D targetPosition3, Vector3D targetPosition4, Vector3D targetPosition5
+            )
+            {
+                if (cockpit == null || hud == null) return; // Basic safety check
+
+                Vector2 surfaceSize = hud.SurfaceSize;
+
+                // --- 1. Define Radar Position and Dimensions ---
+                // Positioned at bottom-left corner (adjust as needed)
+                Vector2 radarOrigin = new Vector2(hud.SurfaceSize.X - hud.SurfaceSize.X * 0.2f -
+                    RADAR_BORDER_MARGIN,
+                    surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
+                );
+                Vector2 radarSize = new Vector2(RADAR_BOX_SIZE_PX, RADAR_BOX_SIZE_PX);
+                Vector2 radarCenter = radarOrigin + radarSize / 2f;
+                float radarRadius = RADAR_BOX_SIZE_PX / 2f;
+
+                // Border (using helper function or 4 lines)
+                DrawRectangleOutline(frame, radarOrigin.X- 5f, radarOrigin.Y-5f, radarSize.X+10f, radarSize.Y + 10f, 1f, radarBorderColor);
+
+
+                // --- 3. Draw Player Icon (Upward Arrow at Center) ---
+                var playerArrow = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = TEXTURE_TRIANGLE, // Assumes Triangle texture points 'up' by default
+                    Position = radarCenter,
+                    Size = new Vector2(radarRadius * 0.15f, radarRadius * 0.15f), // Adjust size as needed
+                    Color = playerColor,
+                    Alignment = TextAlignment.CENTER,
+                    RotationOrScale = 0 // Explicitly 0 rotation (points up screen = forward)
+                };
+                frame.Add(playerArrow);
+
+                // --- 4. Calculate Target Position Relative to Player ---
+                Vector3D shooterPosition = cockpit.GetPosition();
+                Vector3D targetVectorWorld = targetPosition - shooterPosition;
+
+                // --- NEW: Create a Yaw-Only Rotation Reference ---
+                // Get gravity vector to define the 'Up' direction for a stable horizontal plane.
+                Vector3D gravity = cockpit.GetNaturalGravity();
+                Vector3D worldUp;
+
+                // If near zero gravity (in space), fallback might be needed.
+                // Using the cockpit's current Up might work if not rolling heavily,
+                // but gravity is preferred for a true top-down view relative to a planet/station.
+                if (gravity.LengthSquared() < 0.01)
+                {
+                    // Fallback for space: Use the cockpit's current Up vector.
+                    // Note: This radar view will rotate if the ship rolls.
+                    worldUp = cockpit.WorldMatrix.Up;
+                    // Alternative fallback: Assume world Y is up (Vector3D.Up) - might be inconsistent.
+                    // worldUp = Vector3D.Up;
+                }
+                else
+                {
+                    // Use negative gravity direction as the world's 'Up'.
+                    worldUp = Vector3D.Normalize(-gravity);
+                }
+
+                // Get the cockpit's forward direction
+                Vector3D shipForward = cockpit.WorldMatrix.Forward;
+
+                // Project the ship's forward vector onto the horizontal plane (defined by worldUp)
+                // This gives the direction the ship is heading, ignoring pitch.
+                Vector3D yawForward = Vector3D.Normalize(Vector3D.Reject(shipForward, worldUp));
+
+                // Handle rare case where ship might be pointing exactly up or down
+                if (!yawForward.IsValid() || yawForward.LengthSquared() < 0.1)
+                {
+                    // If pointing straight up/down, use ship's right vector projected instead,
+                    // as forward projection is zero. Then derive forward from that right.
+                    Vector3D shipRightProjected = Vector3D.Normalize(Vector3D.Reject(cockpit.WorldMatrix.Right, worldUp));
+                    if (!shipRightProjected.IsValid() || shipRightProjected.LengthSquared() < 0.1)
+                    {
+                        // Extremely rare edge case (e.g., matrix invalid). Default to cockpit forward.
+                        yawForward = shipForward;
+                    }
+                    else
+                    {
+                        yawForward = Vector3D.Cross(shipRightProjected, worldUp); // Calculate forward from horizontal right and up
+                    }
+
+                }
+
+
+                // Calculate the horizontal 'Right' vector
+                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp); // Note: Cross order matters for RH coordinate system
+
+                // Create a rotation matrix representing only the ship's yaw (horizontal heading)
+                // We only need the inverse (Transpose) to go from World to this Yaw-Local space.
+                MatrixD yawMatrix = MatrixD.Identity;
+                yawMatrix.Forward = yawForward;
+                yawMatrix.Right = yawRight;
+                yawMatrix.Up = worldUp; // Use the consistent worldUp
+
+                MatrixD worldToYawPlaneMatrix = MatrixD.Transpose(yawMatrix);
+                Vector3D targetVectorWorld2 = targetPosition2 - shooterPosition;
+                Vector3D targetVectorWorld3 = targetPosition3 - shooterPosition;
+                Vector3D targetVectorWorld4 = targetPosition4 - shooterPosition;
+                Vector3D targetVectorWorld5 = targetPosition5 - shooterPosition;
+
+                // Transform the world target vector into this Yaw-Local space
+                Vector3D targetVectorYawLocal = Vector3D.TransformNormal(targetVectorWorld, worldToYawPlaneMatrix);
+                Vector3D targetVectorYawLocal2 = Vector3D.TransformNormal(targetVectorWorld2, worldToYawPlaneMatrix);
+                Vector3D targetVectorYawLocal3 = Vector3D.TransformNormal(targetVectorWorld3, worldToYawPlaneMatrix);
+                Vector3D targetVectorYawLocal4 = Vector3D.TransformNormal(targetVectorWorld4, worldToYawPlaneMatrix);
+                Vector3D targetVectorYawLocal5 = Vector3D.TransformNormal(targetVectorWorld5, worldToYawPlaneMatrix);
+
+                // --- 5. Map Yaw-Local Horizontal Coordinates to Radar Screen Coordinates ---
+                // targetVectorYawLocal.X = Right/Left relative to HORIZONTAL heading
+                // targetVectorYawLocal.Z = Forward/Backward relative to HORIZONTAL heading
+
+                float pixelsPerMeter = radarRadius / RADAR_RANGE_METERS;
+
+                // Calculate raw position on radar (relative to radar center)
+                // Use the components from the Yaw-Local vector now.
+                // Adjust the sign for Z based on previous testing (if necessary)
+                Vector2 targetOffset = new Vector2(
+                    (float)targetVectorYawLocal.X * pixelsPerMeter,
+                    (float)targetVectorYawLocal.Z * pixelsPerMeter  // Use the Z component from the yaw-local vector
+                                                                    // Keep the sign consistent with the fix from before.
+                                                                    // If targets were front/back correct before, leave this sign.
+                );
+                Vector2 targetOffset2 = new Vector2(
+    (float)targetVectorYawLocal2.X * pixelsPerMeter,
+    (float)targetVectorYawLocal2.Z * pixelsPerMeter  // Use the Z component from the yaw-local vector
+                                                    // Keep the sign consistent with the fix from before.
+                                                    // If targets were front/back correct before, leave this sign.
+); Vector2 targetOffset3 = new Vector2(
+                    (float)targetVectorYawLocal3.X * pixelsPerMeter,
+                    (float)targetVectorYawLocal3.Z * pixelsPerMeter  // Use the Z component from the yaw-local vector
+                                                                    // Keep the sign consistent with the fix from before.
+                                                                    // If targets were front/back correct before, leave this sign.
+                ); Vector2 targetOffset4 = new Vector2(
+                    (float)targetVectorYawLocal4.X * pixelsPerMeter,
+                    (float)targetVectorYawLocal4.Z * pixelsPerMeter  // Use the Z component from the yaw-local vector
+                                                                    // Keep the sign consistent with the fix from before.
+                                                                    // If targets were front/back correct before, leave this sign.
+                ); Vector2 targetOffset5 = new Vector2(
+                    (float)targetVectorYawLocal5.X * pixelsPerMeter,
+                    (float)targetVectorYawLocal5.Z * pixelsPerMeter  // Use the Z component from the yaw-local vector
+                                                                    // Keep the sign consistent with the fix from before.
+                                                                    // If targets were front/back correct before, leave this sign.
+                );
+                Vector2 targetRadarPos = radarCenter + targetOffset;
+                Vector2 targetRadarPos2 = radarCenter + targetOffset2;
+                Vector2 targetRadarPos3 = radarCenter + targetOffset3;
+                Vector2 targetRadarPos4 = radarCenter + targetOffset4;
+                Vector2 targetRadarPos5 = radarCenter + targetOffset5;
+
+                // --- 6. Clamp Target Icon to Radar Edge if Outside Range ---
+                // (Clamping logic remains the same, using the calculated targetOffset)
+                float distFromCenter = targetOffset.Length();
+                if (distFromCenter > radarRadius)
+                {
+                    // Handle division by zero if offset is zero length somehow
+                    if (distFromCenter > 1e-6)
+                    {
+                        targetOffset /= distFromCenter; // Normalize (more efficient than Vector2.Normalize())
+                    }
+                    targetOffset *= radarRadius; // Scale to edge distance
+                    targetRadarPos = radarCenter + targetOffset; // Clamp to edge
+                }
+
+                // --- 7. Draw Target Icon ---
+                // Ensure target position is valid before drawing
+
+
+                if (targetRadarPos2.IsValid())
+                {
+                    var targetIcon2 = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_SQUARE, // Simple circle for target
+                        Position = targetRadarPos2,
+                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
+                        Color = Color.DarkGreen,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(targetIcon2);
+                }
+                if (targetRadarPos3.IsValid())
+                {
+                    var targetIcon3 = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_SQUARE, // Simple circle for target
+                        Position = targetRadarPos3,
+                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
+                        Color = Color.DarkGreen,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(targetIcon3);
+                }
+                if (targetRadarPos4.IsValid())
+                {
+                    var targetIcon4 = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_SQUARE, // Simple circle for target
+                        Position = targetRadarPos4,
+                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
+                        Color = Color.DarkGreen,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(targetIcon4);
+                }
+                if (targetRadarPos5.IsValid())
+                {
+                    var targetIcon5 = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_SQUARE, // Simple circle for target
+                        Position = targetRadarPos5,
+                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
+                        Color = Color.DarkGreen,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(targetIcon5);
+                }
+                if (targetRadarPos.IsValid())
+                {
+                    var targetIcon = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_SQUARE, // Simple circle for target
+                        Position = targetRadarPos,
+                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
+                        Color = targetColor,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(targetIcon);
+                }
+            }
+
+
+            private float integralError = 0f;
             private float previousError = 0f;
             const float PILOT_INPUT_DEADZONE = 0.001f;
             int pidResumeDelayCounter = 0; // Renamed for clarity
@@ -2185,9 +2687,9 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
             bool wasPilotInputActive = false; // Flag to track transition
 
             // PID constants (Consider loading these once in constructor or setup method)
-            private float Kp = 2f;
+            private float Kp = 1.2f;
             private float Ki = 0.0024f;
-            private float Kd = 1f;
+            private float Kd = 0.5f;
 
             // PID limits
             private const float MaxPIDOutput = 60f;
@@ -2537,13 +3039,10 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     DrawLeftInfoBox(
                         frame,
                         smoothedVelocity,
-                        centerX,
-                        centerY,
+                        centerX+30f,
+                        centerY + centerY * 1.85f,
                         pixelsPerDegree,
-                        new LabelValue("T", myjet.offset),
-                        new LabelValue("kph", myjet.GetVelocity()),
-                        new LabelValue("aoa", aoa),
-                        new LabelValue("trim", currentTrim)
+                        new LabelValue("T", myjet.offset)                        
                     );
                     DrawFlightInfo(
                         frame,
@@ -2555,11 +3054,10 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                         smoothedThrottle,
                         mach
                     );
-
+                    DrawSpeedIndicatorF18StyleKph(frame, velocityKPH);
                     //DrawArtificialHorizon(frame, (float)pitch, (float)roll);
-
-                    DrawRadar(frame, myjet,centerX - centerX * 0.85f,
-                        centerY + centerY * 0.1f, 70, 30,
+                    DrawRadar(frame, myjet,centerX - centerX * 0.70f,
+                        centerY + centerY * 0.75f, 70, 30,
                         pixelsPerDegree);
                     DrawCompass(frame, heading);
                     DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
@@ -2570,11 +3068,28 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     var cachedData = ParentProgram.Me.CustomData
                         .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
                         .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
+                    var cachedData2 = ParentProgram.Me.CustomData
+                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .FirstOrDefault(line => line.StartsWith("CacheGPS0:GPS:"));
+                    var cachedData3 = ParentProgram.Me.CustomData
+    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+    .FirstOrDefault(line => line.StartsWith("CacheGPS1:GPS:"));
+                    var cachedData4 = ParentProgram.Me.CustomData
+    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+    .FirstOrDefault(line => line.StartsWith("CacheGPS2:GPS:"));
+                    var cachedData5 = ParentProgram.Me.CustomData
+    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+    .FirstOrDefault(line => line.StartsWith("CacheGPS3:GPS:"));
                     if (cachedData == null)
                     {
                         return;
                     }
                     var parts = cachedData.Split(':');
+                    var parts2 = cachedData2.Split(':');
+                    var parts3 = cachedData3.Split(':');
+                    var parts4 = cachedData4.Split(':');
+                    var parts5 = cachedData5.Split(':');
+
                     if (parts.Length < 6)
                     {
                         return;
@@ -2582,11 +3097,55 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     double tarx,
                         tary,
                         tarz;
+                    double tarx2,
+    tary2,
+    tarz2;
+                    double tarx3,
+    tary3,
+    tarz3;
+                    double tarx4,
+    tary4,
+    tarz4;
+                    double tarx5,
+    tary5,
+    tarz5;
                     if (
                         !double.TryParse(parts[3], out tarx)
                         || !double.TryParse(parts[4], out tary)
                         || !double.TryParse(parts[5], out tarz)
                     )
+                    {
+                        return;
+                    }
+                    if (
+    !double.TryParse(parts2[3], out tarx2)
+    || !double.TryParse(parts2[4], out tary2)
+    || !double.TryParse(parts2[5], out tarz2)
+)
+                    {
+                        return;
+                    }
+                    if (
+    !double.TryParse(parts3[3], out tarx3)
+    || !double.TryParse(parts3[4], out tary3)
+    || !double.TryParse(parts3[5], out tarz3)
+)
+                    {
+                        return;
+                    }
+                    if (
+    !double.TryParse(parts4[3], out tarx4)
+    || !double.TryParse(parts4[4], out tary4)
+    || !double.TryParse(parts4[5], out tarz4)
+)
+                    {
+                        return;
+                    }
+                    if (
+    !double.TryParse(parts5[3], out tarx5)
+    || !double.TryParse(parts5[4], out tary5)
+    || !double.TryParse(parts5[5], out tarz5)
+)
                     {
                         return;
                     }
@@ -2610,6 +3169,14 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                         return;
                     }
                     Vector3D targetPosition = new Vector3D(tarx, tary, tarz); // Replace with actual target GPS
+                    Vector3D targetPosition2 = new Vector3D(tarx2, tary2, tarz2); // Replace with actual target GPS
+
+                    Vector3D targetPosition3 = new Vector3D(tarx3, tary3, tarz3); // Replace with actual target GPS
+
+                    Vector3D targetPosition4 = new Vector3D(tarx4, tary4, tarz4); // Replace with actual target GPS
+
+                    Vector3D targetPosition5 = new Vector3D(tarx5, tary5, tarz5); // Replace with actual target GPS
+
                     Vector3D targetVelocity = new Vector3D(speex, speey, speez); // Replace with actual target speed
                     Vector3D shooterPosition = cockpit.GetPosition(); // Your ship's current position
                     double muzzleVelocity = 910; // Muzzle velocity of your weapon in m/s
@@ -2617,6 +3184,7 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     Vector3D shooterForwardDirection = cockpit.WorldMatrix.Forward;
                     Vector3D projectileInitialVelocity =
                         currentVelocity + muzzleVelocity * shooterForwardDirection;
+                    DrawTopDownRadar(frame, cockpit, hud, targetPosition, Color.White, Color.Lime, Color.Yellow, Color.Red, targetPosition2, targetPosition3, targetPosition4, targetPosition5);
 
                     // Call the DrawLeadingPip function
                     DrawLeadingPip(
@@ -2626,8 +3194,9 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                         shooterPosition,
                         currentVelocity, 
                         muzzleVelocity,
-                        gravityDirection, Color.Red, Color.Yellow, Color.Black, Color.White
+                        gravityDirection, Color.Red, Color.Yellow, Color.HotPink, Color.White
                     );
+       
                 }
             }
             private void DrawGForceIndicator(
@@ -2854,20 +3423,23 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     {
                         bool isMajorTick = Math.Abs(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f); // Tolerance relative to tick interval
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
-
-                        // Draw Tick Mark (line pointing left from the tape line)
-                        var tickMark = new MySprite()
+                        if(altMark >= 0)
                         {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
-                            Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
-                            Color = hudColor,
-                            Alignment = TextAlignment.CENTER // Align to its center
-                        };
-                        // Clamp tick position to tape bounds vertically if needed (optional aesthetic)
-                        // tickMark.Position = new Vector2(tickMark.Position.Value.X, MathHelper.Clamp(yPos, tapeTopY, tapeBottomY));
-                        frame.Add(tickMark);
+                            // Draw Tick Mark (line pointing left from the tape line)
+                            var tickMark = new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
+                                Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
+                                Color = hudColor,
+                                Alignment = TextAlignment.CENTER // Align to its center
+                            };
+                            // Clamp tick position to tape bounds vertically if needed (optional aesthetic)
+                            // tickMark.Position = new Vector2(tickMark.Position.Value.X, MathHelper.Clamp(yPos, tapeTopY, tapeBottomY));
+                            frame.Add(tickMark);
+                        }
+
 
                         // Draw Number for Major Ticks
                         if (isMajorTick)
@@ -2925,6 +3497,151 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
 
                 
             }
+            const float SPEED_MAJOR_TICK_INTERVAL = 50f;   // KPH between major ticks and numbers (e.g., every 100 KPH)
+            const float SPEED_TICK_INTERVAL = 25f;          // KPH between minor ticks (e.g., every 20 KPH)
+            const float SPEED_KPH_UNITS_PER_TAPE_HEIGHT = 600f; // How many KPH the full tape height represents (e.g., 500 KPH)
+            private void DrawSpeedIndicatorF18StyleKph(MySpriteDrawFrame frame, double currentSpeedKph)
+            {
+                // --- 1. Ensure Speed is Non-Negative (Optional) ---
+                currentSpeedKph = Math.Max(0, currentSpeedKph); // Speed is typically non-negative
+                const float PIXELS_PER_SPEED_UNIT = 800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT; // Pixels per KPH
+                // --- 2. Define Positions & Sizes (Mirrored to Left) ---
+                float screenWidth = hud.SurfaceSize.X; // Assuming 'hud' is your IMyTextSurface
+                float screenHeight = hud.SurfaceSize.Y;
+                float centerY = screenHeight / 2.25f;
+
+                // Left side positioning
+                float tapeLeftMargin = 10f;          // Margin from the left edge
+                float tapeNumberMargin = 10f;      // Space between tape line and numbers
+                float tapeWidth = 2f;              // Width of the main tape line
+                float tickLength = 10f;            // Length of the minor tick marks
+                float majorTickLength = 15f;       // Length of major tick marks
+
+                float tapeLineX = tapeLeftMargin;     // X position of the main vertical tape line (at the left margin)
+                float digitalSpeedBoxWidth = 80f;
+                float digitalSpeedBoxHeight = 30f;
+                // Position box to the right of the tape line
+                float digitalSpeedBoxX = tapeLineX + tapeNumberMargin;
+
+                // --- 3. Draw Speed Tape ---
+                // Draw main vertical line
+                var tapeLine = new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(tapeLineX, centerY),
+                    Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
+                    Color = hudColor,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(tapeLine);
+
+                // Draw Ticks and Numbers
+                float tapeTopSpeed = (float)currentSpeedKph + (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
+                float tapeBottomSpeed = (float)currentSpeedKph - (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
+                tapeBottomSpeed = Math.Max(0, tapeBottomSpeed); // Don't let tape go below 0 KPH visually
+
+                // Determine the first tick mark value to draw above the bottom
+                float startTickSpeed = (float)(Math.Floor(tapeBottomSpeed / SPEED_TICK_INTERVAL) * SPEED_TICK_INTERVAL);
+                if (startTickSpeed < tapeBottomSpeed) // Ensure we start at or above the bottom
+                    startTickSpeed += SPEED_TICK_INTERVAL;
+                startTickSpeed = Math.Max(0, startTickSpeed); // Start drawing from 0 KPH if necessary
+
+
+                for (float speedMark = startTickSpeed; speedMark <= tapeTopSpeed + (SPEED_TICK_INTERVAL * 0.5f); speedMark += SPEED_TICK_INTERVAL)
+                {
+                    // Prevent potential infinite loops with float inaccuracies if interval is 0 or negative
+                    if (SPEED_TICK_INTERVAL <= 0) break;
+                    // Don't draw negative speed marks explicitly (already handled by starting at >= 0)
+                    if (speedMark < 0) continue;
+
+                    // Calculate Y position relative to the center based on speed difference
+                    float yOffset = (float)(currentSpeedKph - speedMark) * PIXELS_PER_SPEED_UNIT;
+                    float yPos = centerY + yOffset;
+
+                    // Check if the tick is within the visible tape area (add small buffer)
+                    float tapeTopY = centerY - TAPE_HEIGHT_PIXELS / 2f;
+                    float tapeBottomY = centerY + TAPE_HEIGHT_PIXELS / 2f;
+
+                    if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
+                    {
+                        // Use tolerance for floating point comparison for major ticks
+                        bool isMajorTick = Math.Abs(speedMark % SPEED_MAJOR_TICK_INTERVAL) < (SPEED_TICK_INTERVAL * 0.1f);
+                        // Treat 0 KPH as a major tick if it's not already covered
+                        if (Math.Abs(speedMark) < (SPEED_TICK_INTERVAL * 0.1f)) isMajorTick = true;
+
+                        float currentTickLength = isMajorTick ? majorTickLength : tickLength;
+
+                        // Draw Tick Mark (line pointing right from the tape line)
+                        var tickMark = new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            // Position its center at (tapeLineX + half its length, yPos)
+                            Position = new Vector2(tapeLineX + currentTickLength / 2f, yPos),
+                            Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
+                            Color = hudColor,
+                            Alignment = TextAlignment.CENTER
+                        };
+                        frame.Add(tickMark);
+
+                        // Draw Number for Major Ticks
+                        if (isMajorTick)
+                        {
+                            string speedText = speedMark.ToString("F0"); // Format speed number (integer KPH)
+                            var numberLabel = new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = speedText,
+                                // Position right of the tick mark
+                                Position = new Vector2(tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f), // Adjust Y offset for vertical centering
+                                RotationOrScale = 0.5f, // Font size for tape numbers
+                                Color = hudColor,
+                                Alignment = TextAlignment.LEFT, // Align text to the left, starting after the margin
+                                FontId = FONT
+                            };
+                            frame.Add(numberLabel);
+                        }
+                    }
+                }
+
+                // --- 4. Draw Digital Speed Readout ---
+                // Box (optional) - Positioned to the right of the tape
+                // Draw outline using lines or a box sprite
+                DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, hudColor); // Adjust Y offset as needed
+
+                // Speed Text
+                string currentSpeedText = currentSpeedKph.ToString("F0"); // Integer KPH
+                var speedLabel = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = currentSpeedText,
+                    // Centered within the conceptual box area
+                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f ), // Adjust Y pos to be centered in the drawn box
+                    RotationOrScale = 0.8f, // Main font size
+                    Color = hudColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                };
+                frame.Add(speedLabel);
+
+                // --- 5. Draw Caret ---
+                // Caret pointing from the box towards the tape line on the left
+                var caret = new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = ">", // Caret points towards the tape
+                                // Position just left of the digital readout box, aligned vertically with the center
+                    Position = new Vector2(digitalSpeedBoxX - 10f, centerY - 7.5f), // Adjust X offset as needed
+                    RotationOrScale = 0.5f,
+                    Color = hudColor,
+                    Alignment = TextAlignment.RIGHT, // Align right so it ends just before the box
+                    FontId = FONT
+                };
+                frame.Add(caret);
+            }
+
+
 
 
             // Helper function to draw a rectangle outline using lines (if needed)
@@ -3215,40 +3932,7 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                 // Define the size and color of the tick marks
                 Color tickColor = Color.Yellow; // Color of the tick marks
                 float filledHeighttick = barHeight * throttle;
-                for (int i = 0; i <= numberOfTicks; i++)
-                {
-                    // Calculate the position for each tick
-                    float percent = i / (float)numberOfTicks;
-                    float xPosition = boxTopLeft.X + (percent * boxSize.X); // Adjust based on your coordinate system
-                    Vector2 filledSizetick = new Vector2(
-                        maxWidth * 100,
-                        barHeight * percent * boxSize.Y * 1.25f
-                    );
-
-                    // Depending on the orientation of your throttle bar, adjust the tick position
-                    // Here, assuming horizontal throttle bar
-                    frame.Add(
-                        new MySprite()
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = "----", // Tick mark
-                            Position =
-                                boxTopLeft
-                                + new Vector2(
-                                    0,
-                                    (
-                                        boxSize.Y
-                                        - boxPadding / 33
-                                        - lineThickness / 2
-                                        - filledSizetick.Y
-                                    ) - 3
-                                ),
-                            FontId = "Debug", // Use an appropriate font
-                            RotationOrScale = 0.2f,
-                            Color = tickColor
-                        }
-                    );
-                }
+               
             }
 
             private void DrawFlightPathMarker(
@@ -3581,7 +4265,7 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                 {
                     Type = SpriteType.TEXT,
                     Data = "Tar:" + targetName,
-                    Position = new Vector2(boxCenterX + boxCenterX * 1f, boxCenterY + halfHeight * 1.5f),
+                    Position = new Vector2(boxCenterX + 30f, boxCenterY - 40f),
                     RotationOrScale = 0.75f,
                     Color = Color.Lime,
                     Alignment = TextAlignment.RIGHT,
@@ -3708,33 +4392,6 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                     // For a “V,” use ±45° angles. Negative pitch inverts the direction
                     float tipAngle = MathHelper.ToRadians(isPositive ? 45f : -45f);
 
-                    // Left tip
-                    sprites.Add(
-                        new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(centerX - halfWidth, markerY),
-                            Size = new Vector2(tipLength, tipThickness),
-                            Color = lineColor,
-                            Alignment = TextAlignment.CENTER,
-                            RotationOrScale = tipAngle
-                        }
-                    );
-                    // Right tip
-                    sprites.Add(
-                        new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(centerX + halfWidth, markerY),
-                            Size = new Vector2(tipLength, tipThickness),
-                            Color = lineColor,
-                            Alignment = TextAlignment.CENTER,
-                            RotationOrScale = -tipAngle
-                        }
-                    );
-
                     // 3) PITCH LABELS
                     string label = Math.Abs(i).ToString();
                     float labelOffsetX = halfWidth + tipLength + 10f; // a bit to the outside
@@ -3746,7 +4403,7 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                         {
                             Type = SpriteType.TEXT,
                             Data = label,
-                            Position = new Vector2(centerX - labelOffsetX, markerY + labelOffsetY),
+                            Position = new Vector2(centerX - labelOffsetX, markerY + 10f),
                             RotationOrScale = 0.8f,
                             Color = lineColor,
                             Alignment = TextAlignment.RIGHT,
@@ -3759,7 +4416,7 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
                         {
                             Type = SpriteType.TEXT,
                             Data = label,
-                            Position = new Vector2(centerX + labelOffsetX, markerY + labelOffsetY),
+                            Position = new Vector2(centerX + labelOffsetX, markerY + 10f),
                             RotationOrScale = 0.8f,
                             Color = lineColor,
                             Alignment = TextAlignment.LEFT,
@@ -3843,105 +4500,111 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
 
             private void DrawCompass(MySpriteDrawFrame frame, double heading)
             {
-                float centerX = hud.SurfaceSize.X / 2;
-                float compassY = 40f;
-                float compassWidth = hud.SurfaceSize.X * 0.9f;
-                float compassHeight = 40f;
+                // --- Configuration ---
+                float centerX = hud.SurfaceSize.X / 2f;
+                float compassY = 40f; // Vertical position of the compass center
+                float compassWidth = hud.SurfaceSize.X * 0.9f; // How wide the compass bar is on screen
+                float compassHeight = 30f; // Height of the background bar
+                float viewAngle = 90f;    // The total field of view the compass bar represents (e.g., 90 degrees)
+                float halfViewAngle = viewAngle / 2f;
+                int increment = 20;      // Degrees between each marker drawn
 
-                float headingScale = compassWidth / 90f; // Pixels per degree over a 90-degree field of view
+                // Scale: Pixels per degree across the visible compass width
+                float headingScale = compassWidth / viewAngle;
 
-                // Background for the compass
-                var compassBg = new MySprite()
+
+                ParentProgram.Echo($"DrawCompass Heading: {heading:F2}");
+                // --- Markers and Labels ---
+                // Iterate through possible headings.
+                // The loop still iterates 360/increment times, but drawing only happens for visible markers.
+                for (int markerHeading = 0; markerHeading < 360; markerHeading += increment)
                 {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(centerX, compassY),
-                    Size = new Vector2(compassWidth, compassHeight),
-                    Color = new Color(0, 0, 0, 150), // Semi-transparent black
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(compassBg);
-
-                // Loop over all compass headings in 5-degree increments
-                for (int markerHeading = 0; markerHeading < 360; markerHeading += 5)
-                {
+                    // Calculate the difference between the marker and the current heading.
+                    // Normalize the difference to be between -180 and 180 degrees.
+                    // Example: If heading = 10, marker = 350, delta = -20. If heading = 350, marker = 10, delta = 20.
                     double deltaHeading = ((markerHeading - heading + 540) % 360) - 180;
 
-                    if (deltaHeading >= -45 && deltaHeading <= 45)
+                    // Check if the marker falls within the visible range (-halfViewAngle to +halfViewAngle).
+                    if (deltaHeading >= -halfViewAngle && deltaHeading <= halfViewAngle)
                     {
+                        // Calculate the horizontal screen position for this marker.
                         float markerX = centerX + (float)deltaHeading * headingScale;
-                        float markerHeight =
-                            (markerHeading % 10 == 0) ? compassHeight * 0.6f : compassHeight * 0.4f;
-                        Color markerColor = (markerHeading % 90 == 0) ? Color.Green : Color.Lime;
 
-                        // Draw the marker line
+                        // Determine properties based on whether it's a cardinal/inter-cardinal direction.
+                        bool isMajorTick = (markerHeading % 90 == 0);
+
+                        // Use taller lines for major ticks (N, E, S, W).
+                        float markerLineHeight = isMajorTick ? compassHeight * 0.7f : compassHeight * 0.4f;
+                        // Use distinct colors for major ticks.
+                        Color markerColor = isMajorTick ? Color.Green : Color.Lime;
+
+                        // --- Draw Marker Line ---
+                        // One draw call per visible marker line.
                         var markerLine = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(markerX, compassY),
-                            Size = new Vector2(2, markerHeight),
+                            Data = "SquareSimple", // Use a 1x1 white pixel texture if possible, stretched
+                            Position = new Vector2(markerX, compassY), // Centered vertically on the background
+                            Size = new Vector2(2f, markerLineHeight), // Thin line
                             Color = markerColor,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = TextAlignment.CENTER // Center the line sprite at (markerX, compassY)
                         };
                         frame.Add(markerLine);
 
-                        // Draw text for major markers
-                        if (markerHeading % 10 == 0)
-                        {
-                            string label =
-                                (markerHeading % 90 == 0)
-                                    ? GetCompassDirection(markerHeading)
-                                    : markerHeading.ToString();
-                            Color textColor = (markerHeading % 90 == 0) ? Color.Green : Color.Lime;
+                        // --- Draw Text Label ---
+                        // Get the appropriate label (e.g., "N", "E", "S", "W" or the degree number).
+                        string label = isMajorTick ? GetCompassDirection(markerHeading) : markerHeading.ToString();
+                        float textScale = 0.7f; // Adjust text size
 
-                            var markerText = new MySprite()
-                            {
-                                Type = SpriteType.TEXT,
-                                Data = label,
-                                Position = new Vector2(markerX, compassY + compassHeight / 2),
-                                RotationOrScale = 0.8f,
-                                Color = textColor,
-                                Alignment = TextAlignment.CENTER,
-                                FontId = "White"
-                            };
-                            frame.Add(markerText);
-                        }
+                        // One draw call per visible marker label.
+                        var markerText = new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = label,
+                            // Position text just below the compass bar for clarity
+                            Position = new Vector2(markerX, compassY + compassHeight / 2f + 5f), // Offset below the bar
+                            RotationOrScale = textScale,
+                            Color = markerColor, // Match the line color
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White" // Or your preferred font
+                        };
+                        frame.Add(markerText);
                     }
                 }
 
-                // Add the heading indicator (Yellow Triangle)
+                // --- Heading Indicator ---
+                // A single, fixed indicator showing the center (current heading). One draw call.
                 var headingIndicator = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "Triangle",
-                    Position = new Vector2(centerX, compassY - 20),
-                    Size = new Vector2(14, 10), // Slightly larger for better visibility
+                    Data = "Triangle", // Assumes a triangle texture pointing up by default
+                                       // Position it above the center of the compass bar
+                    Position = new Vector2(centerX, compassY - compassHeight / 2f - 6f), // Adjust Y pos slightly above
+                    Size = new Vector2(12f, 10f), // Adjust size as needed
                     Color = Color.Yellow,
                     Alignment = TextAlignment.CENTER,
+                    // Rotate it 180 degrees (PI radians) to point down
                     RotationOrScale = (float)Math.PI
                 };
                 frame.Add(headingIndicator);
             }
 
+            // --- Compass Direction Helper (Unchanged) ---
+            // Kept exactly as you provided it.
             private string GetCompassDirection(double heading)
             {
-                if (heading >= 337.5 || heading < 22.5)
-                    return "N";
-                else if (heading >= 22.5 && heading < 67.5)
-                    return "NE";
-                else if (heading >= 67.5 && heading < 112.5)
-                    return "E";
-                else if (heading >= 112.5 && heading < 157.5)
-                    return "SE";
-                else if (heading >= 157.5 && heading < 202.5)
-                    return "S";
-                else if (heading >= 202.5 && heading < 247.5)
-                    return "SW";
-                else if (heading >= 247.5 && heading < 292.5)
-                    return "W";
-                else
-                    return "NW";
+                // Normalize heading to be within [0, 360) - Handles potential negative inputs if needed, though current loop avoids it.
+                // heading = (heading % 360 + 360) % 360;
+
+                // Your original logic - works correctly for cardinal/intercardinal points.
+                if (heading >= 337.5 || heading < 22.5) return "N";  // 0
+                else if (heading >= 22.5 && heading < 67.5) return "NE"; // 45
+                else if (heading >= 67.5 && heading < 112.5) return "E";  // 90
+                else if (heading >= 112.5 && heading < 157.5) return "SE"; // 135
+                else if (heading >= 157.5 && heading < 202.5) return "S";  // 180
+                else if (heading >= 202.5 && heading < 247.5) return "SW"; // 225
+                else if (heading >= 247.5 && heading < 292.5) return "W";  // 270
+                else return "NW"; // 315 (covers 292.5 to 337.5)
             }
 
             private void DrawRollIndicator(MySpriteDrawFrame frame, float roll)
@@ -6092,36 +6755,85 @@ const int INTERCEPT_ITERATIONS = 3; // Number of iterations for ballistic calcul
         {
             public static double CalculateHeading(IMyCockpit cockpit)
             {
-                if (cockpit == null || cockpit == null)
-                    return 0;
+                if (cockpit == null) return 0;
 
-                Vector3D forwardVector = cockpit.WorldMatrix.Forward;
+                // 1. Define World Up direction (opposite to gravity or World Y+)
                 Vector3D gravity = cockpit.GetNaturalGravity();
-                Vector3D gravityDir =
-                    gravity.LengthSquared() == 0
-                        ? cockpit.WorldMatrix.Down
-                        : Vector3D.Normalize(gravity);
+                Vector3D worldUp;
+                bool hasGravity = gravity.LengthSquared() > 1e-6; // Add tolerance
 
-                // Project forwardVector onto the horizontal plane defined by gravityDir
-                Vector3D forwardProjected = Vector3D.Reject(forwardVector, gravityDir);
+                if (hasGravity)
+                {
+                    worldUp = -Vector3D.Normalize(gravity);
+                }
+                else
+                {
+                    // No natural gravity: Use world Y+ as Up reference.
+                    // You might adjust this based on desired zero-G compass behavior (e.g., use grid's Up).
+                    worldUp = Vector3D.Up; // World Y+
+                }
 
-                if (forwardProjected.LengthSquared() == 0)
+                // 2. Get Cockpit's Forward Direction
+                Vector3D forwardVector = cockpit.WorldMatrix.Forward;
+
+                // 3. Project Forward onto the Horizontal Plane (perpendicular to worldUp)
+                Vector3D forwardHorizontal = Vector3D.Reject(forwardVector, worldUp);
+
+                // Check if projected vector is too small (pointing nearly straight up/down)
+                if (forwardHorizontal.LengthSquared() < 1e-8) // Use a small tolerance
+                {
+                    // Heading is undefined when looking straight up or down relative to worldUp.
+                    // Return 0, or potentially previous heading, or derive from Right vector.
                     return 0;
+                }
+                forwardHorizontal.Normalize(); // Ensure it's a unit vector
 
-                forwardProjected = Vector3D.Normalize(forwardProjected);
+                // 4. Define World North and East on the Horizontal Plane
+                // Assumes World Z- is global North direction reference.
+                Vector3D worldNorthRef = new Vector3D(0, 0, -1);
 
-                Vector3D northVector = new Vector3D(0, 0, -1); // Assuming Z- is North
-                double headingRadians = Math.Acos(
-                    MathHelper.Clamp(Vector3D.Dot(northVector, forwardProjected), -1.0, 1.0)
-                );
+                // Project world North onto the horizontal plane
+                Vector3D northHorizontal = Vector3D.Reject(worldNorthRef, worldUp);
+                Vector3D eastHorizontal;
+                // Handle edge case: If worldUp is aligned with worldNorthRef (e.g., at poles)
+                if (northHorizontal.LengthSquared() < 1e-8)
+                {
+                    // North is ambiguous, use world East (X+) as primary reference instead
+                    Vector3D worldEastRef = new Vector3D(1, 0, 0);
+                    eastHorizontal = Vector3D.Normalize(Vector3D.Reject(worldEastRef, worldUp));
+                    // Define horizontal North as 90 degrees left of horizontal East
+                    northHorizontal = Vector3D.Cross(worldUp, eastHorizontal);
+                    // No need to normalize northHorizontal if worldUp and eastHorizontal are unit/orthogonal
+                }
+                else
+                {
+                    northHorizontal.Normalize();
+                    eastHorizontal = eastHorizontal = Vector3D.Cross(northHorizontal, worldUp);
 
-                // Determine the sign of the heading
-                if (Vector3D.Dot(Vector3D.Cross(northVector, forwardProjected), gravityDir) < 0)
-                    headingRadians = -headingRadians;
+                }
 
+
+                // Horizontal East is perpendicular to horizontal North and world Up
+
+                // eastHorizontal should already be normalized if worldUp and northHorizontal are unit/orthogonal.
+
+                // 5. Calculate Components & Angle with Atan2
+                // Get the coordinates of forwardHorizontal relative to the North/East horizontal axes
+                double northComponent = Vector3D.Dot(forwardHorizontal, northHorizontal);
+                double eastComponent = Vector3D.Dot(forwardHorizontal, eastHorizontal);
+
+                // Atan2(y, x) gives the angle counter-clockwise from the positive X-axis.
+                // We want the angle from North (northComponent) towards East (eastComponent).
+                // So, Y = East component, X = North component.
+                double headingRadians = Math.Atan2(eastComponent, northComponent);
+
+                // 6. Convert to Degrees [0, 360)
                 double headingDegrees = MathHelper.ToDegrees(headingRadians);
                 if (headingDegrees < 0)
-                    headingDegrees += 360;
+                {
+                    headingDegrees += 360.0;
+                }
+
                 return headingDegrees;
             }
         }
