@@ -39,13 +39,10 @@ namespace IngameScript
 
             try
             {
-                // Call the main method of the SystemManager class, passing the argument and updateSource.
                 SystemManager.Main(argument, updateSource);
             }
             catch (Exception e)
             {
-                // If an exception occurs, print the exception message to the programmable block's terminal.
-                Echo($"Error: {e.Message}");
                 SystemManager.Initialize(this);
             }
         }
@@ -74,8 +71,8 @@ namespace IngameScript
                 _cockpit = grid.GetBlockWithName("Jet Pilot Seat") as IMyCockpit;
                 grid.GetBlocksOfType(
                                     _gatlings,
-                                    t => t.CubeGrid == _cockpit.CubeGrid 
-                                );                
+                                    t => t.CubeGrid == _cockpit.CubeGrid
+                                );
                 _thrusters = new List<IMyThrust>();
                 grid.GetBlocksOfType(
                     _thrusters,
@@ -539,14 +536,14 @@ namespace IngameScript
                 uiController.RenderCustomExtraFrame(
                     (frame, renderArea) =>
                     {
-                    
-                        List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();   
+
+                        List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
                         parentProgram.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(blocks);
                         if (blockcount == 0 || blockcount != blocks.Count)
                         {
                             blockcount = blocks.Count;
                             parentProgram.Echo("Now");
-                            
+
                             // Step 1: Get X/Z bounds
                             int minX = int.MaxValue,
                                 maxX = int.MinValue;
@@ -1730,125 +1727,125 @@ namespace IngameScript
                 }
             }
 
-// --- Constants ---
-const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calculation
-    const double MIN_Z_FOR_PROJECTION = 0.1; // Minimum absolute Z value for safe projection
-    const string TEXTURE_SQUARE = "SquareSimple";
-    const string TEXTURE_CIRCLE = "CircleHollow"; // Assumes you have this texture
-    const string TEXTURE_TRIANGLE = "Triangle";
+            // --- Constants ---
+            const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calculation
+            const double MIN_Z_FOR_PROJECTION = 0.1; // Minimum absolute Z value for safe projection
+            const string TEXTURE_SQUARE = "SquareSimple";
+            const string TEXTURE_CIRCLE = "CircleHollow"; // Assumes you have this texture
+            const string TEXTURE_TRIANGLE = "Triangle";
 
 
-    private void AddLineSprite(MySpriteDrawFrame frame, Vector2 start, Vector2 end, float thickness, Color color)
-    {
-        Vector2 delta = end - start;
-        float length = delta.Length();
-        if (length < 0.1f) return; // Don't draw zero-length lines
-
-        Vector2 position = start + delta / 2f; // Center of the line
-        float rotation = (float)Math.Atan2(delta.Y, delta.X) - (float)Math.PI / 2f; // Rotation to align the square
-
-        var line = new MySprite()
-        {
-            Type = SpriteType.TEXTURE,
-            Data = TEXTURE_SQUARE,
-            Position = position,
-            Size = new Vector2(thickness, length),
-            Color = color,
-            RotationOrScale = rotation,
-            Alignment = TextAlignment.CENTER
-        };
-        frame.Add(line);
-    }
-
-
-
-    private bool CalculateInterceptPointIterative(
-        Vector3D shooterPosition,
-        Vector3D shooterVelocity, 
-        double projectileSpeed,   
-        Vector3D targetPosition,
-        Vector3D targetVelocity,
-        Vector3D gravity,         
-        int maxIterations,
-        out Vector3D interceptPoint,
-        out double timeToIntercept)
-    {
-        interceptPoint = Vector3D.Zero;
-        timeToIntercept = -1;
-
-        Vector3D relativePosition = targetPosition - shooterPosition;
-        Vector3D relativeVelocity = targetVelocity - shooterVelocity; 
-        double a = relativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed;
-        double b = 2 * Vector3D.Dot(relativePosition, relativeVelocity);
-        double c = relativePosition.LengthSquared();
-        double t_guess = -1;
-
-        if (Math.Abs(a) < 1e-6) 
-        {
-            if (Math.Abs(b) > 1e-6) t_guess = -c / b;
-        }
-        else
-        {
-            double discriminant = b * b - 4 * a * c;
-            if (discriminant >= 0)
+            private void AddLineSprite(MySpriteDrawFrame frame, Vector2 start, Vector2 end, float thickness, Color color)
             {
-                double sqrtDiscriminant = Math.Sqrt(discriminant);
-                double t1 = (-b - sqrtDiscriminant) / (2 * a);
-                double t2 = (-b + sqrtDiscriminant) / (2 * a);
-                if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
-                else t_guess = Math.Max(t1, t2); 
-            }
-        }
+                Vector2 delta = end - start;
+                float length = delta.Length();
+                if (length < 0.1f) return; // Don't draw zero-length lines
 
-        if (t_guess <= 0) return false;
+                Vector2 position = start + delta / 2f; // Center of the line
+                float rotation = (float)Math.Atan2(delta.Y, delta.X) - (float)Math.PI / 2f; // Rotation to align the square
 
-        timeToIntercept = t_guess;
-
-        for (int i = 0; i < maxIterations; ++i)
-        {
-            if (timeToIntercept <= 0) break; 
-            Vector3D predictedTargetPos = targetPosition + targetVelocity * timeToIntercept;
-
-            Vector3D projectileDisplacement = predictedTargetPos - shooterPosition;
-
-           
-            Vector3D requiredLaunchVel = (projectileDisplacement - 0.5 * gravity * timeToIntercept * timeToIntercept) / timeToIntercept;
-
-           
-            Vector3D launchDirection = Vector3D.Normalize(requiredLaunchVel);
-            Vector3D actualLaunchVel = launchDirection * projectileSpeed + shooterVelocity; 
-            Vector3D newRelativeVelocity = targetVelocity - actualLaunchVel;
-
-            a = newRelativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed; 
-            b = 2 * Vector3D.Dot(relativePosition, newRelativeVelocity);
-            c = relativePosition.LengthSquared();
-
-            t_guess = -1;
-            if (Math.Abs(a) < 1e-6) { if (Math.Abs(b) > 1e-6) t_guess = -c / b; }
-            else
-            {
-                double discriminant = b * b - 4 * a * c;
-                if (discriminant >= 0)
+                var line = new MySprite()
                 {
-                    double sqrtDiscriminant = Math.Sqrt(discriminant);
-                    double t1 = (-b - sqrtDiscriminant) / (2 * a);
-                    double t2 = (-b + sqrtDiscriminant) / (2 * a);
-                    if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
-                    else t_guess = Math.Max(t1, t2);
-                }
+                    Type = SpriteType.TEXTURE,
+                    Data = TEXTURE_SQUARE,
+                    Position = position,
+                    Size = new Vector2(thickness, length),
+                    Color = color,
+                    RotationOrScale = rotation,
+                    Alignment = TextAlignment.CENTER
+                };
+                frame.Add(line);
             }
 
-            if (t_guess <= 0)
+
+
+            private bool CalculateInterceptPointIterative(
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity,
+                double projectileSpeed,
+                Vector3D targetPosition,
+                Vector3D targetVelocity,
+                Vector3D gravity,
+                int maxIterations,
+                out Vector3D interceptPoint,
+                out double timeToIntercept)
             {
+                interceptPoint = Vector3D.Zero;
+                timeToIntercept = -1;
 
-                return false;
+                Vector3D relativePosition = targetPosition - shooterPosition;
+                Vector3D relativeVelocity = targetVelocity - shooterVelocity;
+                double a = relativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed;
+                double b = 2 * Vector3D.Dot(relativePosition, relativeVelocity);
+                double c = relativePosition.LengthSquared();
+                double t_guess = -1;
+
+                if (Math.Abs(a) < 1e-6)
+                {
+                    if (Math.Abs(b) > 1e-6) t_guess = -c / b;
+                }
+                else
+                {
+                    double discriminant = b * b - 4 * a * c;
+                    if (discriminant >= 0)
+                    {
+                        double sqrtDiscriminant = Math.Sqrt(discriminant);
+                        double t1 = (-b - sqrtDiscriminant) / (2 * a);
+                        double t2 = (-b + sqrtDiscriminant) / (2 * a);
+                        if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
+                        else t_guess = Math.Max(t1, t2);
+                    }
+                }
+
+                if (t_guess <= 0) return false;
+
+                timeToIntercept = t_guess;
+
+                for (int i = 0; i < maxIterations; ++i)
+                {
+                    if (timeToIntercept <= 0) break;
+                    Vector3D predictedTargetPos = targetPosition + targetVelocity * timeToIntercept;
+
+                    Vector3D projectileDisplacement = predictedTargetPos - shooterPosition;
+
+
+                    Vector3D requiredLaunchVel = (projectileDisplacement - 0.5 * gravity * timeToIntercept * timeToIntercept) / timeToIntercept;
+
+
+                    Vector3D launchDirection = Vector3D.Normalize(requiredLaunchVel);
+                    Vector3D actualLaunchVel = launchDirection * projectileSpeed + shooterVelocity;
+                    Vector3D newRelativeVelocity = targetVelocity - actualLaunchVel;
+
+                    a = newRelativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed;
+                    b = 2 * Vector3D.Dot(relativePosition, newRelativeVelocity);
+                    c = relativePosition.LengthSquared();
+
+                    t_guess = -1;
+                    if (Math.Abs(a) < 1e-6) { if (Math.Abs(b) > 1e-6) t_guess = -c / b; }
+                    else
+                    {
+                        double discriminant = b * b - 4 * a * c;
+                        if (discriminant >= 0)
+                        {
+                            double sqrtDiscriminant = Math.Sqrt(discriminant);
+                            double t1 = (-b - sqrtDiscriminant) / (2 * a);
+                            double t2 = (-b + sqrtDiscriminant) / (2 * a);
+                            if (t1 > 0 && t2 > 0) t_guess = Math.Min(t1, t2);
+                            else t_guess = Math.Max(t1, t2);
+                        }
+                    }
+
+                    if (t_guess <= 0)
+                    {
+
+                        return false;
+                    }
+                    timeToIntercept = t_guess;
+                }
+
+                interceptPoint = targetPosition + targetVelocity * timeToIntercept;
+                return timeToIntercept > 0;
             }
-            timeToIntercept = t_guess; 
-        }
-
-        interceptPoint = targetPosition + targetVelocity * timeToIntercept;
-        return timeToIntercept > 0;
-    }
             private void DrawLeadingPip(
         MySpriteDrawFrame frame,
         IMyCockpit cockpit, // Pass cockpit for world matrix
@@ -1864,17 +1861,17 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
         Color behindColor,
         Color reticleColor
     )
-    {
-        if (cockpit == null || hud == null) return; // Safety check
+            {
+                if (cockpit == null || hud == null) return; // Safety check
                 const float MIN_DISTANCE_FOR_SCALING = 50f;  // Target closer than this uses max pip size (e.g., 500 meters)
                 const float MAX_DISTANCE_FOR_SCALING = 3000f; // Target farther than this uses min pip size (e.g., 3000 meters)
                 const float MAX_PIP_SIZE_FACTOR = 0.1f;      // Pip size factor at min distance (relative to viewportMinDim)
                 const float MIN_PIP_SIZE_FACTOR = 0.01f;     // Pip size factor at max distance (relative to viewportMinDim)
 
                 Vector3D interceptPoint;
-        double timeToIntercept;
+                double timeToIntercept;
                 bool isAimingAtPip = false; // Initialize the output parameter to false
-                                       // Use the iterative solver
+                                            // Use the iterative solver
                 if (!CalculateInterceptPointIterative(
                 shooterPosition,
                 shooterVelocity,
@@ -1886,19 +1883,19 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 out interceptPoint,
                 out timeToIntercept
             ))
-        {
-            return;
-        }
+                {
+                    return;
+                }
 
 
                 Vector3D directionToIntercept = interceptPoint - shooterPosition;
-                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix); 
-                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix); 
+                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
+                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
 
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
                 float viewportMinDim = Math.Min(surfaceSize.X, surfaceSize.Y);
-                float targetMarkerSize = viewportMinDim * 0.02f; 
+                float targetMarkerSize = viewportMinDim * 0.02f;
                 float lineThickness = Math.Max(1f, viewportMinDim * 0.004f);
                 float reticleArmLength = viewportMinDim * 0.025f;
                 float arrowSize = viewportMinDim * 0.04f;
@@ -1906,36 +1903,36 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 double distanceToIntercept = Vector3D.Distance(shooterPosition, interceptPoint);
                 float distanceScaleFactor = (float)MathHelper.Clamp((MAX_DISTANCE_FOR_SCALING - distanceToIntercept) / (MAX_DISTANCE_FOR_SCALING - MIN_DISTANCE_FOR_SCALING), 0.0, 1.0);
                 float currentPipSizeFactor = MathHelper.Lerp(MIN_PIP_SIZE_FACTOR, MAX_PIP_SIZE_FACTOR, distanceScaleFactor);
-                float dynamicPipSize = viewportMinDim * currentPipSizeFactor; 
+                float dynamicPipSize = viewportMinDim * currentPipSizeFactor;
 
 
-                if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION) 
-        {
-            AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, behindColor);
-            AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, behindColor);
-            return; 
-        }
+                if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION)
+                {
+                    AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, behindColor);
+                    AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, behindColor);
+                    return;
+                }
 
-        AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, reticleColor);
-        AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, reticleColor);
-
-
-        if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
-        {
-            localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION; 
-        }
+                AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, reticleColor);
+                AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, reticleColor);
 
 
-                float scaleX = surfaceSize.X / (0.3434f); 
-                float scaleY = surfaceSize.Y / (0.31f); 
+                if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
+                {
+                    localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION;
+                }
+
+
+                float scaleX = surfaceSize.X / (0.3434f);
+                float scaleY = surfaceSize.Y / (0.31f);
                 float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
-        float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY; 
-        Vector2 pipScreenPos = new Vector2(screenX, screenY);
+                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
+                Vector2 pipScreenPos = new Vector2(screenX, screenY);
 
                 bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
                                   pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
                 float distanceToPip = Vector2.Distance(center, pipScreenPos);
-                float pipRadius = dynamicPipSize / 2f; 
+                float pipRadius = dynamicPipSize / 2f;
                 if (distanceToPip <= pipRadius)
                 {
                     isAimingAtPip = true;
@@ -1958,17 +1955,17 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     }
                 }
                 if (isOnScreen)
-        {
-            var pipSprite = new MySprite()
-            {
-                Type = SpriteType.TEXTURE,
-                Data = TEXTURE_CIRCLE, 
-                Position = pipScreenPos,
-                Size = new Vector2(dynamicPipSize, dynamicPipSize), 
-                                                                    Color = pipColor,
-                Alignment = TextAlignment.CENTER
-            };
-            frame.Add(pipSprite);
+                {
+                    var pipSprite = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_CIRCLE,
+                        Position = pipScreenPos,
+                        Size = new Vector2(dynamicPipSize, dynamicPipSize),
+                        Color = pipColor,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(pipSprite);
                     Vector2 targetScreenPos = Vector2.Zero; // Initialize
                     const float velocityIndicatorScale = 20f; // Example: Represents 0.3 seconds of travel
 
@@ -2015,66 +2012,66 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                         AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow); // Use targetIndicatorColor?
                     }
                 }
-        else
-        {
-            Vector2 direction = pipScreenPos - center;
-            direction.Normalize(); 
-            float maxDistX = surfaceSize.X / 2f - arrowSize / 2f; 
-            float maxDistY = surfaceSize.Y / 2f - arrowSize / 2f;
-            float angle = (float)Math.Atan2(direction.Y, direction.X);
+                else
+                {
+                    Vector2 direction = pipScreenPos - center;
+                    direction.Normalize();
+                    float maxDistX = surfaceSize.X / 2f - arrowSize / 2f;
+                    float maxDistY = surfaceSize.Y / 2f - arrowSize / 2f;
+                    float angle = (float)Math.Atan2(direction.Y, direction.X);
 
-            float edgeX = (float)Math.Cos(angle) * maxDistX;
-            float edgeY = (float)Math.Sin(angle) * maxDistY;
+                    float edgeX = (float)Math.Cos(angle) * maxDistX;
+                    float edgeY = (float)Math.Sin(angle) * maxDistY;
 
-            Vector2 edgePoint;
-            if (Math.Abs(edgeX / maxDistX) > Math.Abs(edgeY / maxDistY))
-            {
-                edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / Math.Abs(edgeX)));
+                    Vector2 edgePoint;
+                    if (Math.Abs(edgeX / maxDistX) > Math.Abs(edgeY / maxDistY))
+                    {
+                        edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / Math.Abs(edgeX)));
+                    }
+                    else
+                    {
+                        edgePoint = new Vector2(center.X + edgeX * (maxDistY / Math.Abs(edgeY)), center.Y + Math.Sign(edgeY) * maxDistY);
+                    }
+
+
+                    edgePoint.X = MathHelper.Clamp(edgePoint.X, arrowSize / 2f, surfaceSize.X - arrowSize / 2f);
+                    edgePoint.Y = MathHelper.Clamp(edgePoint.Y, arrowSize / 2f, surfaceSize.Y - arrowSize / 2f);
+
+
+                    float arrowRotation = (float)Math.Atan2(direction.Y, direction.X);
+                    var arrowSprite = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = TEXTURE_TRIANGLE,
+                        Position = edgePoint,
+                        Size = new Vector2(arrowHeadSize, arrowHeadSize),
+                        Color = offScreenColor,
+                        RotationOrScale = arrowRotation + (float)Math.PI / 2f,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(arrowSprite);
+                }
             }
-            else
-            {
-                edgePoint = new Vector2(center.X + edgeX * (maxDistY / Math.Abs(edgeY)), center.Y + Math.Sign(edgeY) * maxDistY);
-            }
-
-
-            edgePoint.X = MathHelper.Clamp(edgePoint.X, arrowSize / 2f, surfaceSize.X - arrowSize / 2f);
-            edgePoint.Y = MathHelper.Clamp(edgePoint.Y, arrowSize / 2f, surfaceSize.Y - arrowSize / 2f);
-
-
-            float arrowRotation = (float)Math.Atan2(direction.Y, direction.X); 
-            var arrowSprite = new MySprite()
-            {
-                Type = SpriteType.TEXTURE,
-                Data = TEXTURE_TRIANGLE, 
-                Position = edgePoint,    
-                Size = new Vector2(arrowHeadSize, arrowHeadSize),
-                Color = offScreenColor,
-                RotationOrScale = arrowRotation + (float)Math.PI / 2f, 
-                Alignment = TextAlignment.CENTER
-            };
-            frame.Add(arrowSprite);
-        }
-    }
 
 
 
-            
-            const float RADAR_RANGE_METERS = 15000f; 
-            const float RADAR_BOX_SIZE_PX = 100f;   
-            const float RADAR_BORDER_MARGIN = 10f;  
+
+            const float RADAR_RANGE_METERS = 15000f;
+            const float RADAR_BOX_SIZE_PX = 100f;
+            const float RADAR_BORDER_MARGIN = 10f;
 
             private void DrawTopDownRadar(
                 MySpriteDrawFrame frame,
                 IMyCockpit cockpit,
                 IMyTextSurface hud,
-                Vector3D targetPosition, 
+                Vector3D targetPosition,
                 Color radarBgColor,
                 Color radarBorderColor,
                 Color playerColor,
                 Color targetColor, Vector3D targetPosition2, Vector3D targetPosition3, Vector3D targetPosition4, Vector3D targetPosition5
             )
             {
-                if (cockpit == null || hud == null) return; 
+                if (cockpit == null || hud == null) return;
 
                 Vector2 surfaceSize = hud.SurfaceSize;
 
@@ -2087,18 +2084,18 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 Vector2 radarCenter = radarOrigin + radarSize / 2f;
                 float radarRadius = RADAR_BOX_SIZE_PX / 2f;
 
-                DrawRectangleOutline(frame, radarOrigin.X- 5f, radarOrigin.Y-5f, radarSize.X+10f, radarSize.Y + 10f, 1f, radarBorderColor);
+                DrawRectangleOutline(frame, radarOrigin.X - 5f, radarOrigin.Y - 5f, radarSize.X + 10f, radarSize.Y + 10f, 1f, radarBorderColor);
 
 
                 var playerArrow = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = TEXTURE_TRIANGLE, 
+                    Data = TEXTURE_TRIANGLE,
                     Position = radarCenter,
-                    Size = new Vector2(radarRadius * 0.15f, radarRadius * 0.15f), 
+                    Size = new Vector2(radarRadius * 0.15f, radarRadius * 0.15f),
                     Color = playerColor,
                     Alignment = TextAlignment.CENTER,
-                    RotationOrScale = 0 
+                    RotationOrScale = 0
                 };
                 frame.Add(playerArrow);
 
@@ -2129,13 +2126,13 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     }
                     else
                     {
-                        yawForward = Vector3D.Cross(shipRightProjected, worldUp); 
+                        yawForward = Vector3D.Cross(shipRightProjected, worldUp);
                     }
 
                 }
 
 
-                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp); 
+                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp);
                 MatrixD yawMatrix = MatrixD.Identity;
                 yawMatrix.Forward = yawForward;
                 yawMatrix.Right = yawRight;
@@ -2157,20 +2154,20 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
 
                 Vector2 targetOffset = new Vector2(
                     (float)targetVectorYawLocal.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal.Z * pixelsPerMeter  
+                    (float)targetVectorYawLocal.Z * pixelsPerMeter
                 );
                 Vector2 targetOffset2 = new Vector2(
     (float)targetVectorYawLocal2.X * pixelsPerMeter,
-    (float)targetVectorYawLocal2.Z * pixelsPerMeter  
+    (float)targetVectorYawLocal2.Z * pixelsPerMeter
 ); Vector2 targetOffset3 = new Vector2(
                     (float)targetVectorYawLocal3.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal3.Z * pixelsPerMeter  
+                    (float)targetVectorYawLocal3.Z * pixelsPerMeter
                 ); Vector2 targetOffset4 = new Vector2(
                     (float)targetVectorYawLocal4.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal4.Z * pixelsPerMeter  
+                    (float)targetVectorYawLocal4.Z * pixelsPerMeter
                 ); Vector2 targetOffset5 = new Vector2(
                     (float)targetVectorYawLocal5.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal5.Z * pixelsPerMeter  
+                    (float)targetVectorYawLocal5.Z * pixelsPerMeter
                 );
                 Vector2 targetRadarPos = radarCenter + targetOffset;
                 Vector2 targetRadarPos2 = radarCenter + targetOffset2;
@@ -2178,16 +2175,16 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 Vector2 targetRadarPos4 = radarCenter + targetOffset4;
                 Vector2 targetRadarPos5 = radarCenter + targetOffset5;
 
-                
+
                 float distFromCenter = targetOffset.Length();
                 if (distFromCenter > radarRadius)
                 {
                     if (distFromCenter > 1e-6)
                     {
-                        targetOffset /= distFromCenter; 
+                        targetOffset /= distFromCenter;
                     }
-                    targetOffset *= radarRadius; 
-                    targetRadarPos = radarCenter + targetOffset; 
+                    targetOffset *= radarRadius;
+                    targetRadarPos = radarCenter + targetOffset;
                 }
 
 
@@ -2268,7 +2265,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
             private const float MaxPIDOutput = 60f;
             private const float MaxAOA = 36f;
 
-            
+
 
             private void AdjustStabilizers(double aoa, Jet myjet)
             {
@@ -2284,7 +2281,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
 
                 AdjustTrim(rightstab, myjet.offset);
                 AdjustTrim(leftstab, -myjet.offset);
-                
+
             }
 
             private float PIDController(float currentError)
@@ -2464,11 +2461,11 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                         airbreaks[i].CloseDoor();
                     }
                 }
-                if(jumpthrottle < -0.01f)
+                if (jumpthrottle < -0.01f)
                 {
                     myjet.manualfire = !myjet.manualfire;
                 }
-                if(myjet.manualfire)
+                if (myjet.manualfire)
                 {
                     for (int i = 0; i < myjet._gatlings.Count; i++)
                     {
@@ -2524,10 +2521,10 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     DrawLeftInfoBox(
                         frame,
                         smoothedVelocity,
-                        centerX+30f,
+                        centerX + 30f,
                         centerY + centerY * 1.85f,
                         pixelsPerDegree,
-                        new LabelValue("T", myjet.offset)                        
+                        new LabelValue("T", myjet.offset)
                     );
                     DrawFlightInfo(
                         frame,
@@ -2541,7 +2538,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     );
                     DrawSpeedIndicatorF18StyleKph(frame, velocityKPH);
                     //DrawArtificialHorizon(frame, (float)pitch, (float)roll);
-                    DrawRadar(frame, myjet,centerX - centerX * 0.70f,
+                    DrawRadar(frame, myjet, centerX - centerX * 0.70f,
                         centerY + centerY * 0.75f, 70, 30,
                         pixelsPerDegree);
                     DrawCompass(frame, heading);
@@ -2673,15 +2670,15 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
 
                     // Call the DrawLeadingPip function
                     DrawLeadingPip(
-                        frame,cockpit, hud,
+                        frame, cockpit, hud,
                         targetPosition,
                         targetVelocity,
                         shooterPosition,
-                        currentVelocity, 
+                        currentVelocity,
                         muzzleVelocity,
                         gravityDirection, Color.Red, Color.Yellow, Color.HotPink, Color.White
                     );
-       
+
                 }
             }
             private void DrawGForceIndicator(
@@ -2835,13 +2832,13 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 return vvi;
             }
             private TimeSpan historyDuration = TimeSpan.FromSeconds(1); // How far back to calculate VVI from
-             private const float TAPE_HEIGHT_PIXELS = 200f; // Total visible height of the tape
-             private const float ALTITUDE_UNITS_PER_TAPE_HEIGHT = 1000f; // How many altitude units the full tape height represents
-             private const float PIXELS_PER_ALTITUDE_UNIT = TAPE_HEIGHT_PIXELS / ALTITUDE_UNITS_PER_TAPE_HEIGHT;
-             private const float TICK_INTERVAL = 100f; // Draw a tick mark every 100 altitude units
-             private const float MAJOR_TICK_INTERVAL = 500f; // Draw a number every 500 altitude units
-             private Color hudColor = Color.Lime; // Standard HUD color
-             private string FONT = "Monospace"; // Use a monospaced font for alignment
+            private const float TAPE_HEIGHT_PIXELS = 200f; // Total visible height of the tape
+            private const float ALTITUDE_UNITS_PER_TAPE_HEIGHT = 1000f; // How many altitude units the full tape height represents
+            private const float PIXELS_PER_ALTITUDE_UNIT = TAPE_HEIGHT_PIXELS / ALTITUDE_UNITS_PER_TAPE_HEIGHT;
+            private const float TICK_INTERVAL = 100f; // Draw a tick mark every 100 altitude units
+            private const float MAJOR_TICK_INTERVAL = 500f; // Draw a number every 500 altitude units
+            private Color hudColor = Color.Lime; // Standard HUD color
+            private string FONT = "Monospace"; // Use a monospaced font for alignment
 
             private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
             {
@@ -2908,7 +2905,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     {
                         bool isMajorTick = Math.Abs(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f); // Tolerance relative to tick interval
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
-                        if(altMark >= 0)
+                        if (altMark >= 0)
                         {
                             // Draw Tick Mark (line pointing left from the tape line)
                             var tickMark = new MySprite()
@@ -2959,7 +2956,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 {
                     Type = SpriteType.TEXT,
                     Data = currentAltitudeText,
-                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY  - 140), // Centered in the box area
+                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140), // Centered in the box area
                     RotationOrScale = 0.8f, // Main font size
                     Color = hudColor,
                     Alignment = TextAlignment.CENTER,
@@ -2980,7 +2977,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 };
                 frame.Add(caret);
 
-                
+
             }
             const float SPEED_MAJOR_TICK_INTERVAL = 50f;   // KPH between major ticks and numbers (e.g., every 100 KPH)
             const float SPEED_TICK_INTERVAL = 25f;          // KPH between minor ticks (e.g., every 20 KPH)
@@ -3102,7 +3099,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     Type = SpriteType.TEXT,
                     Data = currentSpeedText,
                     // Centered within the conceptual box area
-                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f ), // Adjust Y pos to be centered in the drawn box
+                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f), // Adjust Y pos to be centered in the drawn box
                     RotationOrScale = 0.8f, // Main font size
                     Color = hudColor,
                     Alignment = TextAlignment.CENTER,
@@ -3417,7 +3414,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 // Define the size and color of the tick marks
                 Color tickColor = Color.Yellow; // Color of the tick marks
                 float filledHeighttick = barHeight * throttle;
-               
+
             }
 
             private void DrawFlightPathMarker(
@@ -3744,7 +3741,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                 };
                 frame.Add(rightLineSprite);
                 string targetName = "null";
-                if(!myjet._radar.GetTargetedEntity().IsEmpty())
+                if (!myjet._radar.GetTargetedEntity().IsEmpty())
                     targetName = myjet._radar.GetTargetedEntity().Name.ToString();
                 MySprite targettext = new MySprite()
                 {
@@ -4416,60 +4413,165 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
 
             private void RenderParticles(MySpriteDrawFrame frame, RectangleF area)
             {
-                float time = animationcounter / 60.0f * 1.25f;
+                float time = animationcounter / 60.0f;
                 Vector2 resolution = new Vector2(area.Width, area.Height);
                 Vector2 center = resolution / 2.0f;
 
-                // Simplified step size and iterations
-                for (int x = 0; x < area.Width; x += 9)
+                // Perfect Mandelbrot zoom sequence - focus on interesting areas
+                float zoom = (float)Math.Pow(1.02f, time * 60f); // Exponential zoom
+                
+                // Zoom into the "seahorse valley" - one of the most beautiful areas
+                float centerX = -0.75f + (float)Math.Sin(time * 0.1f) * 0.01f; // Slight drift
+                float centerY = 0.1f + (float)Math.Cos(time * 0.07f) * 0.01f;
+
+                // Render the perfect Mandelbrot set
+                RenderPerfectMandelbrot(frame, area, centerX, centerY, zoom, time);
+            }
+
+            private void RenderPerfectMandelbrot(MySpriteDrawFrame frame, RectangleF area, float centerX, float centerY, float zoom, float time)
+            {
+                Vector2 resolution = new Vector2(area.Width, area.Height);
+                Vector2 center = resolution / 2.0f;
+                
+                // Calculate the complex plane bounds
+                float scale = 4.0f / zoom; // View window size
+                float minReal = centerX - scale / 2.0f;
+                float maxReal = centerX + scale / 2.0f;
+                float minImag = centerY - scale / 2.0f;
+                float maxImag = centerY + scale / 2.0f;
+                
+                // Adaptive sampling based on zoom
+                int samplesX = Math.Min(120, (int)(30 + zoom * 2)); // Increase detail with zoom
+                int samplesY = Math.Min(90, (int)(20 + zoom * 1.5f));
+                
+                // Sample the Mandelbrot set and find boundary points
+                List<Vector2> boundaryPoints = new List<Vector2>();
+                
+                for (int x = 0; x < samplesX; x++)
                 {
-                    for (int y = 0; y < area.Height; y += 9)
+                    for (int y = 0; y < samplesY; y++)
                     {
-                        Vector2 fragCoord = new Vector2(x, y);
-                        Vector2 uv = fragCoord / resolution;
-                        Vector2 p =
-                            (2.0f * fragCoord - resolution) / Math.Max(resolution.X, resolution.Y);
-
-                        fScale = CosRange(time * 5.0f, 1.0f, 0.5f);
-
-                        for (int i = 1; i < ZOOM; i++)
+                        float real = minReal + (float)x / (samplesX - 1) * (maxReal - minReal);
+                        float imag = minImag + (float)y / (samplesY - 1) * (maxImag - minImag);
+                        
+                        // Check if this point is on the boundary
+                        if (IsOnMandelbrotBoundary(real, imag, zoom))
                         {
-                            float _i = (float)i;
-                            p.X +=
-                                0.05f / _i * (float)Math.Sin(_i * p.Y + time * 0.5f) * fScale
-                                + 0.01f * (float)Math.Sin(time * 0.3f);
-                            p.Y +=
-                                0.05f / _i * (float)Math.Sin(_i * p.X + time * 0.4f) * fScale
-                                + 0.01f * (float)Math.Cos(time * 0.2f);
+                            // Convert to screen coordinates
+                            float screenX = (real - minReal) / (maxReal - minReal) * resolution.X;
+                            float screenY = (imag - minImag) / (maxImag - minImag) * resolution.Y;
+                            
+                            boundaryPoints.Add(new Vector2(screenX, screenY));
                         }
-
-                        Vector3 col = new Vector3(
-                            0.5f * (float)Math.Sin(2.0f * p.X) + 0.5f,
-                            0.5f * (float)Math.Sin(2.0f * p.Y) + 0.5f,
-                            (float)Math.Sin(p.X + p.Y)
-                        );
-                        col *= BRIGHTNESS;
-
-                        float vignette =
-                            1.0f
-                            - 2.0f
-                                * ((uv.X - 0.5f) * (uv.X - 0.5f) + (uv.Y - 0.5f) * (uv.Y - 0.5f));
-                        vignette = MathHelper.Clamp(vignette, 0.0f, 1.0f);
-
+                    }
+                }
+                
+                // Render boundary points
+                foreach (Vector2 point in boundaryPoints)
+                {
+                    if (point.X >= 0 && point.X < resolution.X && point.Y >= 0 && point.Y < resolution.Y)
+                    {
+                        float pointSize = Math.Max(1, 2.0f / (float)Math.Log(zoom + 1));
+                        
                         var sprite = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = fragCoord + area.Position,
-                            Size = new Vector2(9, 9), // Larger size for fewer sprites
-                            Color = new Color(col.X * vignette, col.Y * vignette, col.Z * vignette),
+                            Position = point + area.Position,
+                            Size = new Vector2(pointSize, pointSize),
+                            Color = Color.White,
                             Alignment = TextAlignment.CENTER
                         };
-
+                        
                         frame.Add(sprite);
                     }
                 }
+                
+                // Add some interior detail points for context
+                RenderInteriorDetail(frame, area, minReal, maxReal, minImag, maxImag, resolution, zoom);
             }
+
+            private bool IsOnMandelbrotBoundary(float real, float imag, float zoom)
+            {
+                int maxIterations = Math.Min(100, 20 + (int)(zoom / 2.0f)); // Adaptive iterations
+                
+                // Check if the point itself is in the set
+                bool centerInSet = IsInMandelbrotSet(real, imag, maxIterations);
+                
+                // Check neighboring points to detect boundary
+                float epsilon = Math.Max(0.001f, 1.0f / zoom); // Adaptive epsilon
+                
+                bool[] neighbors = new bool[4];
+                neighbors[0] = IsInMandelbrotSet(real + epsilon, imag, maxIterations);
+                neighbors[1] = IsInMandelbrotSet(real - epsilon, imag, maxIterations);
+                neighbors[2] = IsInMandelbrotSet(real, imag + epsilon, maxIterations);
+                neighbors[3] = IsInMandelbrotSet(real, imag - epsilon, maxIterations);
+                
+                // If any neighbor has different membership, we're on the boundary
+                foreach (bool neighbor in neighbors)
+                {
+                    if (neighbor != centerInSet)
+                    {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            private void RenderInteriorDetail(MySpriteDrawFrame frame, RectangleF area, float minReal, float maxReal, float minImag, float maxImag, Vector2 resolution, float zoom)
+            {
+                // Add some interior points for context (very sparse)
+                if (zoom < 10.0f) // Only at lower zoom levels
+                {
+                    int interiorSamples = 5;
+                    for (int i = 0; i < interiorSamples; i++)
+                    {
+                        float real = minReal + (float)i / interiorSamples * (maxReal - minReal);
+                        float imag = minImag + 0.5f * (maxImag - minImag); // Sample along middle line
+                        
+                        if (IsInMandelbrotSet(real, imag, 50))
+                        {
+                            float screenX = (real - minReal) / (maxReal - minReal) * resolution.X;
+                            float screenY = (imag - minImag) / (maxImag - minImag) * resolution.Y;
+                            
+                            var sprite = new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = "SquareSimple",
+                                Position = new Vector2(screenX, screenY) + area.Position,
+                                Size = new Vector2(1, 1),
+                                Color = new Color(100, 100, 100), // Dark gray for interior
+                                Alignment = TextAlignment.CENTER
+                            };
+                            
+                            frame.Add(sprite);
+                        }
+                    }
+                }
+            }
+
+            private bool IsInMandelbrotSet(float real, float imag, int maxIterations)
+            {
+                float zReal = 0;
+                float zImag = 0;
+
+                for (int i = 0; i < maxIterations; i++)
+                {
+                    float zRealSquared = zReal * zReal;
+                    float zImagSquared = zImag * zImag;
+
+                    if (zRealSquared + zImagSquared > 4.0f)
+                        return false;
+
+                    float temp = zRealSquared - zImagSquared + real;
+                    zImag = 2.0f * zReal * zImag + imag;
+                    zReal = temp;
+                }
+
+                return true;
+            }
+
 
             private struct Particle
             {
@@ -5198,10 +5300,10 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                     {
                         hotkeytext =
                             "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
-                        if(ticket % 32 == 0)
+                        if (ticket % 32 == 0)
                         {
                             //turret.Enabled = !turret.Enabled;
-                            if(turret.Enabled)
+                            if (turret.Enabled)
                             {
                                 turret.ShootOnce();
                                 turret.Azimuth = 0;
@@ -5210,7 +5312,7 @@ const int INTERCEPT_ITERATIONS = 10; // Number of iterations for ballistic calcu
                                 turret.SyncElevation();
                             }
                         }
-                        
+
                     }
                 }
 
