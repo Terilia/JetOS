@@ -41,9 +41,22 @@ namespace IngameScript
             {
                 SystemManager.Main(argument, updateSource);
             }
+            catch (NullReferenceException e)
+            {
+                // Log the error for debugging
+                Echo($"NullRef Error: {e.Message}");
+                Echo($"Stack: {e.StackTrace}");
+                // Reinitialize to recover from missing blocks
+                SystemManager.Initialize(this);
+            }
             catch (Exception e)
             {
-                SystemManager.Initialize(this);
+                // Log unexpected errors but don't hide them
+                Echo($"CRITICAL ERROR: {e.GetType().Name}");
+                Echo($"Message: {e.Message}");
+                Echo($"Stack: {e.StackTrace}");
+                // Don't automatically reinitialize on unexpected errors
+                // This helps identify bugs during development
             }
         }
         public class Jet
@@ -253,7 +266,6 @@ namespace IngameScript
             private static bool isPlayingSound = false;
             private static string previousSelectedSound;
             private static int soundStartTick = 0;
-            private static int soundSetupStep = 0; // 0: Idle, 1: Stop, 2: Set, 3: Play, 4: Wait
             private static List<IMyLargeGatlingTurret> radars = new List<IMyLargeGatlingTurret>();
             private static Jet _myJet;
             private static long lastTimeTicks = 0;
@@ -266,6 +278,12 @@ namespace IngameScript
             private static Vector2 cachedOutlineSpriteSize = Vector2.Zero; // Cache sprite size
             private static bool gridStructureDirty = true; // Flag to trigger recalculation
             private static List<MySprite> cachedSprites = new List<MySprite>(); // Cache the draw frame
+
+            // CustomData caching system - PERFORMANCE OPTIMIZATION
+            private static Dictionary<string, string> customDataCache = new Dictionary<string, string>();
+            private static bool customDataDirty = true;
+            private static string lastCustomDataRaw = "";
+
             public static void Initialize(Program program)
             {
 
@@ -312,12 +330,68 @@ namespace IngameScript
                     mainMenuOptions[i] = modules[i].name;
                 }
                 currentModule = null;
+
+                // Initialize CustomData cache
+                ParseCustomData();
             }
 
-            // Add these variables at the class level if not already present
+            // CustomData Cache Helper Methods - PERFORMANCE OPTIMIZATION
+            private static void ParseCustomData()
+            {
+                string currentData = parentProgram.Me.CustomData;
 
-            // Add these variables at the class level if not already present
+                // Only parse if CustomData has changed
+                if (currentData == lastCustomDataRaw && !customDataDirty)
+                    return;
 
+                customDataCache.Clear();
+                var lines = currentData.Split('\n');
+
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    int colonIndex = line.IndexOf(':');
+                    if (colonIndex > 0)
+                    {
+                        string key = line.Substring(0, colonIndex);
+                        string value = line.Substring(colonIndex + 1);
+                        customDataCache[key] = value;
+                    }
+                }
+
+                lastCustomDataRaw = currentData;
+                customDataDirty = false;
+            }
+
+            private static string GetCustomDataValue(string key)
+            {
+                ParseCustomData();
+                return customDataCache.ContainsKey(key) ? customDataCache[key] : null;
+            }
+
+            private static void SetCustomDataValue(string key, string value)
+            {
+                ParseCustomData();
+                customDataCache[key] = value;
+
+                // Rebuild CustomData string
+                var sb = new StringBuilder();
+                foreach (var kvp in customDataCache)
+                {
+                    sb.Append(kvp.Key).Append(':').Append(kvp.Value).Append('\n');
+                }
+
+                parentProgram.Me.CustomData = sb.ToString();
+                lastCustomDataRaw = parentProgram.Me.CustomData;
+            }
+
+            private static bool TryGetCustomDataValue(string key, out string value)
+            {
+                ParseCustomData();
+                return customDataCache.TryGetValue(key, out value);
+            }
 
             public static void Main(string argument, UpdateType updateSource)
             {
@@ -354,18 +428,25 @@ namespace IngameScript
                     selectedsound = "";
                 }
 
-                // Check if the selected sound has changed
+                // SIMPLIFIED Sound System - No longer needs 7-tick state machine
                 if (selectedsound != previousSelectedSound)
                 {
                     if (!string.IsNullOrEmpty(selectedsound))
                     {
-                        // Start the sound change sequence
-                        soundSetupStep = 1;
+                        // Start new sound immediately
+                        foreach (IMySoundBlock soundBlock in soundblocks)
+                        {
+                            soundBlock.Stop();
+                            soundBlock.SelectedSound = selectedsound;
+                            soundBlock.Play();
+                        }
                         previousSelectedSound = selectedsound;
+                        soundStartTick = currentTick;
+                        isPlayingSound = true;
                     }
                     else
                     {
-                        // If no sound is selected and a sound is playing, stop it
+                        // Stop playing sound
                         if (isPlayingSound)
                         {
                             foreach (IMySoundBlock soundBlock in soundblocks)
@@ -373,71 +454,21 @@ namespace IngameScript
                                 soundBlock.Stop();
                                 soundBlock.SelectedSound = "";
                             }
-                            soundSetupStep = 0;
                             isPlayingSound = false;
                             previousSelectedSound = "";
                         }
                     }
                 }
 
-                // Process the sound setup steps
-                switch (soundSetupStep)
+                // Auto-stop sound after duration (700 ticks = ~11.7 seconds)
+                if (isPlayingSound && (currentTick - soundStartTick >= 700))
                 {
-                    case 1:
-                        // Stop the sound
-                        foreach (IMySoundBlock soundBlock in soundblocks)
-                        {
-                            soundBlock.Stop();
-                        }
-                        soundSetupStep = 2;
-                        break;
-
-                    case 2:
-                        // Set the new sound
-                        foreach (IMySoundBlock soundBlock in soundblocks)
-                        {
-                            soundBlock.SelectedSound = selectedsound;
-                        }
-                        soundSetupStep = 3;
-                        break;
-
-                    case 3:
-                        soundSetupStep = 4;
-                        break;
-                    case 4:
-                        soundSetupStep = 5;
-                        break;
-                    case 5:
-                        soundSetupStep = 6;
-                        break;
-                    case 6:
-                        // Play the sound
-                        foreach (IMySoundBlock soundBlock in soundblocks)
-                        {
-                            soundBlock.Play();
-                        }
-                        soundSetupStep = 7;
-                        soundStartTick = currentTick;
-                        isPlayingSound = true;
-                        break;
-
-                    case 7:
-                        // Wait for the sound to finish (700 ticks)
-                        if (currentTick - soundStartTick >= 700)
-                        {
-                            foreach (IMySoundBlock soundBlock in soundblocks)
-                            {
-                                soundBlock.Stop();
-                            }
-                            soundSetupStep = 0;
-                            isPlayingSound = false;
-                            previousSelectedSound = "";
-                        }
-                        break;
-
-                    default:
-                        // Idle state, do nothing
-                        break;
+                    foreach (IMySoundBlock soundBlock in soundblocks)
+                    {
+                        soundBlock.Stop();
+                    }
+                    isPlayingSound = false;
+                    previousSelectedSound = "";
                 }
 
 
@@ -706,50 +737,46 @@ namespace IngameScript
             }
             private static void FlipGPS()
             {
-                var customDataLines = parentProgram.Me.CustomData.Split(
-                    new[] { '\n' },
-                    StringSplitOptions.RemoveEmptyEntries
-                );
-                List<string> modifiedLines = new List<string>(customDataLines);
-                string cachedLine = modifiedLines.FirstOrDefault(
-                    line => line.StartsWith("Cached:")
-                );
-                if (cachedLine == null)
+                // OPTIMIZED: Uses CustomData cache instead of string parsing
+                string cachedGPSData;
+                if (!TryGetCustomDataValue("Cached", out cachedGPSData))
                 {
+                    parentProgram.Echo("Warning: No cached GPS data found");
                     return;
                 }
-                string cachedGPSData = cachedLine.Substring(7);
-                string currentCacheGPSLine = $"CacheGPS{gpsindex}:";
-                int currentCacheLineIndex = modifiedLines.FindIndex(
-                    line => line.StartsWith(currentCacheGPSLine)
-                );
-                if (currentCacheLineIndex >= 0)
+
+                if (string.IsNullOrWhiteSpace(cachedGPSData))
                 {
-                    modifiedLines[currentCacheLineIndex] = currentCacheGPSLine + cachedGPSData;
+                    parentProgram.Echo("Warning: Cached GPS data is empty");
+                    return;
                 }
-                else
+
+                // Validate GPS index is within bounds
+                if (gpsindex < 0 || gpsindex >= GPS_INDEX_MAX)
                 {
-                    modifiedLines.Add(currentCacheGPSLine + cachedGPSData);
+                    parentProgram.Echo($"Error: GPS index {gpsindex} out of range [0-{GPS_INDEX_MAX - 1}]");
+                    gpsindex = 0; // Reset to safe value
                 }
+
+                // Store current cached data in the current slot
+                string currentSlotKey = $"CacheGPS{gpsindex}";
+                SetCustomDataValue(currentSlotKey, cachedGPSData);
+
+                // Move to next slot
                 gpsindex = (gpsindex + 1) % GPS_INDEX_MAX;
-                string nextCacheGPSLine = $"CacheGPS{gpsindex}:";
-                int nextCacheLineIndex = modifiedLines.FindIndex(
-                    line => line.StartsWith(nextCacheGPSLine)
-                );
-                string nextGPSData = "";
-                if (nextCacheLineIndex >= 0)
+
+                // Load data from next slot (may be empty)
+                string nextSlotKey = $"CacheGPS{gpsindex}";
+                string nextGPSData;
+                if (!TryGetCustomDataValue(nextSlotKey, out nextGPSData))
                 {
-                    nextGPSData = modifiedLines[nextCacheLineIndex].Substring(
-                        nextCacheGPSLine.Length
-                    );
+                    nextGPSData = ""; // Empty if slot doesn't exist yet
                 }
-                int cachedLineIndex = modifiedLines.FindIndex(line => line.StartsWith("Cached:"));
-                if (cachedLineIndex >= 0)
-                {
-                    modifiedLines[cachedLineIndex] = $"Cached:{nextGPSData}";
-                }
-                else { }
-                parentProgram.Me.CustomData = string.Join("\n", modifiedLines);
+
+                // Set the new cached GPS
+                SetCustomDataValue("Cached", nextGPSData);
+
+                parentProgram.Echo($"GPS slot switched to {gpsindex}/{GPS_INDEX_MAX}");
             }
             private static void NavigateUp()
             {
@@ -1800,17 +1827,16 @@ namespace IngameScript
                 if (t_guess <= 0) return false;
 
                 timeToIntercept = t_guess;
+                double previousTimeToIntercept = timeToIntercept;
+                const double CONVERGENCE_THRESHOLD = 0.001; // Converged if change < 1ms
 
                 for (int i = 0; i < maxIterations; ++i)
                 {
                     if (timeToIntercept <= 0) break;
+
                     Vector3D predictedTargetPos = targetPosition + targetVelocity * timeToIntercept;
-
                     Vector3D projectileDisplacement = predictedTargetPos - shooterPosition;
-
-
                     Vector3D requiredLaunchVel = (projectileDisplacement - 0.5 * gravity * timeToIntercept * timeToIntercept) / timeToIntercept;
-
 
                     Vector3D launchDirection = Vector3D.Normalize(requiredLaunchVel);
                     Vector3D actualLaunchVel = launchDirection * projectileSpeed + shooterVelocity;
@@ -1821,7 +1847,10 @@ namespace IngameScript
                     c = relativePosition.LengthSquared();
 
                     t_guess = -1;
-                    if (Math.Abs(a) < 1e-6) { if (Math.Abs(b) > 1e-6) t_guess = -c / b; }
+                    if (Math.Abs(a) < 1e-6)
+                    {
+                        if (Math.Abs(b) > 1e-6) t_guess = -c / b;
+                    }
                     else
                     {
                         double discriminant = b * b - 4 * a * c;
@@ -1837,10 +1866,18 @@ namespace IngameScript
 
                     if (t_guess <= 0)
                     {
-
                         return false;
                     }
+
+                    // FIX: Check convergence - if change is small enough, we're done
+                    double delta = Math.Abs(t_guess - previousTimeToIntercept);
+                    previousTimeToIntercept = timeToIntercept;
                     timeToIntercept = t_guess;
+
+                    if (delta < CONVERGENCE_THRESHOLD)
+                    {
+                        break; // Converged successfully
+                    }
                 }
 
                 interceptPoint = targetPosition + targetVelocity * timeToIntercept;
@@ -1923,8 +1960,12 @@ namespace IngameScript
                 }
 
 
-                float scaleX = surfaceSize.X / (0.3434f);
-                float scaleY = surfaceSize.Y / (0.31f);
+                // FOV projection constants - empirically determined from cockpit perspective
+                // These values convert 3D directions to 2D screen coordinates
+                const float COCKPIT_FOV_SCALE_X = 0.3434f; // Horizontal FOV scale factor
+                const float COCKPIT_FOV_SCALE_Y = 0.31f;   // Vertical FOV scale (adjusted for aspect ratio)
+                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
+                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
                 float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
                 float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
                 Vector2 pipScreenPos = new Vector2(screenX, screenY);
@@ -1971,10 +2012,9 @@ namespace IngameScript
 
                     Vector3D targetVelocityEndPointWorld = interceptPoint + targetVelocity * velocityIndicatorScale;
 
-                    MatrixD worldToLocalMatrix = MatrixD.Invert(cockpit.WorldMatrix); // <<< KEEP THIS LINE (needed below)                    // Transform the world point to local point using the inverse matrix
-                    Vector3D localTargetVelocityEndPoint = Vector3D.Transform(targetVelocityEndPointWorld, worldToLocalMatrix); // <<< REMOVE/COMMENT OUT                    // 3. Project this local point onto the screen
+                    // FIX: Removed duplicate worldToLocalMatrix (already have worldToCockpitMatrix)
+                    // FIX: Removed dead code - localTargetVelocityEndPoint was never used
                     Vector2 targetVelEndPointScreenPos = Vector2.Zero; // Initialize
-
 
                     // 2. Get the direction vector FROM THE SHOOTER to that point
                     Vector3D directionToVelEndPoint = Vector3D.Normalize(targetVelocityEndPointWorld - shooterPosition);
@@ -1991,8 +2031,10 @@ namespace IngameScript
 
                         // Draw your line from pipScreenPos to targetVelEndPointScreenPos
                     }
+
+                    // FIX: Use worldToCockpitMatrix instead of duplicate worldToLocalMatrix
                     Vector3D directionToTarget = targetPosition - shooterPosition;
-                    Vector3D localDirectionToTarget = Vector3D.TransformNormal(directionToTarget, worldToLocalMatrix);
+                    Vector3D localDirectionToTarget = Vector3D.TransformNormal(directionToTarget, worldToCockpitMatrix);
 
                     Vector2 currentTargetScreenPos = Vector2.Zero; // Initialize
 
@@ -2003,14 +2045,12 @@ namespace IngameScript
                         float screenY_tgt = center.Y + (float)(-localDirectionToTarget.Y / -localDirectionToTarget.Z) * scaleY; // Y inverted
                         currentTargetScreenPos = new Vector2(screenX_tgt, screenY_tgt);
                     }
-                    float halfMark = targetMarkerSize / 2f;
-                    if (isOnScreen)
-                    {
-                        AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow); // Use targetIndicatorColor?
-                        AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow); // Use targetIndicatorColor?
 
-                        AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow); // Use targetIndicatorColor?
-                    }
+                    // FIX: Removed redundant isOnScreen check (already inside isOnScreen block)
+                    float halfMark = targetMarkerSize / 2f;
+                    AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow);
+                    AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow);
+                    AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
                 }
                 else
                 {
@@ -2023,14 +2063,22 @@ namespace IngameScript
                     float edgeX = (float)Math.Cos(angle) * maxDistX;
                     float edgeY = (float)Math.Sin(angle) * maxDistY;
 
+                    // FIX: Prevent division by zero when edgeX or edgeY is near zero
                     Vector2 edgePoint;
+                    float absEdgeX = Math.Abs(edgeX);
+                    float absEdgeY = Math.Abs(edgeY);
+
+                    // Add epsilon to prevent division by zero
+                    if (absEdgeX < 1e-6f) absEdgeX = 1e-6f;
+                    if (absEdgeY < 1e-6f) absEdgeY = 1e-6f;
+
                     if (Math.Abs(edgeX / maxDistX) > Math.Abs(edgeY / maxDistY))
                     {
-                        edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / Math.Abs(edgeX)));
+                        edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / absEdgeX));
                     }
                     else
                     {
-                        edgePoint = new Vector2(center.X + edgeX * (maxDistY / Math.Abs(edgeY)), center.Y + Math.Sign(edgeY) * maxDistY);
+                        edgePoint = new Vector2(center.X + edgeX * (maxDistY / absEdgeY), center.Y + Math.Sign(edgeY) * maxDistY);
                     }
 
 
@@ -2075,9 +2123,9 @@ namespace IngameScript
 
                 Vector2 surfaceSize = hud.SurfaceSize;
 
-
-                Vector2 radarOrigin = new Vector2(hud.SurfaceSize.X - hud.SurfaceSize.X * 0.2f -
-                    RADAR_BORDER_MARGIN,
+                // FIX: Simplified radar origin calculation (X - X*0.2 = X*0.8)
+                Vector2 radarOrigin = new Vector2(
+                    hud.SurfaceSize.X * 0.8f - RADAR_BORDER_MARGIN,  // 80% from left edge
                     surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
                 );
                 Vector2 radarSize = new Vector2(RADAR_BOX_SIZE_PX, RADAR_BOX_SIZE_PX);
@@ -2169,23 +2217,59 @@ namespace IngameScript
                     (float)targetVectorYawLocal5.X * pixelsPerMeter,
                     (float)targetVectorYawLocal5.Z * pixelsPerMeter
                 );
-                Vector2 targetRadarPos = radarCenter + targetOffset;
-                Vector2 targetRadarPos2 = radarCenter + targetOffset2;
-                Vector2 targetRadarPos3 = radarCenter + targetOffset3;
-                Vector2 targetRadarPos4 = radarCenter + targetOffset4;
-                Vector2 targetRadarPos5 = radarCenter + targetOffset5;
+                // FIX: Clamp ALL targets to radar circle, not just target 1
+                // Helper inline function to clamp offset to radar radius
+                float distFromCenter;
 
-
-                float distFromCenter = targetOffset.Length();
+                // Target 1
+                distFromCenter = targetOffset.Length();
                 if (distFromCenter > radarRadius)
                 {
                     if (distFromCenter > 1e-6)
-                    {
                         targetOffset /= distFromCenter;
-                    }
                     targetOffset *= radarRadius;
-                    targetRadarPos = radarCenter + targetOffset;
                 }
+                Vector2 targetRadarPos = radarCenter + targetOffset;
+
+                // Target 2
+                distFromCenter = targetOffset2.Length();
+                if (distFromCenter > radarRadius)
+                {
+                    if (distFromCenter > 1e-6)
+                        targetOffset2 /= distFromCenter;
+                    targetOffset2 *= radarRadius;
+                }
+                Vector2 targetRadarPos2 = radarCenter + targetOffset2;
+
+                // Target 3
+                distFromCenter = targetOffset3.Length();
+                if (distFromCenter > radarRadius)
+                {
+                    if (distFromCenter > 1e-6)
+                        targetOffset3 /= distFromCenter;
+                    targetOffset3 *= radarRadius;
+                }
+                Vector2 targetRadarPos3 = radarCenter + targetOffset3;
+
+                // Target 4
+                distFromCenter = targetOffset4.Length();
+                if (distFromCenter > radarRadius)
+                {
+                    if (distFromCenter > 1e-6)
+                        targetOffset4 /= distFromCenter;
+                    targetOffset4 *= radarRadius;
+                }
+                Vector2 targetRadarPos4 = radarCenter + targetOffset4;
+
+                // Target 5
+                distFromCenter = targetOffset5.Length();
+                if (distFromCenter > radarRadius)
+                {
+                    if (distFromCenter > 1e-6)
+                        targetOffset5 /= distFromCenter;
+                    targetOffset5 *= radarRadius;
+                }
+                Vector2 targetRadarPos5 = radarCenter + targetOffset5;
 
 
                 if (targetRadarPos2.IsValid())
@@ -3844,14 +3928,16 @@ namespace IngameScript
                     float lineThickness = 2f; // thickness of the center segment
                     Color lineColor = Color.Lime; // or another color you prefer
 
-                    // 1) MAIN HORIZONTAL SEGMENT
+                    // 1) MAIN HORIZONTAL SEGMENT - Split into two parts (F-16/F-18 style)
+                    // Creates a gap in the center for the flight path marker
+                    // Left segment at 75% of centerX, right segment at 125% of centerX
                     float halfWidth = lineWidth * 1.225f; //So it clips a tiny bit
                     sprites.Add(
                         new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = new Vector2(centerX * 0.75f, markerY),
+                            Position = new Vector2(centerX * 0.75f, markerY), // Left segment
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
                             Alignment = TextAlignment.CENTER
@@ -3862,7 +3948,7 @@ namespace IngameScript
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = new Vector2(centerX * 1.25f, markerY),
+                            Position = new Vector2(centerX * 1.25f, markerY), // Right segment
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
                             Alignment = TextAlignment.CENTER
@@ -3908,13 +3994,14 @@ namespace IngameScript
                 }
 
                 // --- DISTINCT HORIZON LINE (at 0 deg pitch) ---
+                // Also split into two segments with center gap (same style as pitch lines)
                 float horizonY = centerY + pitch * pixelsPerDegree;
                 sprites.Add(
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(centerX * 1.25f, horizonY),
+                        Position = new Vector2(centerX * 1.25f, horizonY), // Right segment
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = Color.LimeGreen,
                         Alignment = TextAlignment.CENTER
@@ -3925,7 +4012,7 @@ namespace IngameScript
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(centerX * 0.75f, horizonY),
+                        Position = new Vector2(centerX * 0.75f, horizonY), // Left segment
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = Color.LimeGreen,
                         Alignment = TextAlignment.CENTER
@@ -3994,8 +4081,9 @@ namespace IngameScript
                 // Scale: Pixels per degree across the visible compass width
                 float headingScale = compassWidth / viewAngle;
 
+                // FIX: Removed debug Echo that was spamming output every frame
+                // ParentProgram.Echo($"DrawCompass Heading: {heading:F2}");
 
-                ParentProgram.Echo($"DrawCompass Heading: {heading:F2}");
                 // --- Markers and Labels ---
                 // Iterate through possible headings.
                 // The loop still iterates 360/increment times, but drawing only happens for visible markers.
@@ -4094,7 +4182,12 @@ namespace IngameScript
                 float centerX = (hud.SurfaceSize.X / 2) + hud.SurfaceSize.X * 0.3f;
                 float rollY = hud.SurfaceSize.Y - 140f;
                 float radius = 30f;
+
+                // FIX: Convert roll from [0, 360] to [-180, 180] for intuitive display
+                // After normalization, upright = 180°, so subtract 180 to make upright = 0°
+                // This gives: 0° upright, +90° right wing down, -90° left wing down, ±180° inverted
                 roll = roll - 180;
+
                 // Display roll value
                 var rollText = new MySprite()
                 {
@@ -4411,165 +4504,72 @@ namespace IngameScript
                 }
             }
 
+            // OPTIMIZED: Replaced expensive Mandelbrot rendering with simple animated text
             private void RenderParticles(MySpriteDrawFrame frame, RectangleF area)
             {
                 float time = animationcounter / 60.0f;
                 Vector2 resolution = new Vector2(area.Width, area.Height);
                 Vector2 center = resolution / 2.0f;
 
-                // Perfect Mandelbrot zoom sequence - focus on interesting areas
-                float zoom = (float)Math.Pow(1.02f, time * 60f); // Exponential zoom
-                
-                // Zoom into the "seahorse valley" - one of the most beautiful areas
-                float centerX = -0.75f + (float)Math.Sin(time * 0.1f) * 0.01f; // Slight drift
-                float centerY = 0.1f + (float)Math.Cos(time * 0.07f) * 0.01f;
+                // Draw animated "JetOS" logo
+                string logoText = "JetOS";
+                float logoScale = 3.0f + (float)Math.Sin(time * 2) * 0.3f; // Pulsing effect
+                Color logoColor = new Color(
+                    (int)(128 + 127 * Math.Sin(time)),
+                    (int)(128 + 127 * Math.Sin(time + 2)),
+                    (int)(128 + 127 * Math.Sin(time + 4))
+                );
 
-                // Render the perfect Mandelbrot set
-                RenderPerfectMandelbrot(frame, area, centerX, centerY, zoom, time);
-            }
-
-            private void RenderPerfectMandelbrot(MySpriteDrawFrame frame, RectangleF area, float centerX, float centerY, float zoom, float time)
-            {
-                Vector2 resolution = new Vector2(area.Width, area.Height);
-                Vector2 center = resolution / 2.0f;
-                
-                // Calculate the complex plane bounds
-                float scale = 4.0f / zoom; // View window size
-                float minReal = centerX - scale / 2.0f;
-                float maxReal = centerX + scale / 2.0f;
-                float minImag = centerY - scale / 2.0f;
-                float maxImag = centerY + scale / 2.0f;
-                
-                // Adaptive sampling based on zoom
-                int samplesX = Math.Min(120, (int)(30 + zoom * 2)); // Increase detail with zoom
-                int samplesY = Math.Min(90, (int)(20 + zoom * 1.5f));
-                
-                // Sample the Mandelbrot set and find boundary points
-                List<Vector2> boundaryPoints = new List<Vector2>();
-                
-                for (int x = 0; x < samplesX; x++)
+                var logoSprite = new MySprite()
                 {
-                    for (int y = 0; y < samplesY; y++)
+                    Type = SpriteType.TEXT,
+                    Data = logoText,
+                    Position = center,
+                    RotationOrScale = logoScale,
+                    Color = logoColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                };
+                frame.Add(logoSprite);
+
+                // Draw some simple animated stars (much cheaper than Mandelbrot!)
+                int starCount = 20;
+                for (int i = 0; i < starCount; i++)
+                {
+                    float angle = (time + i) * 0.1f;
+                    float radius = 100 + i * 15;
+                    Vector2 starPos = center + new Vector2(
+                        (float)Math.Cos(angle) * radius,
+                        (float)Math.Sin(angle) * radius
+                    );
+
+                    var starSprite = new MySprite()
                     {
-                        float real = minReal + (float)x / (samplesX - 1) * (maxReal - minReal);
-                        float imag = minImag + (float)y / (samplesY - 1) * (maxImag - minImag);
-                        
-                        // Check if this point is on the boundary
-                        if (IsOnMandelbrotBoundary(real, imag, zoom))
-                        {
-                            // Convert to screen coordinates
-                            float screenX = (real - minReal) / (maxReal - minReal) * resolution.X;
-                            float screenY = (imag - minImag) / (maxImag - minImag) * resolution.Y;
-                            
-                            boundaryPoints.Add(new Vector2(screenX, screenY));
-                        }
-                    }
+                        Type = SpriteType.TEXTURE,
+                        Data = "Circle",
+                        Position = starPos,
+                        Size = new Vector2(2, 2),
+                        Color = Color.White,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(starSprite);
                 }
-                
-                // Render boundary points
-                foreach (Vector2 point in boundaryPoints)
+
+                // Show motivational text below logo
+                int textIndex = (animationcounter / 240) % motivationalTexts.Count;
+                string motivText = motivationalTexts[textIndex];
+
+                var textSprite = new MySprite()
                 {
-                    if (point.X >= 0 && point.X < resolution.X && point.Y >= 0 && point.Y < resolution.Y)
-                    {
-                        float pointSize = Math.Max(1, 2.0f / (float)Math.Log(zoom + 1));
-                        
-                        var sprite = new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = point + area.Position,
-                            Size = new Vector2(pointSize, pointSize),
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER
-                        };
-                        
-                        frame.Add(sprite);
-                    }
-                }
-                
-                // Add some interior detail points for context
-                RenderInteriorDetail(frame, area, minReal, maxReal, minImag, maxImag, resolution, zoom);
-            }
-
-            private bool IsOnMandelbrotBoundary(float real, float imag, float zoom)
-            {
-                int maxIterations = Math.Min(100, 20 + (int)(zoom / 2.0f)); // Adaptive iterations
-                
-                // Check if the point itself is in the set
-                bool centerInSet = IsInMandelbrotSet(real, imag, maxIterations);
-                
-                // Check neighboring points to detect boundary
-                float epsilon = Math.Max(0.001f, 1.0f / zoom); // Adaptive epsilon
-                
-                bool[] neighbors = new bool[4];
-                neighbors[0] = IsInMandelbrotSet(real + epsilon, imag, maxIterations);
-                neighbors[1] = IsInMandelbrotSet(real - epsilon, imag, maxIterations);
-                neighbors[2] = IsInMandelbrotSet(real, imag + epsilon, maxIterations);
-                neighbors[3] = IsInMandelbrotSet(real, imag - epsilon, maxIterations);
-                
-                // If any neighbor has different membership, we're on the boundary
-                foreach (bool neighbor in neighbors)
-                {
-                    if (neighbor != centerInSet)
-                    {
-                        return true;
-                    }
-                }
-                
-                return false;
-            }
-            
-            private void RenderInteriorDetail(MySpriteDrawFrame frame, RectangleF area, float minReal, float maxReal, float minImag, float maxImag, Vector2 resolution, float zoom)
-            {
-                // Add some interior points for context (very sparse)
-                if (zoom < 10.0f) // Only at lower zoom levels
-                {
-                    int interiorSamples = 5;
-                    for (int i = 0; i < interiorSamples; i++)
-                    {
-                        float real = minReal + (float)i / interiorSamples * (maxReal - minReal);
-                        float imag = minImag + 0.5f * (maxImag - minImag); // Sample along middle line
-                        
-                        if (IsInMandelbrotSet(real, imag, 50))
-                        {
-                            float screenX = (real - minReal) / (maxReal - minReal) * resolution.X;
-                            float screenY = (imag - minImag) / (maxImag - minImag) * resolution.Y;
-                            
-                            var sprite = new MySprite()
-                            {
-                                Type = SpriteType.TEXTURE,
-                                Data = "SquareSimple",
-                                Position = new Vector2(screenX, screenY) + area.Position,
-                                Size = new Vector2(1, 1),
-                                Color = new Color(100, 100, 100), // Dark gray for interior
-                                Alignment = TextAlignment.CENTER
-                            };
-                            
-                            frame.Add(sprite);
-                        }
-                    }
-                }
-            }
-
-            private bool IsInMandelbrotSet(float real, float imag, int maxIterations)
-            {
-                float zReal = 0;
-                float zImag = 0;
-
-                for (int i = 0; i < maxIterations; i++)
-                {
-                    float zRealSquared = zReal * zReal;
-                    float zImagSquared = zImag * zImag;
-
-                    if (zRealSquared + zImagSquared > 4.0f)
-                        return false;
-
-                    float temp = zRealSquared - zImagSquared + real;
-                    zImag = 2.0f * zReal * zImag + imag;
-                    zReal = temp;
-                }
-
-                return true;
+                    Type = SpriteType.TEXT,
+                    Data = motivText,
+                    Position = center + new Vector2(0, 100),
+                    RotationOrScale = 0.8f,
+                    Color = Color.LightGray,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                };
+                frame.Add(textSprite);
             }
 
 
@@ -4680,8 +4680,31 @@ namespace IngameScript
                     }
                 }
             }
+
+            // SAFETY: Ensure baySelected array matches missileBays count
+            private void EnsureBayArraySynced()
+            {
+                if (baySelected == null || baySelected.Length != missileBays.Count)
+                {
+                    var oldArray = baySelected;
+                    baySelected = new bool[missileBays.Count];
+
+                    // Preserve old selections if possible
+                    if (oldArray != null)
+                    {
+                        int copyLength = Math.Min(oldArray.Length, baySelected.Length);
+                        for (int i = 0; i < copyLength; i++)
+                        {
+                            baySelected[i] = oldArray[i];
+                        }
+                    }
+                }
+            }
+
             public override string[] GetOptions()
             {
+                EnsureBayArraySynced(); // Safety check
+
                 var options = new List<string>
                 {
                     "Fire Selected Bays",
@@ -4692,7 +4715,7 @@ namespace IngameScript
                 };
                 for (int i = 0; i < missileBays.Count; i++)
                 {
-                    string baySymbol = baySelected[i] ? "[X]" : "[ ]";
+                    string baySymbol = (i < baySelected.Length) ? (baySelected[i] ? "[X]" : "[ ]") : "[ ]";
                     string bayStatus = missileBays[i]?.IsConnected == true ? "[ON]" : "[OFF]";
                     var mergeBlock = missileBays[i] as IMyShipMergeBlock;
                     bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
@@ -4789,10 +4812,13 @@ namespace IngameScript
                         try
                         {
                             FireMissileFromBayWithGps(i);
-                            ;
                             return;
                         }
-                        catch (Exception) { }
+                        catch (Exception e)
+                        {
+                            ParentProgram.Echo($"Error firing bay {i}: {e.Message}");
+                            // Continue to next bay instead of crashing
+                        }
                     }
                 }
             }
@@ -4918,7 +4944,10 @@ namespace IngameScript
                     UpdateCustomDataWithGpsData(bayIndex, gpsData);
                     bay.ApplyAction("Fire");
                 }
-                catch (Exception) { }
+                catch (Exception e)
+                {
+                    ParentProgram.Echo($"Error firing missile from bay {bayIndex}: {e.Message}");
+                }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
             {
@@ -4987,7 +5016,10 @@ namespace IngameScript
                     }
                     ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
                 }
-                catch (Exception) { }
+                catch (Exception e)
+                {
+                    ParentProgram.Echo($"Error transferring cache to slots: {e.Message}");
+                }
             }
             private List<Vector3D> CalculateTargetPositions(Vector3D centralTarget)
             {
@@ -5144,35 +5176,7 @@ namespace IngameScript
                 turret = jet._radar;
             }
 
-            public static class MathHelper
-            {
-                public static float Clamp(float value, float min, float max)
-                {
-                    if (value < min)
-                        return min;
-                    if (value > max)
-                        return max;
-                    return value;
-                }
-
-                public static double Clamp(double value, double min, double max)
-                {
-                    if (value < min)
-                        return min;
-                    if (value > max)
-                        return max;
-                    return value;
-                }
-
-                public static int Clamp(int value, int min, int max)
-                {
-                    if (value < min)
-                        return min;
-                    if (value > max)
-                        return max;
-                    return value;
-                }
-            }
+            // NOTE: Removed duplicate MathHelper class - VRageMath.MathHelper is used instead
 
             private Vector3D CalculateDirectionVector(float azimuth, float elevation)
             {
@@ -5456,10 +5460,13 @@ namespace IngameScript
                         try
                         {
                             FireMissileFromBayWithGps(i);
-                            ;
                             return;
                         }
-                        catch (Exception) { }
+                        catch (Exception e)
+                        {
+                            ParentProgram.Echo($"Error firing bay {i}: {e.Message}");
+                            // Continue to next bay instead of crashing
+                        }
                     }
                 }
             }
@@ -5591,7 +5598,10 @@ namespace IngameScript
                     UpdateCustomDataWithGpsData(bayIndex, gpsData);
                     bay.ApplyAction("Fire");
                 }
-                catch (Exception) { }
+                catch (Exception e)
+                {
+                    ParentProgram.Echo($"Error firing missile from bay {bayIndex}: {e.Message}");
+                }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
             {
