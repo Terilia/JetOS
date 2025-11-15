@@ -66,8 +66,19 @@ namespace IngameScript
             public List<IMyThrust> _thrusters;
             public List<IMyThrust> _thrustersbackwards;
             public List<IMySoundBlock> _soundBlocks;
-            public List<IMyLargeGatlingTurret> _radars;
-            public IMyLargeConveyorTurretBase _radar;
+            public IMyFlightMovementBlock _aiFlightBlock;
+            public IMyOffensiveCombatBlock _aiCombatBlock;
+
+            // Target tracking data (populated by AirtoAir module)
+            public Vector3D? currentTargetPosition = null;
+            public Vector3D? currentTargetVelocity = null;
+            public string currentTargetName = "";
+            public bool isTrackingTarget = false;
+
+            // Multi-target tracking (5 slots: 1 primary + 4 secondary)
+            public Vector3D[] targetPositions = new Vector3D[5];
+            public bool hasValidTargets = false;
+
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
             public List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
@@ -99,11 +110,9 @@ namespace IngameScript
                     s => s.CustomName.Contains("Sound Block Warning")
                 );
 
-                // Radar turrets
-                _radars = new List<IMyLargeGatlingTurret>();
-                grid.GetBlocksOfType(_radars, r => r.CustomName.Contains("Radar"));
-
-                _radar = grid.GetBlockWithName("JetNoseRad") as IMyLargeGatlingTurret;
+                // AI blocks for radar tracking
+                _aiFlightBlock = grid.GetBlockWithName("AI Flight") as IMyFlightMovementBlock;
+                _aiCombatBlock = grid.GetBlockWithName("AI Combat") as IMyOffensiveCombatBlock;
 
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
@@ -215,31 +224,16 @@ namespace IngameScript
 
 
             // ------------------------------
-            // RADARS / TURRETS
+            // AI RADAR BLOCKS
             // ------------------------------
 
             /// <summary>
-            /// Enables or disables all radar turrets if they exist.
+            /// Enables or disables the AI Combat Block for radar tracking.
             /// </summary>
-            public void SetRadarsEnabled(bool enabled)
+            public void SetAIRadarEnabled(bool enabled)
             {
-                foreach (var radar in _radars)
-                {
-                    radar.Enabled = enabled;
-                }
-            }
-
-            /// <summary>
-            /// Example: toggles radars at certain ticks or conditions.
-            /// (You can call from your main update or a custom method.)
-            /// </summary>
-            public void ToggleRadars(int currentTick)
-            {
-                // e.g., turn on until tick 10, off between 600 and 700, etc.
-                if (currentTick < 10)
-                    SetRadarsEnabled(true);
-                else if (currentTick > 600 && currentTick < 700)
-                    SetRadarsEnabled(false);
+                if (_aiCombatBlock != null)
+                    _aiCombatBlock.Enabled = enabled;
             }
         }
 
@@ -247,6 +241,7 @@ namespace IngameScript
         {
             private static IMyTextSurface lcdMain;
             private static IMyTextSurface lcdExtra;
+            private static IMyTextSurface lcdWeapons; // Third screen for weapon/combat info
             private static List<ProgramModule> modules = new List<ProgramModule>();
             public static int currentMenuIndex = 0;
             public static ProgramModule currentModule;
@@ -257,6 +252,7 @@ namespace IngameScript
             public static int currentTick = 0; // Track the current tick
             private static Program.RaycastCameraControl raycastProgram;
             private static Program.HUDModule hudProgram;
+            private static Program.ConfigurationModule configModule;
             private static int gpsindex = 0;
             private static List<IMySoundBlock> soundblocks = new List<IMySoundBlock>();
             private static List<IMyThrust> thrusters = new List<IMyThrust>();
@@ -266,6 +262,10 @@ namespace IngameScript
             private static bool isPlayingSound = false;
             private static string previousSelectedSound;
             private static int soundStartTick = 0;
+            // Sound state machine variables (Space Engineers requires 1 action per tick)
+            private static int soundState = 0; // 0=idle, 1=stopping, 2=selecting, 3=playing
+            private static string pendingSoundName = "";
+            private static bool altitudeWarningActive = false; // Track warning state with hysteresis
             private static List<IMyLargeGatlingTurret> radars = new List<IMyLargeGatlingTurret>();
             private static Jet _myJet;
             private static long lastTimeTicks = 0;
@@ -298,6 +298,16 @@ namespace IngameScript
                     lcdExtra = cockpit.GetSurface(1);
                     lcdExtra.ContentType = ContentType.SCRIPT;
                     lcdExtra.BackgroundColor = Color.Transparent; // Ensure transparency
+                    lcdWeapons = cockpit.GetSurface(2); // Third screen for weapon/combat info
+                    lcdWeapons.ContentType = ContentType.SCRIPT;
+                    lcdWeapons.Script = ""; // Ensure no other script is running
+                    lcdWeapons.BackgroundColor = Color.Black; // Black background for weapon screen
+                    lcdWeapons.ScriptBackgroundColor = Color.Black;
+                    lcdWeapons.ScriptForegroundColor = Color.White; // White text on black background
+                    lcdWeapons.FontColor = new Color(25, 217, 140, 255);
+                    lcdWeapons.FontSize = 0.1f; // Minimal font size
+                    lcdWeapons.TextPadding = 0f; // No padding
+                    lcdWeapons.Alignment = TextAlignment.CENTER;
 
                     for (int i = 0; i < 3; i++)
                     {
@@ -317,12 +327,15 @@ namespace IngameScript
                 modules.Add(new AirtoAir(parentProgram, _myJet));
 
                 raycastProgram = new RaycastCameraControl(parentProgram, _myJet);
-                hudProgram = new HUDModule(parentProgram, _myJet);
+                hudProgram = new HUDModule(parentProgram, _myJet, lcdWeapons);
                 modules.Add(hudProgram);
                 modules.Add(raycastProgram);
                 uiController = new UIController(lcdMain, lcdExtra);
-                modules.Add(new LogoDisplay(parentProgram, uiController));
 
+                configModule = new ConfigurationModule(parentProgram);
+                modules.Add(configModule);
+
+                modules.Add(new LogoDisplay(parentProgram, uiController));
                 modules.Add(new FroggerGameControl(parentProgram, uiController));
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
@@ -393,25 +406,26 @@ namespace IngameScript
                 return customDataCache.TryGetValue(key, out value);
             }
 
+            public static void MarkCustomDataDirty()
+            {
+                customDataDirty = true;
+            }
+
+            public static float GetConfigValue(string configName)
+            {
+                if (configModule != null)
+                    return configModule.GetValue(configName);
+                return 0f;
+            }
+
             public static void Main(string argument, UpdateType updateSource)
             {
                 currentTick++;
                 Vector3D cockpitPosition = _myJet.GetCockpitPosition();
                 MatrixD cockpitMatrix = _myJet.GetCockpitMatrix();
-                if (currentTick < 10) //BUG: This is a workaround for the radar to load the first ammunition, as otherwise the radar won't do anything?
-                {
-                    for (int i = 0; i < radars.Count; i++)
-                    {
-                        radars[i].Enabled = true;
-                    }
-                }
-                if (currentTick > 600 && currentTick < 700)
-                {
-                    for (int i = 0; i < radars.Count; i++)
-                    {
-                        radars[i].Enabled = false;
-                    }
-                }
+
+                // Radar enable/disable now managed by AirtoAir module
+
                 // Variables to track damage and side
                 double velocity = _myJet.GetVelocity();
                 double velocityKnots = velocity * 1.94384;
@@ -419,56 +433,129 @@ namespace IngameScript
                 selectedsound = null;
                 _myJet._cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
                 double calc = currentTick - lastSoundTick;
-                if (velocityKnots > 350 && altitude < 400)
-                {
-                    selectedsound = "Tief";
-                }
-                else
-                {
-                    selectedsound = "";
-                }
 
-                // SIMPLIFIED Sound System - No longer needs 7-tick state machine
-                if (selectedsound != previousSelectedSound)
+                // Hysteresis to prevent flickering: different thresholds for on/off
+                if (altitudeWarningActive)
                 {
-                    if (!string.IsNullOrEmpty(selectedsound))
+                    // Already active - require climbing to 420m OR slowing to 340 knots to turn off
+                    if (velocityKnots < 340 || altitude > 420)
                     {
-                        // Start new sound immediately
-                        foreach (IMySoundBlock soundBlock in soundblocks)
-                        {
-                            soundBlock.Stop();
-                            soundBlock.SelectedSound = selectedsound;
-                            soundBlock.Play();
-                        }
-                        previousSelectedSound = selectedsound;
-                        soundStartTick = currentTick;
-                        isPlayingSound = true;
+                        altitudeWarningActive = false;
+                        selectedsound = "";
                     }
                     else
                     {
-                        // Stop playing sound
-                        if (isPlayingSound)
-                        {
-                            foreach (IMySoundBlock soundBlock in soundblocks)
-                            {
-                                soundBlock.Stop();
-                                soundBlock.SelectedSound = "";
-                            }
-                            isPlayingSound = false;
-                            previousSelectedSound = "";
-                        }
+                        selectedsound = "Tief";
+                    }
+                }
+                else
+                {
+                    // Not active - require dropping to 380m AND speeding to 360 knots to turn on
+                    if (velocityKnots > 360 && altitude < 380)
+                    {
+                        altitudeWarningActive = true;
+                        selectedsound = "Tief";
+                    }
+                    else
+                    {
+                        selectedsound = "";
                     }
                 }
 
-                // Auto-stop sound after duration (700 ticks = ~11.7 seconds)
-                if (isPlayingSound && (currentTick - soundStartTick >= 700))
+                // Multi-tick Sound State Machine (Space Engineers requires 1 action per tick)
+                // State 0: Idle - check if new sound needed
+                // State 1: Stopping - call Stop() on all blocks
+                // State 2: Selecting - set SelectedSound property
+                // State 3: Playing - call Play() on all blocks
+
+                // Execute current state FIRST (if active, this progresses the state machine)
+                switch (soundState)
                 {
-                    foreach (IMySoundBlock soundBlock in soundblocks)
+                    case 1: // Stopping
+                        foreach (IMySoundBlock soundBlock in soundblocks)
+                        {
+                            if (soundBlock == null || !soundBlock.IsFunctional)
+                                continue;
+                            soundBlock.Stop();
+                        }
+                        soundState = 2; // Next tick: select sound
+                        break;
+
+                    case 2: // Selecting
+                        foreach (IMySoundBlock soundBlock in soundblocks)
+                        {
+                            if (soundBlock == null || !soundBlock.IsFunctional)
+                                continue;
+
+                            // Ensure block is enabled
+                            if (!soundBlock.Enabled)
+                                soundBlock.Enabled = true;
+
+                            soundBlock.SelectedSound = pendingSoundName;
+                        }
+
+                        if (!string.IsNullOrEmpty(pendingSoundName))
+                        {
+                            soundState = 3; // Next tick: play
+                        }
+                        else
+                        {
+                            // Just stopping, go back to idle
+                            soundState = 0;
+                            isPlayingSound = false;
+                            previousSelectedSound = "";
+                        }
+                        break;
+
+                    case 3: // Playing
+                        foreach (IMySoundBlock soundBlock in soundblocks)
+                        {
+                            if (soundBlock == null || !soundBlock.IsFunctional)
+                                continue;
+                            soundBlock.Play();
+                        }
+                        previousSelectedSound = pendingSoundName;
+                        soundStartTick = currentTick;
+                        isPlayingSound = true;
+                        soundState = 0; // Back to idle
+                        break;
+                }
+
+                // Now check if we need to start/stop/loop sounds (only when idle)
+                if (soundState == 0)
+                {
+                    if (selectedsound != previousSelectedSound)
                     {
-                        soundBlock.Stop();
+                        // Sound changed
+                        if (!string.IsNullOrEmpty(selectedsound))
+                        {
+                            // Start new sound
+                            pendingSoundName = selectedsound;
+                            soundState = 1;
+                        }
+                        else if (isPlayingSound)
+                        {
+                            // Stop current sound
+                            pendingSoundName = "";
+                            soundState = 1;
+                        }
                     }
-                    isPlayingSound = false;
-                    previousSelectedSound = "";
+                    else if (!string.IsNullOrEmpty(selectedsound) && isPlayingSound)
+                    {
+                        // Same sound still needed - check if we should loop it
+                        // Wait 5 seconds before looping to ensure sound finishes playing
+                        if (currentTick - soundStartTick >= 300) // Loop every 5 seconds
+                        {
+                            pendingSoundName = selectedsound;
+                            soundState = 1;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(selectedsound) && !isPlayingSound)
+                    {
+                        // Sound needed but not playing - start it
+                        pendingSoundName = selectedsound;
+                        soundState = 1;
+                    }
                 }
 
 
@@ -482,7 +569,15 @@ namespace IngameScript
                 }
                 else
                 {
-                    HandleInput(argument);
+                    // Check for config import command
+                    if (argument.StartsWith("ConfigImport:") && configModule != null)
+                    {
+                        configModule.ImportConfig(argument.Substring(13));
+                    }
+                    else
+                    {
+                        HandleInput(argument);
+                    }
                 }
 
                 if (currentModule != null && currentModule.GetType() == typeof(LogoDisplay))
@@ -573,7 +668,6 @@ namespace IngameScript
                         if (blockcount == 0 || blockcount != blocks.Count)
                         {
                             blockcount = blocks.Count;
-                            parentProgram.Echo("Now");
 
                             // Step 1: Get X/Z bounds
                             int minX = int.MaxValue,
@@ -695,9 +789,149 @@ namespace IngameScript
                             frame.Add(cachedSprites[i]);
                         }
 
+                        // Add fuel ring to the same frame (left side)
+                        DrawFuelRingOnExtraScreen(frame, renderArea, _myJet.tanks);
+
                     },
                     area
                 );
+            }
+
+            // Draw fuel ring on extra screen (integrated with grid visualization)
+            private static void DrawFuelRingOnExtraScreen(MySpriteDrawFrame frame, RectangleF renderArea, List<IMyGasTank> tanks)
+            {
+                if (tanks == null || tanks.Count == 0) return;
+
+                // Calculate total fuel percentage
+                double totalCapacity = 0;
+                double totalFilled = 0;
+                foreach (var tank in tanks)
+                {
+                    if (tank.BlockDefinition.SubtypeId.Contains("Hydrogen"))
+                    {
+                        totalCapacity += tank.Capacity;
+                        totalFilled += tank.Capacity * tank.FilledRatio;
+                    }
+                }
+
+                if (totalCapacity <= 0) return;
+
+                double fuelPercent = totalFilled / totalCapacity;
+                const double BINGO_FUEL_PERCENT = 0.20;
+                const double LOW_FUEL_PERCENT = 0.35;
+
+                // Arc parameters - positioned on left side
+                float screenWidth = renderArea.Width;
+                float screenHeight = renderArea.Height;
+                Vector2 center = new Vector2(screenWidth * 0.25f, screenHeight * 0.25f); // Top-left quarter
+                float radius = Math.Min(screenWidth, screenHeight) * 0.18f;
+                float arcThickness = 5f;
+                float arcSpan = 180f; // Semi-circle
+
+                // Color based on fuel level
+                Color fuelColor;
+                if (fuelPercent < BINGO_FUEL_PERCENT)
+                    fuelColor = Color.Red;
+                else if (fuelPercent < LOW_FUEL_PERCENT)
+                    fuelColor = Color.Yellow;
+                else
+                    fuelColor = Color.Lime;
+
+                // Draw arc segments
+                int segments = 30;
+                float startAngle = 90f - arcSpan / 2f;
+                float filledAngle = startAngle + (float)(fuelPercent * arcSpan);
+
+                for (int i = 0; i < segments; i++)
+                {
+                    float angle1 = startAngle + (arcSpan / segments) * i;
+                    float angle2 = startAngle + (arcSpan / segments) * (i + 1);
+
+                    float rad1 = MathHelper.ToRadians(angle1);
+                    float rad2 = MathHelper.ToRadians(angle2);
+
+                    Vector2 p1 = center + new Vector2((float)Math.Cos(rad1) * radius, (float)Math.Sin(rad1) * radius);
+                    Vector2 p2 = center + new Vector2((float)Math.Cos(rad2) * radius, (float)Math.Sin(rad2) * radius);
+
+                    Color segmentColor = angle2 <= filledAngle ? fuelColor : new Color(fuelColor, 0.2f);
+
+                    // Draw line segment
+                    Vector2 direction = p2 - p1;
+                    float length = direction.Length();
+                    if (length > 0)
+                    {
+                        direction.Normalize();
+                        float rotation = (float)Math.Atan2(direction.Y, direction.X);
+
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = (p1 + p2) / 2f,
+                            Size = new Vector2(length, arcThickness),
+                            RotationOrScale = rotation,
+                            Color = segmentColor,
+                            Alignment = TextAlignment.CENTER
+                        });
+                    }
+                }
+
+                // Draw center circle background
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "Circle",
+                    Position = center,
+                    Size = new Vector2(radius * 1.2f, radius * 1.2f),
+                    Color = new Color(0, 0, 0, 200),
+                    Alignment = TextAlignment.CENTER
+                });
+
+                // Draw fuel percentage text
+                string fuelText = $"{fuelPercent*100:F0}%";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = fuelText,
+                    Position = new Vector2(center.X, center.Y - 8f),
+                    RotationOrScale = 0.7f,
+                    Color = fuelColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+
+                // BINGO warning or FUEL label
+                string statusText = fuelPercent < BINGO_FUEL_PERCENT ? "BINGO" : "FUEL";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = statusText,
+                    Position = new Vector2(center.X, center.Y + 12f),
+                    RotationOrScale = 0.45f,
+                    Color = fuelColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+
+                // Estimated flight time
+                if (fuelPercent > 0.01)
+                {
+                    double timeRemaining = (totalFilled / totalCapacity) * 600;
+                    int minutes = (int)(timeRemaining / 60);
+                    int seconds = (int)(timeRemaining % 60);
+                    string timeText = $"{minutes:D2}:{seconds:D2}";
+
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = timeText,
+                        Position = new Vector2(center.X, center.Y + radius + 15f),
+                        RotationOrScale = 0.4f,
+                        Color = new Color(150, 150, 150),
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "Monospace"
+                    });
+                }
             }
 
             private static void HandleInput(string argument)
@@ -737,49 +971,55 @@ namespace IngameScript
             }
             private static void FlipGPS()
             {
-                // OPTIMIZED: Uses CustomData cache instead of string parsing
-                string cachedGPSData;
-                if (!TryGetCustomDataValue("Cached", out cachedGPSData))
-                {
-                    parentProgram.Echo("Warning: No cached GPS data found");
-                    return;
-                }
-
-                if (string.IsNullOrWhiteSpace(cachedGPSData))
-                {
-                    parentProgram.Echo("Warning: Cached GPS data is empty");
-                    return;
-                }
-
                 // Validate GPS index is within bounds
                 if (gpsindex < 0 || gpsindex >= GPS_INDEX_MAX)
                 {
-                    parentProgram.Echo($"Error: GPS index {gpsindex} out of range [0-{GPS_INDEX_MAX - 1}]");
                     gpsindex = 0; // Reset to safe value
                 }
 
-                // Store current cached data in the current slot
-                string currentSlotKey = $"CacheGPS{gpsindex}";
-                SetCustomDataValue(currentSlotKey, cachedGPSData);
+                // Store current active target in Jet array slot
+                if (_myJet.currentTargetPosition.HasValue)
+                {
+                    _myJet.targetPositions[gpsindex + 1] = _myJet.currentTargetPosition.Value;
+                }
+
+                // Also update CustomData for persistence
+                string cachedGPSData;
+                if (TryGetCustomDataValue("Cached", out cachedGPSData))
+                {
+                    string currentSlotKey = $"CacheGPS{gpsindex}";
+                    SetCustomDataValue(currentSlotKey, cachedGPSData);
+                }
 
                 // Move to next slot
                 gpsindex = (gpsindex + 1) % GPS_INDEX_MAX;
 
-                // Load data from next slot (may be empty)
+                // Load next target from Jet array
+                Vector3D nextTarget = _myJet.targetPositions[gpsindex + 1];
+                _myJet.currentTargetPosition = nextTarget;
+                _myJet.targetPositions[0] = nextTarget;
+
+                // Check if we have any valid targets
+                _myJet.hasValidTargets = (nextTarget != Vector3D.Zero);
+
+                // Also update CustomData for persistence
                 string nextSlotKey = $"CacheGPS{gpsindex}";
                 string nextGPSData;
                 if (!TryGetCustomDataValue(nextSlotKey, out nextGPSData))
                 {
-                    nextGPSData = ""; // Empty if slot doesn't exist yet
+                    nextGPSData = "";
                 }
-
-                // Set the new cached GPS
                 SetCustomDataValue("Cached", nextGPSData);
 
-                parentProgram.Echo($"GPS slot switched to {gpsindex}/{GPS_INDEX_MAX}");
             }
             private static void NavigateUp()
             {
+                // Check if current module wants to handle navigation
+                if (currentModule != null && currentModule.HandleNavigation(true))
+                {
+                    return; // Module handled it
+                }
+
                 if (currentMenuIndex > 0)
                 {
                     currentMenuIndex--;
@@ -787,6 +1027,12 @@ namespace IngameScript
             }
             private static void NavigateDown()
             {
+                // Check if current module wants to handle navigation
+                if (currentModule != null && currentModule.HandleNavigation(false))
+                {
+                    return; // Module handled it
+                }
+
                 int totalOptions = (
                     currentModule == null
                         ? mainMenuOptions.Length
@@ -813,6 +1059,13 @@ namespace IngameScript
             {
                 if (currentModule != null)
                 {
+                    // Check if module wants to handle back button internally
+                    if (currentModule.HandleBack())
+                    {
+                        return; // Module handled it
+                    }
+
+                    // Default: exit the module
                     currentModule = null;
                     currentMenuIndex = 0;
                 }
@@ -893,7 +1146,8 @@ namespace IngameScript
                 string title,
                 string[] options,
                 int currentMenuIndex,
-                string navigationInstructions
+                string navigationInstructions,
+                int scrollOffset = 0
             )
             {
                 var frame = mainScreen.DrawFrame();
@@ -932,18 +1186,20 @@ namespace IngameScript
                     )
                 );
 
-                // Calculate total height for content
-                float totalHeight = 0;
-                foreach (string option in options)
+                // Calculate available height for content area
+                float availableContentHeight = mainViewport.Height - CONTENT_PADDING_TOP - titlePaddingTop - NAVIGATION_INSTRUCTIONS_HEIGHT - 60;
+
+                // Calculate individual option heights
+                float[] optionHeights = new float[options.Length];
+                for (int i = 0; i < options.Length; i++)
                 {
-                    int lineCount = option.Split(new[] { '\n' }, StringSplitOptions.None).Length;
-                    totalHeight += lineCount * OPTION_HEIGHT * OPTION_SCALE;
+                    int lineCount = options[i].Split(new[] { '\n' }, StringSplitOptions.None).Length;
+                    optionHeights[i] = lineCount * OPTION_HEIGHT * OPTION_SCALE;
                 }
-                totalHeight += PADDING_BOTTOM;
 
                 // Position content with padding
                 var contentPosition = new Vector2(0, CONTENT_PADDING_TOP + titlePaddingTop);
-                var contentSize = new Vector2(mainViewport.Width, totalHeight);
+                var contentSize = new Vector2(mainViewport.Width, availableContentHeight);
                 var container = new UIContainer(contentPosition, contentSize)
                 {
                     BorderColor = BORDER_COLOR,
@@ -951,31 +1207,35 @@ namespace IngameScript
                     Padding = new Vector2(PADDING_TOP, 5)
                 };
 
-                // Add options to the container
-                float currentY = 0;
+                // Add options to the container with scrolling support
+                float currentY = -scrollOffset * OPTION_HEIGHT * OPTION_SCALE;
                 for (int i = 0; i < options.Length; i++)
                 {
                     string option = options[i];
                     int lineCount = option.Split(new[] { '\n' }, StringSplitOptions.None).Length;
                     float optionHeight = lineCount * OPTION_HEIGHT;
 
-                    var optionText = new UILabel(option, new Vector2(20, currentY))
+                    // Only render options that are visible in the viewport
+                    if (currentY + optionHeights[i] >= -10 && currentY <= availableContentHeight + 10)
                     {
-                        Scale = OPTION_SCALE,
-                        TextColor = TEXT_COLOR
-                    };
+                        var optionText = new UILabel(option, new Vector2(20, currentY))
+                        {
+                            Scale = OPTION_SCALE,
+                            TextColor = TEXT_COLOR
+                        };
 
-                    // Highlight the current option
-                    if (i == currentMenuIndex)
-                    {
-                        AddArrowIndicator(
-                            container,
-                            new Vector2(5, currentY + optionHeight / 2 - 5)
-                        );
+                        // Highlight the current option
+                        if (i == currentMenuIndex)
+                        {
+                            AddArrowIndicator(
+                                container,
+                                new Vector2(5, currentY + optionHeight / 2 - 5)
+                            );
+                        }
+
+                        container.AddElement(optionText);
                     }
-
-                    container.AddElement(optionText);
-                    currentY += optionHeight * OPTION_SCALE;
+                    currentY += optionHeights[i];
                 }
 
                 // Add the content container
@@ -1250,6 +1510,16 @@ namespace IngameScript
             {
                 return "";
             }
+            // Return true if module handles navigation internally, false to use default
+            public virtual bool HandleNavigation(bool isUp)
+            {
+                return false; // Default: don't override navigation
+            }
+            // Return true if module handles back button internally, false to use default (exit module)
+            public virtual bool HandleBack()
+            {
+                return false; // Default: exit module
+            }
         }
         class RaycastCameraControl : ProgramModule
         {
@@ -1264,9 +1534,11 @@ namespace IngameScript
             private bool animating = false;
             private const int maxAnimationTicks = 100;
             private Vector3D currentTargetPosition = Vector3D.Zero;
+            private Jet myJet;
             public RaycastCameraControl(Program program, Jet jet) : base(program)
             {
                 name = "TargetingPod Control";
+                myJet = jet;
                 camera =
                     program.GridTerminalSystem.GetBlockWithName("Camera Targeting Turret")
                     as IMyCameraBlock;
@@ -1340,15 +1612,35 @@ namespace IngameScript
                     if (!hitInfo.IsEmpty())
                     {
                         Vector3D target = hitInfo.HitPosition ?? Vector3D.Zero;
+                        Vector3D targetVelocity = hitInfo.Velocity;
+
+                        // Update Jet object for HUD access
+                        myJet.currentTargetPosition = target;
+                        myJet.currentTargetVelocity = targetVelocity;
+                        myJet.isTrackingTarget = true;
+                        myJet.targetPositions[0] = target;
+                        myJet.hasValidTargets = true;
+
                         string gpsCoordinates =
-                            "Cached:GPS:Target2:"
+                            "Cached:GPS:Target:"
                             + target.X
                             + ":"
                             + target.Y
                             + ":"
                             + target.Z
                             + ":#FF75C9F1:";
-                        UpdateCustomDataWithCache(gpsCoordinates);
+
+                        // Capture target velocity for motion compensation
+                        string cachedSpeed =
+                            "CachedSpeed:"
+                            + targetVelocity.X
+                            + ":"
+                            + targetVelocity.Y
+                            + ":"
+                            + targetVelocity.Z
+                            + ":#FF75C9F1:";
+
+                        UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
                         DisplayRaycastResult(gpsCoordinates);
                     }
                     else
@@ -1374,26 +1666,43 @@ namespace IngameScript
                     lcdTGP.WriteText(output.ToString());
                 }
             }
-            private void UpdateCustomDataWithCache(string gpsCoordinates)
+
+            private void UpdateCustomDataWithCache(string gpsCoordinates, string cachedSpeed)
             {
                 string[] customDataLines = ParentProgram.Me.CustomData.Split('\n');
                 bool cachedLineFound = false;
+                bool cachedSpeedFound = false;
+
                 for (int i = 0; i < customDataLines.Length; i++)
                 {
                     if (customDataLines[i].StartsWith("Cached:"))
                     {
                         customDataLines[i] = gpsCoordinates;
                         cachedLineFound = true;
-                        break;
+                    }
+                    else if (customDataLines[i].StartsWith("CachedSpeed:"))
+                    {
+                        customDataLines[i] = cachedSpeed;
+                        cachedSpeedFound = true;
                     }
                 }
+
                 if (!cachedLineFound)
                 {
                     List<string> customDataList = new List<string>(customDataLines);
                     customDataList.Add(gpsCoordinates);
                     customDataLines = customDataList.ToArray();
                 }
+
+                if (!cachedSpeedFound)
+                {
+                    List<string> customDataList = new List<string>(customDataLines);
+                    customDataList.Add(cachedSpeed);
+                    customDataLines = customDataList.ToArray();
+                }
+
                 ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
+                SystemManager.MarkCustomDataDirty();
             }
             private Vector2 center = new Vector2(25, 17);
             private bool isLocked = true;
@@ -1654,43 +1963,110 @@ namespace IngameScript
 
         class HUDModule : ProgramModule
         {
+            // --- HUD Color Palette ---
+            private static readonly Color HUD_PRIMARY = Color.Lime;
+            private static readonly Color HUD_SECONDARY = Color.Green;
+            private static readonly Color HUD_HORIZON = Color.LimeGreen;
+            private static readonly Color HUD_EMPHASIS = Color.Yellow;
+            private static readonly Color HUD_WARNING = Color.Red;
+            private static readonly Color HUD_INFO = Color.White;
+            private static readonly Color HUD_RADAR_FRIENDLY = Color.DarkGreen;
+
+            // --- Layout Constants ---
+            private const float SPEED_TAPE_CENTER_Y_FACTOR = 2.25f;
+            private const float INFO_BOX_Y_OFFSET_FACTOR = 1.85f;
+            private const float ALTITUDE_TAPE_CENTER_Y_FACTOR = 2.0f;
+            private const float THROTTLE_HYDROGEN_THRESHOLD = 0.8f;
+
+            // --- Physics Constants ---
+            private const double SEA_LEVEL_SPEED_OF_SOUND = 343.0; // m/s
+            private const double GRAVITY_ACCELERATION = 9.81; // m/s²
+
+            // --- Smoothing Configuration ---
+            private const int SMOOTHING_WINDOW_SIZE = 10;
+
+            // --- Component References ---
             IMyCockpit cockpit;
             IMyTextSurface hud;
+            IMyTextSurface weaponScreen; // Third screen for weapon/combat info
             IMyTerminalBlock hudBlock;
+            List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
+            List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
+            private List<IMyThrust> thrusters = new List<IMyThrust>();
+            private List<IMyGasTank> tanks = new List<IMyGasTank>();
+            private List<IMyDoor> airbreaks = new List<IMyDoor>();
+            Jet myjet;
+
+            // --- Flight Data ---
             double peakGForce = 0;
             float currentTrim;
             double pitch = 0;
             double roll = 0;
             double velocity;
             double deltaTime;
-            const double speedOfSound = 343.0; // Speed of sound in m/s at sea level
             double mach;
-            List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
-            List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
-            Queue<double> velocityHistory = new Queue<double>();
-            private Queue<AltitudeTimePoint> altitudeHistory = new Queue<AltitudeTimePoint>(); Queue<double> gForcesHistory = new Queue<double>();
-            Queue<double> aoaHistory = new Queue<double>();
-            private List<IMyThrust> thrusters = new List<IMyThrust>();
-            private List<IMyGasTank> tanks = new List<IMyGasTank>();
-            private List<IMyDoor> airbreaks = new List<IMyDoor>();
-            const int smoothingWindowSize = 10;
+            Vector3D previousVelocity = Vector3D.Zero;
+
+            // --- Smoothed Values with Running Averages ---
+            CircularBuffer<double> velocityHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
+            CircularBuffer<AltitudeTimePoint> altitudeHistory = new CircularBuffer<AltitudeTimePoint>(SMOOTHING_WINDOW_SIZE);
+            CircularBuffer<double> gForcesHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
+            CircularBuffer<double> aoaHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
+
             double smoothedVelocity = 0;
             double smoothedAltitude = 0;
             double smoothedGForces = 0;
             double smoothedAoA = 0;
             double smoothedThrottle = 0;
+
+            // Running sums for efficient smoothing
+            private double velocitySum = 0;
+            private double gForcesSum = 0;
+            private double aoaSum = 0;
+
+            // --- Throttle Control ---
             float throttlecontrol = 0f;
             bool hydrogenswitch = false;
-            Vector3D previousVelocity = Vector3D.Zero;
+
+            // --- UI State ---
             string hotkeytext = "Test";
-            Jet myjet;
             private TimeSpan totalElapsedTime = TimeSpan.Zero;
 
-            public HUDModule(Program program, Jet jet) : base(program)
+            // --- Cached HUD Values (recalculate when surface size changes) ---
+            private Vector2 hudCenter;
+            private float viewportMinDim;
+
+            // --- NEW: Enhanced HUD Features ---
+            // Velocity trail (tadpole)
+            private CircularBuffer<Vector3D> velocityTrail = new CircularBuffer<Vector3D>(15);
+
+            // Missile tracking
+            private struct MissileTrackingData
+            {
+                public int BayIndex;
+                public TimeSpan LaunchTime;
+                public double EstimatedTOF;
+                public Vector3D TargetPosition;
+            }
+            private List<MissileTrackingData> activeMissiles = new List<MissileTrackingData>();
+
+            // HUD Mode System
+            private enum HUDMode { AirToAir, AirToGround, Navigation }
+            private HUDMode currentHUDMode = HUDMode.AirToAir;
+
+            // Radar sweep animation
+            private int radarSweepTick = 0;
+
+            // Fuel state tracking
+            private const double BINGO_FUEL_PERCENT = 0.20; // 20% fuel = Bingo state
+            private const double LOW_FUEL_PERCENT = 0.35;   // 35% fuel = Low fuel warning
+
+            public HUDModule(Program program, Jet jet, IMyTextSurface weaponSurface) : base(program)
             {
                 cockpit = jet._cockpit;
                 hudBlock = jet.hudBlock;
                 hud = jet.hud;
+                weaponScreen = weaponSurface; // Store weapon screen reference
 
                 rightstab = jet.rightstab;
                 leftstab = jet.leftstab;
@@ -1702,6 +2078,7 @@ namespace IngameScript
                     tanks[i].Enabled = false;
                 }
                 myjet = jet;
+
                 if (hudBlock == null)
                 {
                     return;
@@ -1732,8 +2109,20 @@ namespace IngameScript
 
             public override string GetHotkeys()
             {
-                return hotkeytext;
+                string modeText = currentHUDMode == HUDMode.AirToAir ? "A/A" :
+                                 currentHUDMode == HUDMode.AirToGround ? "A/G" : "NAV";
+                return $"5: HUD Mode [{modeText}]";
             }
+
+            public override void HandleSpecialFunction(int functionNumber)
+            {
+                if (functionNumber == 5)
+                {
+                    // Cycle through HUD modes
+                    currentHUDMode = (HUDMode)(((int)currentHUDMode + 1) % 3);
+                }
+            }
+
 
             public class CircularBuffer<T> : Queue<T>
             {
@@ -2108,15 +2497,16 @@ namespace IngameScript
             const float RADAR_BOX_SIZE_PX = 100f;
             const float RADAR_BORDER_MARGIN = 10f;
 
-            private void DrawTopDownRadar(
+            // Optimized version using array of target positions
+            private void DrawTopDownRadarOptimized(
                 MySpriteDrawFrame frame,
                 IMyCockpit cockpit,
                 IMyTextSurface hud,
-                Vector3D targetPosition,
+                Vector3D[] targetPositions,
                 Color radarBgColor,
                 Color radarBorderColor,
                 Color playerColor,
-                Color targetColor, Vector3D targetPosition2, Vector3D targetPosition3, Vector3D targetPosition4, Vector3D targetPosition5
+                Color primaryTargetColor
             )
             {
                 if (cockpit == null || hud == null) return;
@@ -2148,8 +2538,8 @@ namespace IngameScript
                 frame.Add(playerArrow);
 
                 Vector3D shooterPosition = cockpit.GetPosition();
-                Vector3D targetVectorWorld = targetPosition - shooterPosition;
 
+                // Calculate world up vector from gravity
                 Vector3D gravity = cockpit.GetNaturalGravity();
                 Vector3D worldUp;
                 if (gravity.LengthSquared() < 0.01)
@@ -2161,8 +2551,8 @@ namespace IngameScript
                     worldUp = Vector3D.Normalize(-gravity);
                 }
 
+                // Create yaw-aligned coordinate system
                 Vector3D shipForward = cockpit.WorldMatrix.Forward;
-
                 Vector3D yawForward = Vector3D.Normalize(Vector3D.Reject(shipForward, worldUp));
 
                 if (!yawForward.IsValid() || yawForward.LengthSquared() < 0.1)
@@ -2176,9 +2566,7 @@ namespace IngameScript
                     {
                         yawForward = Vector3D.Cross(shipRightProjected, worldUp);
                     }
-
                 }
-
 
                 Vector3D yawRight = Vector3D.Cross(yawForward, worldUp);
                 MatrixD yawMatrix = MatrixD.Identity;
@@ -2187,155 +2575,46 @@ namespace IngameScript
                 yawMatrix.Up = worldUp;
 
                 MatrixD worldToYawPlaneMatrix = MatrixD.Transpose(yawMatrix);
-                Vector3D targetVectorWorld2 = targetPosition2 - shooterPosition;
-                Vector3D targetVectorWorld3 = targetPosition3 - shooterPosition;
-                Vector3D targetVectorWorld4 = targetPosition4 - shooterPosition;
-                Vector3D targetVectorWorld5 = targetPosition5 - shooterPosition;
-
-                Vector3D targetVectorYawLocal = Vector3D.TransformNormal(targetVectorWorld, worldToYawPlaneMatrix);
-                Vector3D targetVectorYawLocal2 = Vector3D.TransformNormal(targetVectorWorld2, worldToYawPlaneMatrix);
-                Vector3D targetVectorYawLocal3 = Vector3D.TransformNormal(targetVectorWorld3, worldToYawPlaneMatrix);
-                Vector3D targetVectorYawLocal4 = Vector3D.TransformNormal(targetVectorWorld4, worldToYawPlaneMatrix);
-                Vector3D targetVectorYawLocal5 = Vector3D.TransformNormal(targetVectorWorld5, worldToYawPlaneMatrix);
-
                 float pixelsPerMeter = radarRadius / RADAR_RANGE_METERS;
 
-                Vector2 targetOffset = new Vector2(
-                    (float)targetVectorYawLocal.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal.Z * pixelsPerMeter
-                );
-                Vector2 targetOffset2 = new Vector2(
-    (float)targetVectorYawLocal2.X * pixelsPerMeter,
-    (float)targetVectorYawLocal2.Z * pixelsPerMeter
-); Vector2 targetOffset3 = new Vector2(
-                    (float)targetVectorYawLocal3.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal3.Z * pixelsPerMeter
-                ); Vector2 targetOffset4 = new Vector2(
-                    (float)targetVectorYawLocal4.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal4.Z * pixelsPerMeter
-                ); Vector2 targetOffset5 = new Vector2(
-                    (float)targetVectorYawLocal5.X * pixelsPerMeter,
-                    (float)targetVectorYawLocal5.Z * pixelsPerMeter
-                );
-                // FIX: Clamp ALL targets to radar circle, not just target 1
-                // Helper inline function to clamp offset to radar radius
-                float distFromCenter;
-
-                // Target 1
-                distFromCenter = targetOffset.Length();
-                if (distFromCenter > radarRadius)
+                // Draw all targets using a loop (OPTIMIZED!)
+                for (int i = 0; i < targetPositions.Length; i++)
                 {
-                    if (distFromCenter > 1e-6)
-                        targetOffset /= distFromCenter;
-                    targetOffset *= radarRadius;
-                }
-                Vector2 targetRadarPos = radarCenter + targetOffset;
+                    Vector3D targetVectorWorld = targetPositions[i] - shooterPosition;
+                    Vector3D targetVectorYawLocal = Vector3D.TransformNormal(targetVectorWorld, worldToYawPlaneMatrix);
 
-                // Target 2
-                distFromCenter = targetOffset2.Length();
-                if (distFromCenter > radarRadius)
-                {
-                    if (distFromCenter > 1e-6)
-                        targetOffset2 /= distFromCenter;
-                    targetOffset2 *= radarRadius;
-                }
-                Vector2 targetRadarPos2 = radarCenter + targetOffset2;
+                    Vector2 targetOffset = new Vector2(
+                        (float)targetVectorYawLocal.X * pixelsPerMeter,
+                        (float)targetVectorYawLocal.Z * pixelsPerMeter
+                    );
 
-                // Target 3
-                distFromCenter = targetOffset3.Length();
-                if (distFromCenter > radarRadius)
-                {
-                    if (distFromCenter > 1e-6)
-                        targetOffset3 /= distFromCenter;
-                    targetOffset3 *= radarRadius;
-                }
-                Vector2 targetRadarPos3 = radarCenter + targetOffset3;
-
-                // Target 4
-                distFromCenter = targetOffset4.Length();
-                if (distFromCenter > radarRadius)
-                {
-                    if (distFromCenter > 1e-6)
-                        targetOffset4 /= distFromCenter;
-                    targetOffset4 *= radarRadius;
-                }
-                Vector2 targetRadarPos4 = radarCenter + targetOffset4;
-
-                // Target 5
-                distFromCenter = targetOffset5.Length();
-                if (distFromCenter > radarRadius)
-                {
-                    if (distFromCenter > 1e-6)
-                        targetOffset5 /= distFromCenter;
-                    targetOffset5 *= radarRadius;
-                }
-                Vector2 targetRadarPos5 = radarCenter + targetOffset5;
-
-
-                if (targetRadarPos2.IsValid())
-                {
-                    var targetIcon2 = new MySprite()
+                    // Clamp to radar radius
+                    float distFromCenter = targetOffset.Length();
+                    if (distFromCenter > radarRadius)
                     {
-                        Type = SpriteType.TEXTURE,
-                        Data = TEXTURE_SQUARE, // Simple circle for target
-                        Position = targetRadarPos2,
-                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
-                        Color = Color.DarkGreen,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(targetIcon2);
-                }
-                if (targetRadarPos3.IsValid())
-                {
-                    var targetIcon3 = new MySprite()
+                        if (distFromCenter > 1e-6f)
+                            targetOffset /= distFromCenter;
+                        targetOffset *= radarRadius;
+                    }
+
+                    Vector2 targetRadarPos = radarCenter + targetOffset;
+
+                    // Determine color: primary target (0) gets special color, others are friendly
+                    Color targetColor = (i == 0) ? primaryTargetColor : HUD_RADAR_FRIENDLY;
+
+                    if (targetRadarPos.IsValid())
                     {
-                        Type = SpriteType.TEXTURE,
-                        Data = TEXTURE_SQUARE, // Simple circle for target
-                        Position = targetRadarPos3,
-                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
-                        Color = Color.DarkGreen,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(targetIcon3);
-                }
-                if (targetRadarPos4.IsValid())
-                {
-                    var targetIcon4 = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = TEXTURE_SQUARE, // Simple circle for target
-                        Position = targetRadarPos4,
-                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
-                        Color = Color.DarkGreen,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(targetIcon4);
-                }
-                if (targetRadarPos5.IsValid())
-                {
-                    var targetIcon5 = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = TEXTURE_SQUARE, // Simple circle for target
-                        Position = targetRadarPos5,
-                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
-                        Color = Color.DarkGreen,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(targetIcon5);
-                }
-                if (targetRadarPos.IsValid())
-                {
-                    var targetIcon = new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = TEXTURE_SQUARE, // Simple circle for target
-                        Position = targetRadarPos,
-                        Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f), // Adjust size
-                        Color = targetColor,
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(targetIcon);
+                        var targetIcon = new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = TEXTURE_SQUARE,
+                            Position = targetRadarPos,
+                            Size = new Vector2(radarRadius * 0.1f, radarRadius * 0.1f),
+                            Color = targetColor,
+                            Alignment = TextAlignment.CENTER
+                        };
+                        frame.Add(targetIcon);
+                    }
                 }
             }
 
@@ -2410,59 +2689,55 @@ namespace IngameScript
                 }
             }
 
-            public override void Tick()
-            {
-                // Return early if cockpit or HUD is missing
-                if (cockpit == null || hud == null)
-                    return;
-                totalElapsedTime += ParentProgram.Runtime.TimeSinceLastRun;
-                // Return early if cockpit or HUD is not functional
-                if (!cockpit.IsFunctional || !hudBlock.IsFunctional)
-                    return;
+            // --- Tick() Helper Methods (Refactored for clarity and performance) ---
 
-                // --------------------------------------------------------------------------
-                // 1. Retrieve world matrix and direction vectors
-                // --------------------------------------------------------------------------
-                MatrixD worldMatrix = cockpit.WorldMatrix;
-                Vector3D forwardVector = worldMatrix.Forward;
-                Vector3D upVector = worldMatrix.Up;
+            private bool ValidateHUDState()
+            {
+                if (cockpit == null || hud == null)
+                    return false;
+
+                if (!cockpit.IsFunctional || !hudBlock.IsFunctional)
+                    return false;
+
+                return true;
+            }
+
+            private void UpdateFlightData(out MatrixD worldMatrix, out Vector3D forwardVector,
+                out Vector3D upVector, out Vector3D gravity, out bool inGravity,
+                out Vector3D gravityDirection)
+            {
+                totalElapsedTime += ParentProgram.Runtime.TimeSinceLastRun;
+
+                // World matrix and direction vectors
+                worldMatrix = cockpit.WorldMatrix;
+                forwardVector = worldMatrix.Forward;
+                upVector = worldMatrix.Up;
                 Vector3D leftVector = worldMatrix.Left;
 
-                // --------------------------------------------------------------------------
-                // 2. Gravity checks
-                // --------------------------------------------------------------------------
-                Vector3D gravity = cockpit.GetNaturalGravity();
-                bool inGravity = gravity.LengthSquared() > 0;
-                Vector3D gravityDirection = inGravity ? Vector3D.Normalize(gravity) : Vector3D.Zero;
+                // Gravity checks
+                gravity = cockpit.GetNaturalGravity();
+                inGravity = gravity.LengthSquared() > 0;
+                gravityDirection = inGravity ? Vector3D.Normalize(gravity) : Vector3D.Zero;
 
-                // --------------------------------------------------------------------------
-                // 3. Pitch and roll calculations (only if in gravity)
-                // --------------------------------------------------------------------------
-
+                // Pitch and roll calculations (only if in gravity)
                 if (inGravity)
                 {
-                    pitch =
-                        Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI);
-                    roll =
-                        Math.Atan2(
-                            Vector3D.Dot(leftVector, gravityDirection),
-                            Vector3D.Dot(upVector, gravityDirection)
-                        ) * (180 / Math.PI);
+                    pitch = Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI);
+                    roll = Math.Atan2(
+                        Vector3D.Dot(leftVector, gravityDirection),
+                        Vector3D.Dot(upVector, gravityDirection)
+                    ) * (180 / Math.PI);
 
                     // Normalize roll to [0, 360)
                     if (roll < 0)
                         roll += 360;
                 }
 
-                // --------------------------------------------------------------------------
-                // 4. Basic speed and Mach calculation
-                // --------------------------------------------------------------------------
+                // Speed and Mach calculation
                 velocity = cockpit.GetShipSpeed();
-                mach = velocity / speedOfSound;
+                mach = velocity / SEA_LEVEL_SPEED_OF_SOUND;
 
-                // --------------------------------------------------------------------------
-                // 5. Acceleration and G-force calculations
-                // --------------------------------------------------------------------------
+                // Acceleration and G-force calculations
                 Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
                 deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
 
@@ -2471,16 +2746,14 @@ namespace IngameScript
                     deltaTime = 0.0167;
 
                 Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
-                double gForces = acceleration.Length() / 9.81;
+                double gForces = acceleration.Length() / GRAVITY_ACCELERATION;
                 previousVelocity = currentVelocity;
 
                 // Track peak G-forces
                 if (gForces > peakGForce)
                     peakGForce = gForces;
 
-                // --------------------------------------------------------------------------
-                // 6. Heading, altitude, angle of attack
-                // --------------------------------------------------------------------------
+                // Calculate heading, altitude, angle of attack
                 double heading = CalculateHeading();
                 double altitude = GetAltitude();
                 double aoa = CalculateAngleOfAttack(
@@ -2489,19 +2762,27 @@ namespace IngameScript
                     upVector
                 );
 
-                // --------------------------------------------------------------------------
-                // 7. Throttle and other final values
-                // --------------------------------------------------------------------------
-                double throttle = cockpit.MoveIndicator.Z * -1; // Assuming Z-axis throttle control
-                double jumpthrottle = cockpit.MoveIndicator.Y; // Assuming Y-axis for jump throttle
                 double velocityKPH = velocity * 3.6; // Convert m/s to KPH
 
+                // Update smoothed values
+                UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttlecontrol);
+                AdjustStabilizers(aoa, myjet);
+
+                // Update velocity trail for tadpole visualization
+                if (currentVelocity.LengthSquared() > 0.1) // Only add if moving
+                {
+                    velocityTrail.Enqueue(currentVelocity);
+                }
+            }
+
+            private void UpdateThrottleControl(double throttle, double jumpthrottle)
+            {
                 if (throttle == 1f)
                 {
                     throttlecontrol += 0.01f;
                     if (throttlecontrol > 1f)
                         throttlecontrol = 1f;
-                    if (throttlecontrol >= 0.8f)
+                    if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD)
                     {
                         if (!hydrogenswitch)
                         {
@@ -2518,7 +2799,7 @@ namespace IngameScript
                     throttlecontrol -= 0.01f;
                     if (throttlecontrol < 0f)
                         throttlecontrol = 0f;
-                    if (throttlecontrol < 0.8f)
+                    if (throttlecontrol < THROTTLE_HYDROGEN_THRESHOLD)
                     {
                         if (hydrogenswitch)
                         {
@@ -2531,6 +2812,7 @@ namespace IngameScript
                     }
                 }
 
+                // Airbrake control
                 if (jumpthrottle == 1f)
                 {
                     for (int i = 0; i < airbreaks.Count; i++)
@@ -2549,6 +2831,8 @@ namespace IngameScript
                 {
                     myjet.manualfire = !myjet.manualfire;
                 }
+
+                // Manual fire mode
                 if (myjet.manualfire)
                 {
                     for (int i = 0; i < myjet._gatlings.Count; i++)
@@ -2556,35 +2840,178 @@ namespace IngameScript
                         myjet._gatlings[i].Enabled = true;
                     }
                 }
+
+                // Apply throttle to thrusters
                 for (int i = 0; i < thrusters.Count; i++)
                 {
                     float scaledThrottle;
 
-                    if (throttlecontrol <= 0.8f)
+                    if (throttlecontrol <= THROTTLE_HYDROGEN_THRESHOLD)
                     {
                         // Scale throttlecontrol to fit the range 0.0 to 1.0
-                        scaledThrottle = throttlecontrol / 0.8f;
+                        scaledThrottle = throttlecontrol / THROTTLE_HYDROGEN_THRESHOLD;
                     }
                     else
                     {
-                        // Cap it at 1.0 when throttlecontrol is over 0.8
+                        // Cap it at 1.0 when throttlecontrol is over threshold
                         scaledThrottle = 1.0f;
                     }
 
                     thrusters[i].ThrustOverridePercentage = scaledThrottle;
                 }
+            }
 
-                throttle = throttlecontrol;
+            // Render weapon and combat information to the third screen
+            private void RenderWeaponScreen(double heading, double altitude, Vector3D currentVelocity, Vector3D shooterPosition)
+            {
+                if (weaponScreen == null) return;
 
-                UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttle);
-                AdjustStabilizers(aoa, myjet);
+                using (var frame = weaponScreen.DrawFrame())
+                {
+                    float screenWidth = weaponScreen.SurfaceSize.X;
+                    float screenHeight = weaponScreen.SurfaceSize.Y;
+                    float margin = 10f;
+                    float panelY = 25f; // Increased from 10f
+                    Color titleColor = new Color(200, 180, 50); // Softer yellow
+                    Color headerColor = new Color(50, 180, 200); // Cyan/teal
+                    Color borderColor = new Color(60, 120, 60); // Darker green
+                    Color panelBgColor = new Color(20, 20, 20, 180); // Dark gray panel background
 
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
+                    // Draw main background
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(screenWidth / 2f, screenHeight / 2f),
+                        Size = new Vector2(screenWidth, screenHeight),
+                        Color = Color.Black,
+                        Alignment = TextAlignment.CENTER
+                    });
+
+                    // Title section with background panel
+                    float titleHeight = 35f;
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(screenWidth / 2f, panelY + 5f),
+                        Size = new Vector2(screenWidth - margin * 2, titleHeight),
+                        Color = new Color(30, 30, 30, 200),
+                        Alignment = TextAlignment.CENTER
+                    });
+
+                    // Title text
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = "WEAPON SYSTEMS",
+                        Position = new Vector2(screenWidth / 2f, panelY),
+                        RotationOrScale = 0.75f,
+                        Color = titleColor,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "White"
+                    });
+
+                    panelY += 45f; // Increased spacing
+
+                    // Weapon Status Panel with background
+                    float weaponPanelHeight = 100f;
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(screenWidth / 2f, panelY + weaponPanelHeight / 2f),
+                        Size = new Vector2(screenWidth - margin * 2, weaponPanelHeight),
+                        Color = panelBgColor,
+                        Alignment = TextAlignment.CENTER
+                    });
+
+                    DrawWeaponStatusPanelToScreen(frame, myjet, margin, panelY, screenWidth - margin * 2);
+
+                    panelY += weaponPanelHeight + 15f; // Increased spacing between sections
+
+                    // Separator line
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(screenWidth / 2f, panelY),
+                        Size = new Vector2(screenWidth - margin * 4, 2f),
+                        Color = borderColor,
+                        Alignment = TextAlignment.CENTER
+                    });
+
+                    panelY += 15f;
+
+                    // Missile Time-of-Flight Countdown
+                    if (activeMissiles.Count > 0)
+                    {
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "MISSILES IN FLIGHT",
+                            Position = new Vector2(screenWidth / 2f, panelY),
+                            RotationOrScale = 0.65f,
+                            Color = headerColor,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        });
+                        panelY += 30f;
+
+                        DrawMissileTOFToScreen(frame, screenWidth / 2f, panelY);
+                        panelY += activeMissiles.Count * 20f + 25f;
+                    }
+
+                    // Multi-Target Threat Display
+                    if (myjet.hasValidTargets && myjet.targetPositions.Length > 1)
+                    {
+                        // Separator line
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(screenWidth / 2f, panelY),
+                            Size = new Vector2(screenWidth - margin * 4, 2f),
+                            Color = borderColor,
+                            Alignment = TextAlignment.CENTER
+                        });
+
+                        panelY += 15f;
+
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "TARGET TRACKING",
+                            Position = new Vector2(screenWidth / 2f, panelY),
+                            RotationOrScale = 0.65f,
+                            Color = headerColor,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        });
+                        panelY += 30f;
+
+                        DrawMultiTargetPanelToScreen(frame, myjet.targetPositions, shooterPosition, margin, panelY, screenWidth - margin * 2);
+                    }
+                }
+            }
+
+            private void RenderHUD(double heading, Vector3D gravityDirection, Vector3D currentVelocity, MatrixD worldMatrix)
+            {
+                // Cache frequently used values
+                hudCenter = hud.SurfaceSize / 2f;
+                viewportMinDim = Math.Min(hud.SurfaceSize.X, hud.SurfaceSize.Y);
+
+                float centerX = hudCenter.X;
+                float centerY = hudCenter.Y;
                 float pixelsPerDegree = hud.SurfaceSize.Y / 16f; // F18-like scaling
+
+                // Get position and altitude for both HUD and weapon screen
+                Vector3D shooterPosition = cockpit.GetPosition();
+                double altitude = GetAltitude();
 
                 using (var frame = hud.DrawFrame())
                 {
+                    // === PHASE 1: CORE HUD ELEMENTS ===
                     DrawArtificialHorizon(
                         frame,
                         (float)pitch,
@@ -2593,6 +3020,10 @@ namespace IngameScript
                         centerY,
                         pixelsPerDegree
                     );
+
+                    // NEW: Bank angle markers on horizon
+                    DrawBankAngleMarkers(frame, centerX, centerY, (float)roll, pixelsPerDegree);
+
                     DrawFlightPathMarker(
                         frame,
                         currentVelocity,
@@ -2602,11 +3033,15 @@ namespace IngameScript
                         centerY,
                         pixelsPerDegree
                     );
+
+                    // NEW: Velocity trail (tadpole)
+                    DrawVelocityTrail(frame, cockpit, hud, roll, centerX, centerY, pixelsPerDegree);
+
                     DrawLeftInfoBox(
                         frame,
                         smoothedVelocity,
                         centerX + 30f,
-                        centerY + centerY * 1.85f,
+                        centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR,
                         pixelsPerDegree,
                         new LabelValue("T", myjet.offset)
                     );
@@ -2620,150 +3055,142 @@ namespace IngameScript
                         smoothedThrottle,
                         mach
                     );
-                    DrawSpeedIndicatorF18StyleKph(frame, velocityKPH);
-                    //DrawArtificialHorizon(frame, (float)pitch, (float)roll);
+                    DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
                     DrawRadar(frame, myjet, centerX - centerX * 0.70f,
                         centerY + centerY * 0.75f, 70, 30,
                         pixelsPerDegree);
                     DrawCompass(frame, heading);
                     DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
-                    //DrawAOABracket(frame, aoa);
-                    //DrawTrim(frame, aoa);
-                    //DrawBomb(frame, aoa);
-                    DrawGForceIndicator(frame, gForces, peakGForce);
-                    var cachedData = ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => line.StartsWith("Cached:GPS:"));
-                    var cachedData2 = ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => line.StartsWith("CacheGPS0:GPS:"));
-                    var cachedData3 = ParentProgram.Me.CustomData
-    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-    .FirstOrDefault(line => line.StartsWith("CacheGPS1:GPS:"));
-                    var cachedData4 = ParentProgram.Me.CustomData
-    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-    .FirstOrDefault(line => line.StartsWith("CacheGPS2:GPS:"));
-                    var cachedData5 = ParentProgram.Me.CustomData
-    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-    .FirstOrDefault(line => line.StartsWith("CacheGPS3:GPS:"));
-                    if (cachedData == null)
-                    {
-                        return;
-                    }
-                    var parts = cachedData.Split(':');
-                    var parts2 = cachedData2.Split(':');
-                    var parts3 = cachedData3.Split(':');
-                    var parts4 = cachedData4.Split(':');
-                    var parts5 = cachedData5.Split(':');
+                    DrawGForceIndicator(frame, smoothedGForces, peakGForce);
 
-                    if (parts.Length < 6)
+                    // NEW: AOA Indexer - always visible when flying
+                    if (velocity > 1.0) // Only show when moving
                     {
-                        return;
+                        Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
+                        DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
                     }
-                    double tarx,
-                        tary,
-                        tarz;
-                    double tarx2,
-    tary2,
-    tarz2;
-                    double tarx3,
-    tary3,
-    tarz3;
-                    double tarx4,
-    tary4,
-    tarz4;
-                    double tarx5,
-    tary5,
-    tarz5;
-                    if (
-                        !double.TryParse(parts[3], out tarx)
-                        || !double.TryParse(parts[4], out tary)
-                        || !double.TryParse(parts[5], out tarz)
-                    )
-                    {
-                        return;
-                    }
-                    if (
-    !double.TryParse(parts2[3], out tarx2)
-    || !double.TryParse(parts2[4], out tary2)
-    || !double.TryParse(parts2[5], out tarz2)
-)
-                    {
-                        return;
-                    }
-                    if (
-    !double.TryParse(parts3[3], out tarx3)
-    || !double.TryParse(parts3[4], out tary3)
-    || !double.TryParse(parts3[5], out tarz3)
-)
-                    {
-                        return;
-                    }
-                    if (
-    !double.TryParse(parts4[3], out tarx4)
-    || !double.TryParse(parts4[4], out tary4)
-    || !double.TryParse(parts4[5], out tarz4)
-)
-                    {
-                        return;
-                    }
-                    if (
-    !double.TryParse(parts5[3], out tarx5)
-    || !double.TryParse(parts5[4], out tary5)
-    || !double.TryParse(parts5[5], out tarz5)
-)
-                    {
-                        return;
-                    }
-                    var speecachedData = ParentProgram.Me.CustomData
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault(line => line.StartsWith("CachedSpeed:"));
-                    if (speecachedData == null)
-                    {
-                        return;
-                    }
-                    var speeparts = speecachedData.Split(':');
-                    double speex,
-                        speey,
-                        speez;
-                    if (
-                        !double.TryParse(speeparts[1], out speex)
-                        || !double.TryParse(speeparts[2], out speey)
-                        || !double.TryParse(speeparts[3], out speez)
-                    )
-                    {
-                        return;
-                    }
-                    Vector3D targetPosition = new Vector3D(tarx, tary, tarz); // Replace with actual target GPS
-                    Vector3D targetPosition2 = new Vector3D(tarx2, tary2, tarz2); // Replace with actual target GPS
 
-                    Vector3D targetPosition3 = new Vector3D(tarx3, tary3, tarz3); // Replace with actual target GPS
+                    // === PHASE 2: TARGETING ELEMENTS ===
+                    if (myjet.hasValidTargets && myjet.currentTargetPosition.HasValue)
+                    {
+                        double muzzleVelocity = 910; // Muzzle velocity in m/s
+                        double range = Vector3D.Distance(shooterPosition, myjet.currentTargetPosition.Value);
 
-                    Vector3D targetPosition4 = new Vector3D(tarx4, tary4, tarz4); // Replace with actual target GPS
+                        // Draw top-down radar with all targets and sweep animation
+                        Vector2 surfaceSize = hud.SurfaceSize;
+                        const float RADAR_BOX_SIZE_PX = 100f;
+                        const float RADAR_BORDER_MARGIN = 10f;
+                        Vector2 radarOrigin = new Vector2(
+                            hud.SurfaceSize.X * 0.8f - RADAR_BORDER_MARGIN,
+                            surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
+                        );
+                        Vector2 radarCenter = radarOrigin + new Vector2(RADAR_BOX_SIZE_PX / 2f, RADAR_BOX_SIZE_PX / 2f);
 
-                    Vector3D targetPosition5 = new Vector3D(tarx5, tary5, tarz5); // Replace with actual target GPS
+                        DrawTopDownRadarOptimized(frame, cockpit, hud,
+                            myjet.targetPositions,
+                            Color.White, HUD_PRIMARY, HUD_EMPHASIS, HUD_WARNING);
 
-                    Vector3D targetVelocity = new Vector3D(speex, speey, speez); // Replace with actual target speed
-                    Vector3D shooterPosition = cockpit.GetPosition(); // Your ship's current position
-                    double muzzleVelocity = 910; // Muzzle velocity of your weapon in m/s
-                    // Compute the projectile's initial velocity
-                    Vector3D shooterForwardDirection = cockpit.WorldMatrix.Forward;
-                    Vector3D projectileInitialVelocity =
-                        currentVelocity + muzzleVelocity * shooterForwardDirection;
-                    DrawTopDownRadar(frame, cockpit, hud, targetPosition, Color.White, Color.Lime, Color.Yellow, Color.Red, targetPosition2, targetPosition3, targetPosition4, targetPosition5);
+                        // NEW: Radar sweep animation
+                        DrawRadarSweepLine(frame, radarCenter, RADAR_BOX_SIZE_PX / 2f);
 
-                    // Call the DrawLeadingPip function
-                    DrawLeadingPip(
-                        frame, cockpit, hud,
-                        targetPosition,
-                        targetVelocity,
-                        shooterPosition,
-                        currentVelocity,
-                        muzzleVelocity,
-                        gravityDirection, Color.Red, Color.Yellow, Color.HotPink, Color.White
-                    );
+                        // Calculate intercept for leading pip and gun funnel
+                        Vector3D interceptPoint;
+                        double timeToIntercept;
+                        bool hasIntercept = CalculateInterceptPointIterative(
+                            shooterPosition,
+                            currentVelocity,
+                            muzzleVelocity,
+                            myjet.currentTargetPosition.Value,
+                            myjet.currentTargetVelocity ?? Vector3D.Zero,
+                            gravityDirection,
+                            INTERCEPT_ITERATIONS,
+                            out interceptPoint,
+                            out timeToIntercept
+                        );
 
+                        if (hasIntercept)
+                        {
+                            // Check if aiming at pip
+                            MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
+                            Vector3D directionToIntercept = interceptPoint - shooterPosition;
+                            Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+
+                            bool isAimingAtPip = false;
+                            if (localDirectionToIntercept.Z < 0)
+                            {
+                                Vector2 center = surfaceSize / 2f;
+                                const float COCKPIT_FOV_SCALE_X = 0.3434f;
+                                const float COCKPIT_FOV_SCALE_Y = 0.31f;
+                                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
+                                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
+                                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
+                                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
+                                Vector2 pipScreenPos = new Vector2(screenX, screenY);
+
+                                float pipRadius = viewportMinDim * 0.05f; // Approximate pip size
+                                float distanceToPip = Vector2.Distance(center, pipScreenPos);
+                                isAimingAtPip = distanceToPip <= pipRadius;
+                            }
+
+                            // NEW: Gun funnel visualization
+                            DrawGunFunnel(frame, cockpit, hud, interceptPoint, shooterPosition, range, isAimingAtPip);
+
+                            // Draw leading pip for main target
+                            DrawLeadingPip(
+                                frame, cockpit, hud,
+                                myjet.currentTargetPosition.Value,
+                                myjet.currentTargetVelocity ?? Vector3D.Zero,
+                                shooterPosition,
+                                currentVelocity,
+                                muzzleVelocity,
+                                gravityDirection,
+                                HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO
+                            );
+
+                            // NEW: Target acquisition brackets (keep on main HUD for situational awareness)
+                            DrawTargetBrackets(frame, cockpit, hud,
+                                myjet.currentTargetPosition.Value,
+                                myjet.currentTargetVelocity ?? Vector3D.Zero,
+                                shooterPosition,
+                                currentVelocity);
+                        }
+
+                        // NEW: Breakaway warning (keep on main HUD - critical safety feature)
+                        DrawBreakawayWarning(frame, altitude, currentVelocity, myjet.currentTargetPosition.Value, shooterPosition);
+                    }
+
+                    // NEW: Formation ghosts (keep on main HUD for formation flying)
+                    DrawFormationGhosts(frame, cockpit, hud);
                 }
+
+                // Render weapon screen (separate display)
+                RenderWeaponScreen(heading, altitude, currentVelocity, shooterPosition);
+            }
+
+            public override void Tick()
+            {
+                // Validation
+                if (!ValidateHUDState())
+                    return;
+
+                // Get throttle inputs
+                double throttle = cockpit.MoveIndicator.Z * -1;
+                double jumpthrottle = cockpit.MoveIndicator.Y;
+
+                // Update all flight data
+                MatrixD worldMatrix;
+                Vector3D forwardVector, upVector, gravity, gravityDirection;
+                bool inGravity;
+                UpdateFlightData(out worldMatrix, out forwardVector, out upVector,
+                    out gravity, out inGravity, out gravityDirection);
+
+                // Update throttle and control systems
+                UpdateThrottleControl(throttle, jumpthrottle);
+
+                // Render the HUD
+                double heading = CalculateHeading();
+                Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
+                RenderHUD(heading, gravityDirection, currentVelocity, worldMatrix);
             }
             private void DrawGForceIndicator(
                 MySpriteDrawFrame frame,
@@ -2771,17 +3198,18 @@ namespace IngameScript
                 double peakGForce
             )
             {
-                float padding = 10f;
-                float textScale = 0.8f;
+                const float PADDING = 10f;
+                const float TEXT_SCALE = 0.8f;
+                const float LINE_HEIGHT = 20f;
 
                 string gForceText = $"G: {gForces:F1}";
                 var gForceSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,
                     Data = gForceText,
-                    Position = new Vector2(padding, hud.SurfaceSize.Y - padding - 20f),
-                    RotationOrScale = textScale,
-                    Color = Color.Lime,
+                    Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.LEFT,
                     FontId = "White"
                 };
@@ -2793,9 +3221,9 @@ namespace IngameScript
                 {
                     Type = SpriteType.TEXT,
                     Data = peakGText,
-                    Position = new Vector2(padding, hud.SurfaceSize.Y - padding - 40f),
-                    RotationOrScale = textScale,
-                    Color = Color.Lime,
+                    Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT * 2),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.LEFT,
                     FontId = "White"
                 };
@@ -2821,45 +3249,45 @@ namespace IngameScript
                 params LabelValue[] extraValues
             )
             {
-                float yOffsetPerValue = 30f;
-                float xoffset = centerX - centerX * 0.75f;
-                float yoffset = centerY - centerY * 0.5f;
-                // 2) Render each label+value line, padding the label so that the numbers line up
-                // 1) Find the longest label, to align all numeric columns
-                // Decide on fixed offsets for your two “columns”
-                float labelColumnX = xoffset - 40f; // try adjusting
-                float numberColumnX = xoffset + 40f; // try adjusting
+                const float Y_OFFSET_PER_VALUE = 30f;
+                const float X_OFFSET_FACTOR = 0.75f;
+                const float Y_OFFSET_FACTOR = 0.5f;
+                const float LABEL_COLUMN_OFFSET = 40f;
+                const float NUMBER_COLUMN_OFFSET = 40f;
+                const float TEXT_SCALE = 0.75f;
+
+                float xoffset = centerX - centerX * X_OFFSET_FACTOR;
+                float yoffset = centerY - centerY * Y_OFFSET_FACTOR;
+                float labelColumnX = xoffset - LABEL_COLUMN_OFFSET;
+                float numberColumnX = xoffset + NUMBER_COLUMN_OFFSET;
 
                 for (int i = 0; i < extraValues.Length; i++)
                 {
                     string labelText = extraValues[i].Label;
                     double numericValue = extraValues[i].Value;
 
-                    // 1) Draw the label at labelColumnX, left-aligned
+                    // Draw the label
                     var labelSprite = new MySprite()
                     {
                         Type = SpriteType.TEXT,
                         Data = labelText,
-                        Position = new Vector2(labelColumnX, yoffset + i * yOffsetPerValue),
-                        RotationOrScale = 0.75f,
-                        Color = Color.Lime,
+                        Position = new Vector2(labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
+                        RotationOrScale = TEXT_SCALE,
+                        Color = HUD_PRIMARY,
                         Alignment = TextAlignment.LEFT,
                         FontId = "White"
                     };
                     frame.Add(labelSprite);
 
-                    // 2) Draw the numeric value at numberColumnX
-                    //    You can use LEFT or RIGHT alignment.
-                    //    If you choose RIGHT alignment, the text anchor is at that X,
-                    //    and the characters extend to the left of that point.
+                    // Draw the numeric value
                     var valueSprite = new MySprite()
                     {
                         Type = SpriteType.TEXT,
                         Data = numericValue.ToString("F1"),
-                        Position = new Vector2(numberColumnX, yoffset + i * yOffsetPerValue),
-                        RotationOrScale = 0.75f,
-                        Color = Color.Lime,
-                        Alignment = TextAlignment.RIGHT, // or LEFT if you prefer
+                        Position = new Vector2(numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
+                        RotationOrScale = TEXT_SCALE,
+                        Color = HUD_PRIMARY,
+                        Alignment = TextAlignment.RIGHT,
                         FontId = "White"
                     };
                     frame.Add(valueSprite);
@@ -2921,8 +3349,7 @@ namespace IngameScript
             private const float PIXELS_PER_ALTITUDE_UNIT = TAPE_HEIGHT_PIXELS / ALTITUDE_UNITS_PER_TAPE_HEIGHT;
             private const float TICK_INTERVAL = 100f; // Draw a tick mark every 100 altitude units
             private const float MAJOR_TICK_INTERVAL = 500f; // Draw a number every 500 altitude units
-            private Color hudColor = Color.Lime; // Standard HUD color
-            private string FONT = "Monospace"; // Use a monospaced font for alignment
+            private const string FONT = "Monospace"; // Use a monospaced font for alignment
 
             private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
             {
@@ -2956,7 +3383,7 @@ namespace IngameScript
                     Data = "SquareSimple", // Use a simple square texture stretched into a line
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(tapeLine);
@@ -2975,8 +3402,6 @@ namespace IngameScript
                 for (float altMark = startTickAlt; altMark <= tapeTopAlt + (TICK_INTERVAL * 0.5f); altMark += TICK_INTERVAL) // Add half interval to ensure top tick draws
                 {
                     // Prevent potential infinite loops with float inaccuracies if TICK_INTERVAL is 0 or negative
-                    if (TICK_INTERVAL <= 0) break;
-
                     // Calculate Y position relative to the center based on altitude difference
                     float yOffset = (float)(currentAltitude - altMark) * PIXELS_PER_ALTITUDE_UNIT;
                     float yPos = centerY + yOffset;
@@ -2998,7 +3423,7 @@ namespace IngameScript
                                 Data = "SquareSimple",
                                 Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
                                 Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
-                                Color = hudColor,
+                                Color = HUD_PRIMARY,
                                 Alignment = TextAlignment.CENTER // Align to its center
                             };
                             // Clamp tick position to tape bounds vertically if needed (optional aesthetic)
@@ -3017,7 +3442,7 @@ namespace IngameScript
                                 Data = altText,
                                 Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f), // Position left of the tick
                                 RotationOrScale = 0.5f, // Slightly smaller font for tape numbers
-                                Color = hudColor,
+                                Color = HUD_PRIMARY,
                                 Alignment = TextAlignment.RIGHT, // Align text to the right, so it ends before the margin
                                 FontId = FONT
                             };
@@ -3031,7 +3456,7 @@ namespace IngameScript
                 // --- 4. Draw Digital Altitude Readout ---
                 // Box (optional, but common)
                 // Draw outline using lines (example)
-                DrawRectangleOutline(frame, digitalAltBoxX - 20, centerY - digitalAltBoxHeight - 225 / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, hudColor);
+                DrawRectangleOutline(frame, digitalAltBoxX - 20, centerY - digitalAltBoxHeight - 225 / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
 
                 // Altitude Text
@@ -3042,7 +3467,7 @@ namespace IngameScript
                     Data = currentAltitudeText,
                     Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140), // Centered in the box area
                     RotationOrScale = 0.8f, // Main font size
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER,
                     FontId = FONT
                 };
@@ -3055,7 +3480,7 @@ namespace IngameScript
                     Data = "<", // Caret pointing from the box to the tape
                     Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f), // Just right of the box
                     RotationOrScale = 0.5f,
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.LEFT, // Align left so it starts right next to the box
                     FontId = FONT
                 };
@@ -3097,7 +3522,7 @@ namespace IngameScript
                     Data = "SquareSimple",
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(tapeLine);
@@ -3146,7 +3571,7 @@ namespace IngameScript
                             // Position its center at (tapeLineX + half its length, yPos)
                             Position = new Vector2(tapeLineX + currentTickLength / 2f, yPos),
                             Size = new Vector2(currentTickLength, tapeWidth), // Thin horizontal line
-                            Color = hudColor,
+                            Color = HUD_PRIMARY,
                             Alignment = TextAlignment.CENTER
                         };
                         frame.Add(tickMark);
@@ -3162,7 +3587,7 @@ namespace IngameScript
                                 // Position right of the tick mark
                                 Position = new Vector2(tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f), // Adjust Y offset for vertical centering
                                 RotationOrScale = 0.5f, // Font size for tape numbers
-                                Color = hudColor,
+                                Color = HUD_PRIMARY,
                                 Alignment = TextAlignment.LEFT, // Align text to the left, starting after the margin
                                 FontId = FONT
                             };
@@ -3174,7 +3599,7 @@ namespace IngameScript
                 // --- 4. Draw Digital Speed Readout ---
                 // Box (optional) - Positioned to the right of the tape
                 // Draw outline using lines or a box sprite
-                DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, hudColor); // Adjust Y offset as needed
+                DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY); // Adjust Y offset as needed
 
                 // Speed Text
                 string currentSpeedText = currentSpeedKph.ToString("F0"); // Integer KPH
@@ -3185,7 +3610,7 @@ namespace IngameScript
                     // Centered within the conceptual box area
                     Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f), // Adjust Y pos to be centered in the drawn box
                     RotationOrScale = 0.8f, // Main font size
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER,
                     FontId = FONT
                 };
@@ -3200,7 +3625,7 @@ namespace IngameScript
                                 // Position just left of the digital readout box, aligned vertically with the center
                     Position = new Vector2(digitalSpeedBoxX - 10f, centerY - 7.5f), // Adjust X offset as needed
                     RotationOrScale = 0.5f,
-                    Color = hudColor,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.RIGHT, // Align right so it ends just before the box
                     FontId = FONT
                 };
@@ -3270,48 +3695,56 @@ namespace IngameScript
             }
 
             private void UpdateSmoothedValues(
-                double velocityKnots,
+                double velocityKPH,
                 double altitude,
                 double gForces,
                 double aoa,
                 double throttle
             )
             {
-                velocityHistory.Enqueue(velocityKnots);
-                if (velocityHistory.Count > smoothingWindowSize)
+                // Optimized smoothing using running sums instead of .Average() calls
+
+                // Velocity smoothing
+                if (velocityHistory.Count >= SMOOTHING_WINDOW_SIZE)
                 {
-                    velocityHistory.Dequeue();
+                    velocitySum -= velocityHistory.Dequeue();
                 }
-                smoothedVelocity = velocityHistory.Average();
+                velocityHistory.Enqueue(velocityKPH);
+                velocitySum += velocityKPH;
+                smoothedVelocity = velocitySum / velocityHistory.Count;
+
+                // Altitude smoothing (uses struct, so we calculate differently)
                 altitudeHistory.Enqueue(new AltitudeTimePoint(totalElapsedTime, altitude));
-                if (altitudeHistory.Count > smoothingWindowSize)
+                if (altitudeHistory.Count > 0)
                 {
-                    altitudeHistory.Dequeue();
+                    double altSum = 0;
+                    foreach (var point in altitudeHistory)
+                    {
+                        altSum += point.Altitude;
+                    }
+                    smoothedAltitude = altSum / altitudeHistory.Count;
                 }
-                if (altitudeHistory.Any()) // Or altitudeHistory.Count > 0
+
+                // G-Force smoothing (FIXED: dequeue before enqueue to prevent accumulation)
+                if (gForcesHistory.Count >= SMOOTHING_WINDOW_SIZE)
                 {
-                    smoothedAltitude = altitudeHistory.Average(point => point.Altitude);
-                }
-                else
-                {
-                    // Handle the case where history is empty, perhaps use the current raw altitude
-                    // smoothedAltitude = currentAltitude; // Or 0, or some default
+                    gForcesSum -= gForcesHistory.Dequeue();
                 }
                 gForcesHistory.Enqueue(gForces);
-                if (gForcesHistory.Count > smoothingWindowSize)
-                {
-                    gForcesHistory.Dequeue();
-                }
-                smoothedGForces = gForcesHistory.Average() + 1;
+                gForcesSum += gForces;
+                smoothedGForces = gForcesSum / gForcesHistory.Count;
 
+                // AoA smoothing
+                if (aoaHistory.Count >= SMOOTHING_WINDOW_SIZE)
+                {
+                    aoaSum -= aoaHistory.Dequeue();
+                }
                 aoaHistory.Enqueue(aoa);
-                if (aoaHistory.Count > smoothingWindowSize)
-                {
-                    aoaHistory.Dequeue();
-                }
-                smoothedAoA = aoaHistory.Average();
+                aoaSum += aoa;
+                smoothedAoA = aoaSum / aoaHistory.Count;
 
-                smoothedThrottle = throttle * 100; // Convert to percentage
+                // Throttle percentage
+                smoothedThrottle = throttle * 100;
             }
 
             private void DrawFlightInfo(
@@ -3470,7 +3903,8 @@ namespace IngameScript
                 // Calculate the filled height based on throttle
                 float filledHeight = barHeight * throttle;
                 Vector2 filledSize = new Vector2(maxWidth * 100, filledHeight * boxSize.Y * 1.25f);
-                barColor = throttle > 0.8f ? Color.Yellow : Color.Lime;
+                // Change color to yellow when entering hydrogen boost range
+                barColor = throttle > THROTTLE_HYDROGEN_THRESHOLD ? HUD_EMPHASIS : HUD_PRIMARY;
 
                 // Draw the filled throttle bar
                 frame.Add(
@@ -3602,150 +4036,840 @@ namespace IngameScript
                 frame.Add(rightWing);
             }
 
-            private double GetPitchFromWorldMatrix(MatrixD matrix)
+            // ===================================================================
+            // NEW ENHANCED HUD FEATURES
+            // ===================================================================
+
+            // --- 1. TARGET ACQUISITION RETICLE (TAR BOX) ---
+            private void DrawTargetBrackets(
+                MySpriteDrawFrame frame,
+                IMyCockpit cockpit,
+                IMyTextSurface hud,
+                Vector3D targetPosition,
+                Vector3D targetVelocity,
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity
+            )
             {
-                Vector3D forward = matrix.Forward;
-                return Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
-            }
-            private double CalculateAOAFromFlightPath(Vector3D velocity, MatrixD worldMatrix)
-            {
-                if (velocity.LengthSquared() < 0.01)
-                    return 0;
+                if (cockpit == null || hud == null) return;
 
-                // Transform velocity into cockpit-local space
-                Vector3D velocityDirection = Vector3D.Normalize(velocity);
-                Vector3D localVelocity = Vector3D.TransformNormal(
-                    velocityDirection,
-                    MatrixD.Transpose(worldMatrix)
-                );
+                // Calculate range
+                double range = Vector3D.Distance(shooterPosition, targetPosition);
 
-                // Velocity pitch (in degrees) — this is what your flight path marker uses
-                double velocityPitch =
-                    Math.Atan2(localVelocity.Y, -localVelocity.Z) * (180.0 / Math.PI);
+                // Calculate closure rate (negative = closing, positive = separating)
+                Vector3D relativeVelocity = targetVelocity - shooterVelocity;
+                Vector3D directionToTarget = Vector3D.Normalize(targetPosition - shooterPosition);
+                double closureRate = Vector3D.Dot(relativeVelocity, directionToTarget);
 
-                // Nose pitch
-                Vector3D forward = worldMatrix.Forward;
-                double nosePitch = Math.Atan2(forward.Y, -forward.Z) * (180.0 / Math.PI);
+                // Calculate aspect angle (target's heading relative to us)
+                Vector3D targetForward = Vector3D.Normalize(targetVelocity);
+                Vector3D toShooter = Vector3D.Normalize(shooterPosition - targetPosition);
+                double aspectAngle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(targetForward, toShooter), -1, 1)) * (180.0 / Math.PI);
 
-                // AOA = Nose Pitch - Velocity Pitch
-                return nosePitch - velocityPitch;
-            }
+                // Project target to screen
+                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
+                Vector3D directionToTargetLocal = Vector3D.TransformNormal(targetPosition - shooterPosition, worldToCockpitMatrix);
 
-            private void DrawAOABracket(MySpriteDrawFrame frame, double aoa)
-            {
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
+                if (Math.Abs(directionToTargetLocal.Z) < MIN_Z_FOR_PROJECTION)
+                    directionToTargetLocal.Z = -MIN_Z_FOR_PROJECTION;
 
-                float pixelsPerDegreeY = hud.SurfaceSize.Y / 45f;
-                float aoaOffsetY = (float)(aoa * pixelsPerDegreeY);
+                if (directionToTargetLocal.Z >= 0) return; // Target behind us
 
-                Vector2 bracketPosition = new Vector2(centerX - 100f, centerY);
+                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 center = surfaceSize / 2f;
 
-                // Display the numeric AOA value
-                var aoaText = new MySprite()
+                const float COCKPIT_FOV_SCALE_X = 0.3434f;
+                const float COCKPIT_FOV_SCALE_Y = 0.31f;
+                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
+                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
+                float screenX = center.X + (float)(directionToTargetLocal.X / -directionToTargetLocal.Z) * scaleX;
+                float screenY = center.Y + (float)(-directionToTargetLocal.Y / -directionToTargetLocal.Z) * scaleY;
+                Vector2 targetScreenPos = new Vector2(screenX, screenY);
+
+                // Check if on screen
+                bool isOnScreen = targetScreenPos.X >= 0 && targetScreenPos.X <= surfaceSize.X &&
+                                  targetScreenPos.Y >= 0 && targetScreenPos.Y <= surfaceSize.Y;
+
+                if (!isOnScreen) return;
+
+                // Draw dynamic brackets
+                float bracketSize = MathHelper.Clamp((float)(3000.0 / range), 20f, 80f);
+                float bracketThickness = 2f;
+                float cornerLength = bracketSize * 0.3f;
+
+                // Determine color based on closure rate
+                Color bracketColor = closureRate < -10 ? HUD_WARNING :
+                                   closureRate > 10 ? HUD_EMPHASIS : HUD_PRIMARY;
+
+                // Draw four corner brackets
+                // Top-left
+                AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + new Vector2(-bracketSize/2 + cornerLength, -bracketSize/2),
+                                    bracketThickness, bracketColor);
+                AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2 + cornerLength),
+                                    bracketThickness, bracketColor);
+
+                // Top-right
+                AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + new Vector2(bracketSize/2 - cornerLength, -bracketSize/2),
+                                    bracketThickness, bracketColor);
+                AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2 + cornerLength),
+                                    bracketThickness, bracketColor);
+
+                // Bottom-left
+                AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2),
+                                    targetScreenPos + new Vector2(-bracketSize/2 + cornerLength, bracketSize/2),
+                                    bracketThickness, bracketColor);
+                AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2),
+                                    targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2 - cornerLength),
+                                    bracketThickness, bracketColor);
+
+                // Bottom-right
+                AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, bracketSize/2),
+                                    targetScreenPos + new Vector2(bracketSize/2 - cornerLength, bracketSize/2),
+                                    bracketThickness, bracketColor);
+                AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, bracketSize/2),
+                                    targetScreenPos + new Vector2(bracketSize/2, bracketSize/2 - cornerLength),
+                                    bracketThickness, bracketColor);
+
+                // Draw data readout (below bracket)
+                float textY = targetScreenPos.Y + bracketSize/2 + 5f;
+                float textScale = 0.5f;
+
+                // Range
+                string rangeText = range >= 1000 ? $"{range/1000:F1}km" : $"{range:F0}m";
+                var rangeSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = $"{aoa:F1}°",
-                    Position = bracketPosition + new Vector2(-100f, 20),
-                    RotationOrScale = 0.6f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "White"
+                    Data = rangeText,
+                    Position = new Vector2(targetScreenPos.X, textY),
+                    RotationOrScale = textScale,
+                    Color = bracketColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "Monospace"
                 };
-                frame.Add(aoaText);
-            }
+                frame.Add(rangeSprite);
 
-            private void DrawTrim(MySpriteDrawFrame frame, double aoa)
-            {
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
-
-                float pixelsPerDegreeY = hud.SurfaceSize.Y / 45f;
-                float aoaOffsetY = (float)(aoa * pixelsPerDegreeY);
-
-                Vector2 bracketPosition = new Vector2(centerX - 100f, centerY);
-
-                // Display the numeric AOA value
-                var aoaText = new MySprite()
+                // Closure rate
+                string closureText = $"Vc:{closureRate:+0;-0}";
+                var closureSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = $"T|O: {myjet.offset:F1}°",
-                    Position = bracketPosition + new Vector2(-100f, -0f),
-                    RotationOrScale = 0.6f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "White"
+                    Data = closureText,
+                    Position = new Vector2(targetScreenPos.X, textY + 12f),
+                    RotationOrScale = textScale,
+                    Color = bracketColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "Monospace"
                 };
-                frame.Add(aoaText);
+                frame.Add(closureSprite);
 
-                // Display the numeric AOA value
-                var aoaText2 = new MySprite()
+                // Aspect angle
+                string aspectText = $"AA:{aspectAngle:F0}°";
+                var aspectSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = $"T: {currentTrim:F1}°",
-                    Position = bracketPosition + new Vector2(-100f, 40f),
-                    RotationOrScale = 0.6f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "White"
+                    Data = aspectText,
+                    Position = new Vector2(targetScreenPos.X, textY + 24f),
+                    RotationOrScale = textScale,
+                    Color = bracketColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "Monospace"
                 };
-                frame.Add(aoaText2);
+                frame.Add(aspectSprite);
             }
-            private void DrawBomb(MySpriteDrawFrame frame, double aoa)
+
+            // --- 2. WEAPON STATUS PANEL (for weapon screen) ---
+            private void DrawWeaponStatusPanelToScreen(MySpriteDrawFrame frame, Jet myjet, float panelX, float panelY, float panelWidth)
             {
-                float centerX = hud.SurfaceSize.X / 2;
-                float centerY = hud.SurfaceSize.Y / 2;
+                const float PANEL_HEIGHT = 90f;
+                const float TEXT_SCALE = 0.7f;
+                const float LINE_HEIGHT = 18f;
 
-                float pixelsPerDegreeY = hud.SurfaceSize.Y / 45f;
-                float aoaOffsetY = (float)(aoa * pixelsPerDegreeY);
-                Vector2 bracketPosition = new Vector2(centerX - 40f, centerY + 40f);
+                // Draw panel outline
+                DrawRectangleOutline(frame, panelX, panelY, panelWidth, PANEL_HEIGHT, 2f, HUD_PRIMARY);
 
-                var customDataLines = ParentProgram.Me.CustomData.Split(
-                    new[] { '\n' },
-                    StringSplitOptions.RemoveEmptyEntries
-                );
-                float offsetY = 0f; // Initial vertical offset
-                float spacingY = 20f; // Spacing between lines
+                float textX = panelX + 10f;
+                float textY = panelY + 10f;
 
-                double sum = 0;
-                int count = 0;
-
-                for (int i = 0; i < customDataLines.Length; i++)
+                // Weapon type
+                string weaponText = "WPN: GAU-8";
+                frame.Add(new MySprite()
                 {
-                    string line = customDataLines[i];
+                    Type = SpriteType.TEXT,
+                    Data = weaponText,
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
 
-                    if (line.StartsWith("DataSlot"))
+                // Ammo count (infinite for gatling)
+                textY += LINE_HEIGHT;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = "RND: \u221E",
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+
+                // Missile bay status
+                textY += LINE_HEIGHT;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = "MSL:",
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+
+                // Draw missile bay grid (squares for each bay)
+                float baySquareSize = 10f;
+                float bayStartX = textX + 35f;
+                float bayY = textY + 2f;
+
+                int maxBays = Math.Min(8, myjet._bays.Count);
+                for (int i = 0; i < maxBays; i++)
+                {
+                    bool bayLoaded = myjet._bays[i].IsConnected;
+                    Color bayColor = bayLoaded ? HUD_PRIMARY : HUD_WARNING;
+
+                    float bayX = bayStartX + (i % 4) * (baySquareSize + 3f);
+                    float currentBayY = bayY + (i / 4) * (baySquareSize + 3f);
+
+                    if (bayLoaded)
                     {
-                        // Try to extract the second number from the line
-                        string[] parts = line.Split(':');
-                        double extractedValue;
-
-                        if (parts.Length > 1 && double.TryParse(parts[1], out extractedValue))
+                        // Filled square for loaded
+                        frame.Add(new MySprite()
                         {
-                            sum += extractedValue;
-                            count++;
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(bayX + baySquareSize/2, currentBayY + baySquareSize/2),
+                            Size = new Vector2(baySquareSize, baySquareSize),
+                            Color = bayColor,
+                            Alignment = TextAlignment.CENTER
+                        });
+                    }
+                    else
+                    {
+                        // Empty outline for expended
+                        DrawRectangleOutline(frame, bayX, currentBayY, baySquareSize, baySquareSize, 1f, bayColor);
+                    }
+                }
+
+                // Targeting pod status (check if AI radar is tracking)
+                textY += LINE_HEIGHT * 2;
+                bool radarTracking = myjet.isTrackingTarget;
+                string podStatus = radarTracking ? "LOCK \u2713" : "----";
+                Color podColor = radarTracking ? HUD_PRIMARY : HUD_WARNING;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"POD: {podStatus}",
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = podColor,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+            }
+
+            // --- 3. GUN FUNNEL VISUALIZATION ---
+            private void DrawGunFunnel(
+                MySpriteDrawFrame frame,
+                IMyCockpit cockpit,
+                IMyTextSurface hud,
+                Vector3D interceptPoint,
+                Vector3D shooterPosition,
+                double range,
+                bool isAimingAtPip
+            )
+            {
+                if (cockpit == null || hud == null) return;
+
+                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 center = surfaceSize / 2f;
+
+                // Calculate funnel width based on range (wider at longer range)
+                float funnelWidthFactor = (float)MathHelper.Clamp(range / 2000.0, 0.05, 0.3);
+                float funnelBaseWidth = surfaceSize.X * funnelWidthFactor;
+
+                // Project intercept point
+                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
+                Vector3D directionToIntercept = interceptPoint - shooterPosition;
+                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+
+                if (localDirectionToIntercept.Z >= 0) return;
+
+                if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
+                    localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION;
+
+                const float COCKPIT_FOV_SCALE_X = 0.3434f;
+                const float COCKPIT_FOV_SCALE_Y = 0.31f;
+                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
+                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
+                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
+                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
+                Vector2 pipScreenPos = new Vector2(screenX, screenY);
+
+                // Draw funnel lines from screen corners to pip
+                Color funnelColor = new Color(HUD_PRIMARY, 0.3f); // Semi-transparent
+                float lineThickness = 1f;
+
+                // Four funnel lines converging to pip
+                Vector2[] edgePoints = new Vector2[]
+                {
+                    new Vector2(center.X - funnelBaseWidth/2, 0),
+                    new Vector2(center.X + funnelBaseWidth/2, 0),
+                    new Vector2(center.X + funnelBaseWidth/2, surfaceSize.Y),
+                    new Vector2(center.X - funnelBaseWidth/2, surfaceSize.Y)
+                };
+
+                foreach (var edgePoint in edgePoints)
+                {
+                    AddLineSprite(frame, edgePoint, pipScreenPos, lineThickness, funnelColor);
+                }
+
+                // Draw firing cue if aiming at pip
+                if (isAimingAtPip && range < 2500)
+                {
+                    string cueText = range < 1500 ? "SHOOT" : "IN RANGE";
+                    Color cueColor = range < 1500 ? HUD_WARNING : HUD_EMPHASIS;
+
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = cueText,
+                        Position = new Vector2(center.X, center.Y - 60f),
+                        RotationOrScale = 1.0f,
+                        Color = cueColor,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "White"
+                    });
+                }
+            }
+
+            // --- 4. FUEL RING INDICATOR ---
+            private void DrawFuelRing(MySpriteDrawFrame frame, List<IMyGasTank> tanks)
+            {
+                if (tanks == null || tanks.Count == 0) return;
+
+                // Calculate total fuel percentage
+                double totalCapacity = 0;
+                double totalFilled = 0;
+                foreach (var tank in tanks)
+                {
+                    if (tank.BlockDefinition.SubtypeId.Contains("Hydrogen"))
+                    {
+                        totalCapacity += tank.Capacity;
+                        totalFilled += tank.Capacity * tank.FilledRatio;
+                    }
+                }
+
+                if (totalCapacity <= 0) return;
+
+                double fuelPercent = totalFilled / totalCapacity;
+
+                // Arc parameters
+                Vector2 center = new Vector2(hud.SurfaceSize.X / 2f, 50f);
+                float radius = hud.SurfaceSize.X * 0.35f;
+                float arcThickness = 8f;
+                float arcSpan = 120f; // degrees
+
+                // Color based on fuel level
+                Color fuelColor;
+                if (fuelPercent < BINGO_FUEL_PERCENT)
+                    fuelColor = HUD_WARNING; // Red
+                else if (fuelPercent < LOW_FUEL_PERCENT)
+                    fuelColor = HUD_EMPHASIS; // Yellow
+                else
+                    fuelColor = HUD_PRIMARY; // Green
+
+                // Draw arc segments
+                int segments = 30;
+                float startAngle = 90f - arcSpan / 2f;
+                float filledAngle = startAngle + (float)(fuelPercent * arcSpan);
+
+                for (int i = 0; i < segments; i++)
+                {
+                    float angle1 = startAngle + (arcSpan / segments) * i;
+                    float angle2 = startAngle + (arcSpan / segments) * (i + 1);
+
+                    float rad1 = MathHelper.ToRadians(angle1);
+                    float rad2 = MathHelper.ToRadians(angle2);
+
+                    Vector2 p1 = center + new Vector2((float)Math.Cos(rad1) * radius, (float)Math.Sin(rad1) * radius);
+                    Vector2 p2 = center + new Vector2((float)Math.Cos(rad2) * radius, (float)Math.Sin(rad2) * radius);
+
+                    // Only draw if within filled portion
+                    Color segmentColor = angle2 <= filledAngle ? fuelColor : new Color(fuelColor, 0.2f);
+
+                    AddLineSprite(frame, p1, p2, arcThickness, segmentColor);
+                }
+
+                // Draw fuel percentage text
+                string fuelText = $"FUEL {fuelPercent*100:F0}%";
+                if (fuelPercent < BINGO_FUEL_PERCENT)
+                    fuelText = "BINGO FUEL";
+
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = fuelText,
+                    Position = new Vector2(center.X, center.Y + 15f),
+                    RotationOrScale = 0.6f,
+                    Color = fuelColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+
+                // Estimated flight time
+                if (fuelPercent > 0.01)
+                {
+                    double burnRate = 0.1; // Rough estimate, would need actual calculation
+                    double timeRemaining = (totalFilled / totalCapacity) * 600; // seconds estimate
+                    int minutes = (int)(timeRemaining / 60);
+                    int seconds = (int)(timeRemaining % 60);
+
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = $"{minutes:D2}:{seconds:D2}",
+                        Position = new Vector2(center.X, center.Y + 28f),
+                        RotationOrScale = 0.5f,
+                        Color = fuelColor,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "Monospace"
+                    });
+                }
+            }
+
+            // --- 5. MULTI-TARGET THREAT DISPLAY (for weapon screen) ---
+            private void DrawMultiTargetPanelToScreen(MySpriteDrawFrame frame, Vector3D[] targetPositions, Vector3D shooterPosition, float panelX, float startY, float panelWidth)
+            {
+                if (targetPositions == null || targetPositions.Length < 1) return;
+
+                const float LINE_HEIGHT = 22f;
+                const float TEXT_SCALE = 0.7f;
+
+                float textX = panelX + 10f;
+                float textY = startY;
+
+                // Draw all targets (including primary at index 0)
+                for (int i = 0; i < Math.Min(5, targetPositions.Length); i++)
+                {
+                    double range = Vector3D.Distance(shooterPosition, targetPositions[i]);
+                    bool isPrimary = (i == 0);
+
+                    // Filled/empty circle indicator
+                    Color targetColor = isPrimary ? HUD_WARNING : HUD_RADAR_FRIENDLY;
+                    string circleSymbol = isPrimary ? "\u25C9" : "\u25CB"; // Filled or empty circle
+                    string targetLabel = isPrimary ? "PRI" : $"T{i}";
+
+                    string targetText = $"{circleSymbol} {targetLabel}";
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = targetText,
+                        Position = new Vector2(textX, textY),
+                        RotationOrScale = TEXT_SCALE,
+                        Color = targetColor,
+                        Alignment = TextAlignment.LEFT,
+                        FontId = "Monospace"
+                    });
+
+                    // Range bar
+                    float barMaxWidth = 80f;
+                    float barHeight = 8f;
+                    float barX = textX + 50f;
+                    float barWidth = MathHelper.Clamp((float)(range / 15000.0 * barMaxWidth), 2f, barMaxWidth);
+
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(barX, textY + 5f),
+                        Size = new Vector2(barWidth, barHeight),
+                        Color = targetColor,
+                        Alignment = TextAlignment.LEFT
+                    });
+
+                    // Range text
+                    string rangeText = range >= 1000 ? $"{range/1000:F1}km" : $"{range:F0}m";
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = rangeText,
+                        Position = new Vector2(barX + barMaxWidth + 10f, textY),
+                        RotationOrScale = TEXT_SCALE,
+                        Color = targetColor,
+                        Alignment = TextAlignment.LEFT,
+                        FontId = "Monospace"
+                    });
+
+                    textY += LINE_HEIGHT;
+                }
+            }
+
+            // --- 6. AOA INDEXER WITH ENERGY STATE ---
+            private void DrawAOAIndexer(MySpriteDrawFrame frame, double aoa, Vector3D acceleration, double velocity)
+            {
+                const float INDEXER_X = 100f;
+                float indexerY = hud.SurfaceSize.Y / 2f;
+                const float SYMBOL_SIZE = 18f;
+
+                // Optimal AOA range for turning (example values)
+                const double OPTIMAL_AOA_MIN = 8.0;
+                const double OPTIMAL_AOA_MAX = 15.0;
+
+                Color indexerColor;
+                string spriteType;
+
+                if (aoa < OPTIMAL_AOA_MIN)
+                {
+                    // Low AOA - show UP chevron (pitch up to increase AOA)
+                    indexerColor = HUD_PRIMARY; // Green
+                    spriteType = "Triangle"; // Will rotate to point up
+
+                    // Draw upward pointing triangle
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = spriteType,
+                        Position = new Vector2(INDEXER_X, indexerY),
+                        Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
+                        RotationOrScale = 0f, // Point up
+                        Color = indexerColor,
+                        Alignment = TextAlignment.CENTER
+                    });
+                }
+                else if (aoa > OPTIMAL_AOA_MAX)
+                {
+                    // High AOA - show DOWN chevron (pitch down to decrease AOA)
+                    indexerColor = HUD_WARNING; // Red
+                    spriteType = "Triangle";
+
+                    // Draw downward pointing triangle
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = spriteType,
+                        Position = new Vector2(INDEXER_X, indexerY),
+                        Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
+                        RotationOrScale = MathHelper.Pi, // Rotate 180° to point down
+                        Color = indexerColor,
+                        Alignment = TextAlignment.CENTER
+                    });
+                }
+                else
+                {
+                    // Optimal AOA - show CIRCLE
+                    indexerColor = HUD_EMPHASIS; // Yellow
+
+                    // Draw circle for optimal AOA
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "Circle",
+                        Position = new Vector2(INDEXER_X, indexerY),
+                        Size = new Vector2(SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f),
+                        Color = indexerColor,
+                        Alignment = TextAlignment.CENTER
+                    });
+                }
+
+                // Energy state indicator (E-bracket) - shows if gaining/losing energy
+                double energyRate = acceleration.Length(); // Simplified energy calculation
+                string energySymbol = energyRate > 5 ? "+" : energyRate < -5 ? "-" : "=";
+                Color energyColor = energyRate > 5 ? HUD_PRIMARY : energyRate < -5 ? HUD_WARNING : HUD_EMPHASIS;
+
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"E{energySymbol}",
+                    Position = new Vector2(INDEXER_X, indexerY + 25f),
+                    RotationOrScale = 0.5f,
+                    Color = energyColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "Monospace"
+                });
+            }
+
+            // --- 7. VELOCITY VECTOR TRAIL (TADPOLE) ---
+            private void DrawVelocityTrail(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud, double roll, float centerX, float centerY, float pixelsPerDegree)
+            {
+                if (velocityTrail.Count < 2) return;
+
+                MatrixD worldMatrix = cockpit.WorldMatrix;
+                MatrixD worldToCockpitMatrix = MatrixD.Transpose(worldMatrix);
+
+                const double DegToRad = Math.PI / 180.0;
+                float rollRad = (float)(roll * DegToRad);
+
+                Vector3D[] trailPoints = velocityTrail.ToArray();
+                Color trailColor = HUD_INFO;
+
+                for (int i = 0; i < trailPoints.Length - 1; i++)
+                {
+                    Vector3D velocityDirection1 = Vector3D.Normalize(trailPoints[i]);
+                    Vector3D velocityDirection2 = Vector3D.Normalize(trailPoints[i + 1]);
+
+                    Vector3D localVelocity1 = Vector3D.TransformNormal(velocityDirection1, worldToCockpitMatrix);
+                    Vector3D localVelocity2 = Vector3D.TransformNormal(velocityDirection2, worldToCockpitMatrix);
+
+                    double velocityYaw1 = Math.Atan2(localVelocity1.X, -localVelocity1.Z) * 180.0 / Math.PI;
+                    double velocityPitch1 = Math.Atan2(localVelocity1.Y, -localVelocity1.Z) * 180.0 / Math.PI;
+
+                    double velocityYaw2 = Math.Atan2(localVelocity2.X, -localVelocity2.Z) * 180.0 / Math.PI;
+                    double velocityPitch2 = Math.Atan2(localVelocity2.Y, -localVelocity2.Z) * 180.0 / Math.PI;
+
+                    Vector2 markerOffset1 = new Vector2((float)(-velocityYaw1 * pixelsPerDegree), (float)(velocityPitch1 * pixelsPerDegree));
+                    Vector2 markerOffset2 = new Vector2((float)(-velocityYaw2 * pixelsPerDegree), (float)(velocityPitch2 * pixelsPerDegree));
+
+                    Vector2 rotatedOffset1 = RotatePoint(markerOffset1, Vector2.Zero, -rollRad);
+                    Vector2 rotatedOffset2 = RotatePoint(markerOffset2, Vector2.Zero, -rollRad);
+
+                    Vector2 pos1 = new Vector2(centerX, centerY) + rotatedOffset1;
+                    Vector2 pos2 = new Vector2(centerX, centerY) + rotatedOffset2;
+
+                    // Fade older trail segments
+                    float alpha = (float)i / trailPoints.Length;
+                    Color segmentColor = new Color(trailColor, alpha * 0.7f);
+
+                    AddLineSprite(frame, pos1, pos2, 1.5f, segmentColor);
+                }
+            }
+
+            // --- 8. HORIZON BANK ANGLE MARKERS ---
+            private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
+            {
+                // Bank angle tick marks at 15°, 30°, 45°, 60°
+                int[] bankAngles = new int[] { 15, 30, 45, 60, -15, -30, -45, -60 };
+                float horizonRadius = pixelsPerDegree * 20f; // Distance from center
+
+                float rollRad = MathHelper.ToRadians(-roll);
+                float cosRoll = (float)Math.Cos(rollRad);
+                float sinRoll = (float)Math.Sin(rollRad);
+
+                foreach (int angle in bankAngles)
+                {
+                    float angleRad = MathHelper.ToRadians(angle);
+                    Vector2 tickPos = new Vector2((float)Math.Sin(angleRad) * horizonRadius, -(float)Math.Cos(angleRad) * horizonRadius);
+
+                    // Rotate by current roll
+                    Vector2 rotatedTick = new Vector2(
+                        tickPos.X * cosRoll - tickPos.Y * sinRoll,
+                        tickPos.X * sinRoll + tickPos.Y * cosRoll
+                    );
+
+                    Vector2 finalPos = new Vector2(centerX, centerY) + rotatedTick;
+
+                    // Draw small tick mark
+                    bool isMajor = (Math.Abs(angle) % 30 == 0);
+                    float tickLength = isMajor ? 8f : 5f;
+                    Color tickColor = isMajor ? HUD_EMPHASIS : HUD_SECONDARY;
+
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = finalPos,
+                        Size = new Vector2(2f, tickLength),
+                        Color = tickColor,
+                        Alignment = TextAlignment.CENTER,
+                        RotationOrScale = angleRad + rollRad
+                    });
+                }
+            }
+
+            // --- 9. MISSILE TIME-OF-FLIGHT COUNTDOWN (for weapon screen) ---
+            private void DrawMissileTOFToScreen(MySpriteDrawFrame frame, float centerX, float startY)
+            {
+                if (activeMissiles.Count == 0) return;
+
+                const float TEXT_SCALE = 0.7f;
+                const float LINE_HEIGHT = 20f;
+
+                // Clean up expired missiles
+                activeMissiles.RemoveAll(m => (totalElapsedTime - m.LaunchTime).TotalSeconds > m.EstimatedTOF + 5);
+
+                for (int i = 0; i < Math.Min(5, activeMissiles.Count); i++)
+                {
+                    var missile = activeMissiles[i];
+                    double timeRemaining = missile.EstimatedTOF - (totalElapsedTime - missile.LaunchTime).TotalSeconds;
+
+                    if (timeRemaining > 0)
+                    {
+                        string tofText = $"MSL {missile.BayIndex + 1}: {timeRemaining:F1}s \u2192 TGT";
+                        Color tofColor = timeRemaining < 3 ? HUD_WARNING : HUD_EMPHASIS;
+
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = tofText,
+                            Position = new Vector2(centerX, startY + i * LINE_HEIGHT),
+                            RotationOrScale = TEXT_SCALE,
+                            Color = tofColor,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "Monospace"
+                        });
+                    }
+                }
+            }
+
+            // --- 10. RADAR SWEEP ANIMATION ---
+            private void DrawRadarSweepLine(MySpriteDrawFrame frame, Vector2 radarCenter, float radarRadius)
+            {
+                radarSweepTick = (radarSweepTick + 1) % 360;
+                float sweepAngle = radarSweepTick * 2f; // 2 degrees per tick
+
+                float sweepRad = MathHelper.ToRadians(sweepAngle);
+                Vector2 sweepEnd = radarCenter + new Vector2(
+                    (float)Math.Cos(sweepRad) * radarRadius,
+                    (float)Math.Sin(sweepRad) * radarRadius
+                );
+
+                // Draw sweep line with fade
+                Color sweepColor = new Color(HUD_EMPHASIS, 0.6f);
+                AddLineSprite(frame, radarCenter, sweepEnd, 2f, sweepColor);
+
+                // Draw fading trail
+                for (int i = 1; i < 10; i++)
+                {
+                    float trailAngle = sweepAngle - i * 3f;
+                    float trailRad = MathHelper.ToRadians(trailAngle);
+                    Vector2 trailEnd = radarCenter + new Vector2(
+                        (float)Math.Cos(trailRad) * radarRadius,
+                        (float)Math.Sin(trailRad) * radarRadius
+                    );
+
+                    float alpha = (10 - i) / 10f * 0.4f;
+                    Color trailColor = new Color(HUD_EMPHASIS, alpha);
+                    AddLineSprite(frame, radarCenter, trailEnd, 1f, trailColor);
+                }
+            }
+
+            // --- 11. BREAKAWAY CUE SYSTEM ---
+            private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition)
+            {
+                bool lowAltitudeWarning = altitude < 100 && velocity.Y < -5;
+                bool collisionWarning = false;
+
+                // Check collision course with target
+                if (targetPosition != Vector3D.Zero)
+                {
+                    double range = Vector3D.Distance(shooterPosition, targetPosition);
+                    Vector3D relativeVelocity = velocity;
+                    Vector3D toTarget = Vector3D.Normalize(targetPosition - shooterPosition);
+                    double closureRate = -Vector3D.Dot(relativeVelocity, toTarget);
+
+                    if (range < 500 && closureRate > 100)
+                        collisionWarning = true;
+                }
+
+                if (!lowAltitudeWarning && !collisionWarning) return;
+
+                // Draw large X warning
+                Vector2 center = hud.SurfaceSize / 2f;
+                float xSize = hud.SurfaceSize.X * 0.4f;
+                Color warningColor = HUD_WARNING;
+                float lineThickness = 4f;
+
+                // Flash the warning
+                if ((radarSweepTick / 10) % 2 == 0)
+                {
+                    AddLineSprite(frame, center - new Vector2(xSize/2, xSize/2), center + new Vector2(xSize/2, xSize/2), lineThickness, warningColor);
+                    AddLineSprite(frame, center - new Vector2(xSize/2, -xSize/2), center + new Vector2(xSize/2, -xSize/2), lineThickness, warningColor);
+
+                    string warningText = lowAltitudeWarning ? "PULL UP" : "BREAK AWAY";
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = warningText,
+                        Position = new Vector2(center.X, center.Y + xSize/2 + 20f),
+                        RotationOrScale = 1.2f,
+                        Color = warningColor,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "White"
+                    });
+                }
+            }
+
+            // --- 12. GHOST AIRCRAFT FORMATION ASSIST ---
+            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
+            {
+                // Parse wingman GPS positions from CustomData (format: Wingman1:GPS:Name:X:Y:Z:)
+                var customDataLines = ParentProgram.Me.CustomData.Split('\n');
+                List<Vector3D> wingmanPositions = new List<Vector3D>();
+
+                foreach (var line in customDataLines)
+                {
+                    if (line.StartsWith("Wingman"))
+                    {
+                        // Simple GPS parsing for wingman positions
+                        var parts = line.Split(':');
+                        if (parts.Length >= 6)
+                        {
+                            Vector3D wingmanPos;
+                            if (double.TryParse(parts[3], out wingmanPos.X) &&
+                                double.TryParse(parts[4], out wingmanPos.Y) &&
+                                double.TryParse(parts[5], out wingmanPos.Z))
+                            {
+                                wingmanPositions.Add(wingmanPos);
+                            }
                         }
                     }
                 }
 
-                if (count > 0)
+                if (wingmanPositions.Count == 0) return;
+
+                Vector3D shooterPosition = cockpit.GetPosition();
+                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
+                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 center = surfaceSize / 2f;
+
+                const float COCKPIT_FOV_SCALE_X = 0.3434f;
+                const float COCKPIT_FOV_SCALE_Y = 0.31f;
+                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
+                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
+
+                foreach (var wingmanPos in wingmanPositions)
                 {
-                    double averageValue = sum / count;
+                    Vector3D directionToWingman = wingmanPos - shooterPosition;
+                    Vector3D localDirection = Vector3D.TransformNormal(directionToWingman, worldToCockpitMatrix);
 
-                    var aoaText = new MySprite()
+                    if (localDirection.Z >= 0) continue; // Behind us
+
+                    if (Math.Abs(localDirection.Z) < MIN_Z_FOR_PROJECTION)
+                        localDirection.Z = -MIN_Z_FOR_PROJECTION;
+
+                    float screenX = center.X + (float)(localDirection.X / -localDirection.Z) * scaleX;
+                    float screenY = center.Y + (float)(-localDirection.Y / -localDirection.Z) * scaleY;
+
+                    // Draw simple aircraft symbol
+                    Vector2 ghostPos = new Vector2(screenX, screenY);
+                    frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
-                        Data = string.Format("Bomb Acc: {0:F1}°", averageValue), // C# 6 compatible formatting
-                        Position = bracketPosition + new Vector2(offsetY, 0),
-                        RotationOrScale = 0.6f,
-                        Color = Color.White,
-                        Alignment = TextAlignment.RIGHT,
-                        FontId = "White"
-                    };
-
-                    frame.Add(aoaText);
+                        Type = SpriteType.TEXTURE,
+                        Data = "Triangle",
+                        Position = ghostPos,
+                        Size = new Vector2(15f, 15f),
+                        Color = new Color(HUD_RADAR_FRIENDLY, 0.7f),
+                        Alignment = TextAlignment.CENTER
+                    });
                 }
             }
+
             // Helper method to rotate a point around a pivot
             private Vector2 RotatePoint(Vector2 point, Vector2 pivot, float angle)
             {
@@ -3771,9 +4895,34 @@ namespace IngameScript
                 float halfWidth = boxWidth * 0.5f;
                 float halfHeight = boxHeight * 0.5f;
 
-                // Pulling Azimuth and Elevation from your jet
-                double radarX = myjet._radar.Azimuth;    // -1.0 ... +1.0
-                double radarY = myjet._radar.Elevation;  // -1.0 ... +1.0
+                // Calculate Azimuth and Elevation from target tracking data
+                double radarX = 0.0;  // -1.0 ... +1.0
+                double radarY = 0.0;  // -1.0 ... +1.0
+
+                if (myjet.isTrackingTarget && myjet.currentTargetPosition.HasValue)
+                {
+                    Vector3D targetPos = myjet.currentTargetPosition.Value;
+                    Vector3D cockpitPos = myjet._cockpit.GetPosition();
+                    Vector3D toTarget = targetPos - cockpitPos;
+
+                    // Get cockpit forward and up vectors
+                    MatrixD cockpitMatrix = myjet._cockpit.WorldMatrix;
+                    Vector3D forward = cockpitMatrix.Forward;
+                    Vector3D up = cockpitMatrix.Up;
+                    Vector3D right = cockpitMatrix.Right;
+
+                    // Project target onto forward plane to get azimuth
+                    double forwardDist = Vector3D.Dot(toTarget, forward);
+                    double rightDist = Vector3D.Dot(toTarget, right);
+                    double upDist = Vector3D.Dot(toTarget, up);
+
+                    // Calculate angles (normalized to -1...+1 range, assuming ~90 degree FOV)
+                    if (forwardDist > 0)
+                    {
+                        radarX = Math.Max(-1.0, Math.Min(1.0, rightDist / forwardDist));
+                        radarY = Math.Max(-1.0, Math.Min(1.0, -upDist / forwardDist));
+                    }
+                }
 
                 // --- Draw boundary lines ---------------------------------
 
@@ -3784,7 +4933,7 @@ namespace IngameScript
                     Data = "SquareSimple",
                     Position = new Vector2(boxCenterX, boxCenterY - halfHeight),
                     Size = new Vector2(boxWidth, 2),
-                    Color = Color.Lime,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(topLineSprite);
@@ -3796,7 +4945,7 @@ namespace IngameScript
                     Data = "SquareSimple",
                     Position = new Vector2(boxCenterX, boxCenterY + halfHeight),
                     Size = new Vector2(boxWidth, 2),
-                    Color = Color.Lime,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(bottomLineSprite);
@@ -3808,7 +4957,7 @@ namespace IngameScript
                     Data = "SquareSimple",
                     Position = new Vector2(boxCenterX - halfWidth, boxCenterY),
                     Size = new Vector2(2, boxHeight),
-                    Color = Color.Lime,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(leftLineSprite);
@@ -3820,20 +4969,22 @@ namespace IngameScript
                     Data = "SquareSimple",
                     Position = new Vector2(boxCenterX + halfWidth, boxCenterY),
                     Size = new Vector2(2, boxHeight),
-                    Color = Color.Lime,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(rightLineSprite);
                 string targetName = "null";
-                if (!myjet._radar.GetTargetedEntity().IsEmpty())
-                    targetName = myjet._radar.GetTargetedEntity().Name.ToString();
+                if (myjet.isTrackingTarget && !string.IsNullOrEmpty(myjet.currentTargetName))
+                {
+                    targetName = myjet.currentTargetName;
+                }
                 MySprite targettext = new MySprite()
                 {
                     Type = SpriteType.TEXT,
                     Data = "Tar:" + targetName,
                     Position = new Vector2(boxCenterX + 30f, boxCenterY - 40f),
                     RotationOrScale = 0.75f,
-                    Color = Color.Lime,
+                    Color = HUD_PRIMARY,
                     Alignment = TextAlignment.RIGHT,
                     FontId = "White"
                 };
@@ -3851,7 +5002,7 @@ namespace IngameScript
                         boxCenterY + (float)radarY * halfHeight * -1
                     ),
                     Size = new Vector2(4, 4),
-                    Color = Color.Lime,
+                    Color = HUD_WARNING,
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(radarDot);
@@ -3926,7 +5077,7 @@ namespace IngameScript
                     // Common line settings
                     float lineWidth = 90f; // total width of the pitch line
                     float lineThickness = 2f; // thickness of the center segment
-                    Color lineColor = Color.Lime; // or another color you prefer
+                    Color lineColor = HUD_PRIMARY;
 
                     // 1) MAIN HORIZONTAL SEGMENT - Split into two parts (F-16/F-18 style)
                     // Creates a gap in the center for the flight path marker
@@ -4003,7 +5154,7 @@ namespace IngameScript
                         Data = "SquareSimple",
                         Position = new Vector2(centerX * 1.25f, horizonY), // Right segment
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
-                        Color = Color.LimeGreen,
+                        Color = HUD_HORIZON,
                         Alignment = TextAlignment.CENTER
                     }
                 );
@@ -4014,7 +5165,7 @@ namespace IngameScript
                         Data = "SquareSimple",
                         Position = new Vector2(centerX * 0.75f, horizonY), // Left segment
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
-                        Color = Color.LimeGreen,
+                        Color = HUD_HORIZON,
                         Alignment = TextAlignment.CENTER
                     }
                 );
@@ -4026,7 +5177,7 @@ namespace IngameScript
                         Data = "-^-",
                         Position = new Vector2(centerX, centerY - 10),
                         RotationOrScale = 0.8f,
-                        Color = Color.Yellow,
+                        Color = HUD_EMPHASIS,
                         Alignment = TextAlignment.CENTER,
                         FontId = "Monospace"
                     }
@@ -4106,7 +5257,7 @@ namespace IngameScript
                         // Use taller lines for major ticks (N, E, S, W).
                         float markerLineHeight = isMajorTick ? compassHeight * 0.7f : compassHeight * 0.4f;
                         // Use distinct colors for major ticks.
-                        Color markerColor = isMajorTick ? Color.Green : Color.Lime;
+                        Color markerColor = isMajorTick ? HUD_SECONDARY : HUD_PRIMARY;
 
                         // --- Draw Marker Line ---
                         // One draw call per visible marker line.
@@ -4151,7 +5302,7 @@ namespace IngameScript
                                        // Position it above the center of the compass bar
                     Position = new Vector2(centerX, compassY - compassHeight / 2f - 6f), // Adjust Y pos slightly above
                     Size = new Vector2(12f, 10f), // Adjust size as needed
-                    Color = Color.Yellow,
+                    Color = HUD_EMPHASIS,
                     Alignment = TextAlignment.CENTER,
                     // Rotate it 180 degrees (PI radians) to point down
                     RotationOrScale = (float)Math.PI
@@ -4256,46 +5407,13 @@ namespace IngameScript
             private const float BRIGHTNESS = 0.8f;
             private float fScale = 1.25f;
 
-            // Utility functions
-            float CosRange(float amt, float range, float minimum)
-            {
-                return (((1.0f + (float)Math.Cos(MathHelper.ToRadians(amt))) * 0.5f) * range)
-                    + minimum;
-            }
+
 
             private List<string> motivationalTexts = new List<string>
             {
                 "Innovate for a better\ntomorrow",
                 "Success is a journey,\nnot a destination",
                 "Every challenge is\nan opportunity",
-                "Excellence is not an act,\nbut a habit",
-                "Dream big, work hard,\nstay focused",
-                "Turn obstacles into\nopportunities",
-                "Create your own destiny",
-                "Rise above the rest",
-                "Strength comes from\nadversity",
-                "Your potential is\nlimitless",
-                "Believe in yourself,\nachieve the impossible",
-                "Be the change you\nwish to see",
-                "Push boundaries,\nbreak limits",
-                "The future belongs\nto those who prepare",
-                "Never settle for less\nthan your best",
-                "Lead with vision,\nact with purpose",
-                "Transform challenges\ninto victories",
-                "Inspire others\nthrough your actions",
-                "Greatness is achieved\none step at a time",
-                "Persevere and succeed",
-                "Rise to the challenge\nand excel",
-                "Turn dreams into reality",
-                "Make every moment count",
-                "Stay relentless in\nthe pursuit of excellence",
-                "Success is forged in\nthe fires of hard work",
-                "Unleash your inner power",
-                "Great things take time,\nstay patient",
-                "Success is a journey,\nnot a destination",
-                "Embrace every challenge\nas an opportunity",
-                "Your effort defines\nyour success",
-                "Pursue greatness relentlessly",
                 "Strive for progress,\nnot perfection",
                 "Commit to your goals\nand achieve greatness",
                 "Lead with courage,\nact with integrity"
@@ -4310,33 +5428,6 @@ namespace IngameScript
                 "Chaos breeds opportunity",
                 "Fear is the greatest\ntool of control",
                 "Silence dissent\nthrough intimidation",
-                "Manipulate and conquer",
-                "Corruption is a means\nto an end",
-                "Betrayal is an art\nwe've perfected",
-                "Subjugate the weak\nfor our gain",
-                "Violence is an\nacceptable solution",
-                "Lies are a necessary\nevil",
-                "Exploit every weakness\nto our advantage",
-                "Absolute power corrupts\nabsolutely",
-                "Profit from the\nsuffering of others",
-                "Tyranny is the path\nto true control",
-                "Repression ensures\ndominance",
-                "Divide and conquer\nto control",
-                "Oppression is our\nbusiness model",
-                "Deceit is a powerful\nally",
-                "Instill fear,\nmaintain control",
-                "Ensure loyalty through\nbribery and threat",
-                "We control the narrative\nthrough manipulation",
-                "Success demands ruthless\nand cunning strategies",
-                "Enforce obedience\nwith an iron fist",
-                "Compromise integrity\nfor power",
-                "Betrayal is our path\nto dominance",
-                "Exploitation is our\nprimary strategy",
-                "Punish dissent harshly\nto deter rebellion",
-                "Deception is a means\nto control the masses",
-                "Our will is enforced\nthrough fear",
-                "Victory is achieved\nthrough oppression",
-                "Moral boundaries are\nsacrificed for power",
                 "Corruption is the price\nof ultimate control"
             };
 
@@ -5088,6 +6179,223 @@ namespace IngameScript
             }
         }
 
+        // Radar Tracking Module using AI Blocks
+        class RadarTrackingModule
+        {
+            //===============================================================================================
+            //This Is A Pretty Generic Targeting Class, I Have Kept It Relatively CLean And Understandable
+            //At Runtime It Is Fairly Lightweight, But Don't Spam It a call to 'position' does invoke some logic
+            //- needs you to update the tracking info every frame
+            //- will throw nullreference if the blocks are destroyed
+            //- Use the boost mode to use monkaspeed tracking
+
+            //Used Instead Of A Tuple (keen ree)
+            struct TrackingPoint
+            {
+                public readonly Vector3D Position;
+                public readonly double Timestamp;
+                public TrackingPoint(Vector3D position, double timestamp)
+                {
+                    this.Position = position;
+                    this.Timestamp = timestamp;
+                }
+            }
+
+            //Keeps Record Of The Flight Module
+            public IMyFlightMovementBlock L_FlightBlock;
+            public IMyOffensiveCombatBlock L_CombatBLock;
+            public bool BoostMode = false;
+
+            // Store last two (position, timestamp) entries
+            TrackingPoint p1;
+            TrackingPoint p0;
+
+            //Counting Positions
+            public long CurrentTime;
+            public int CurrentTick;
+            const int ForcedRefreshRate = 40; //this is used to force a position relog on static grids
+
+            /// <summary>
+            /// Constructor, takes flight and combat AI blocks
+            /// </summary>
+            /// <param name="LBlock_F">The flight block to use</param>
+            /// <param name="LBlockC">The combat block to use</param>
+            public RadarTrackingModule(IMyFlightMovementBlock LBlock_F, IMyOffensiveCombatBlock LBlockC)
+            {
+                //Sets
+                L_FlightBlock = LBlock_F;
+                L_CombatBLock = LBlockC;
+
+                //AI Move Block Settings Used For Continual Tracking
+                L_FlightBlock.Enabled = false; // Must be DISABLED to prevent autopilot control
+                L_FlightBlock.MinimalAltitude = 10; //possibly could be larger
+                L_FlightBlock.PrecisionMode = false;
+                L_FlightBlock.SpeedLimit = 400;
+                L_FlightBlock.AlignToPGravity = false;
+                L_FlightBlock.CollisionAvoidance = false;
+                L_FlightBlock.ApplyAction("ActivateBehavior_On"); // Behavior ON allows receiving waypoints from Combat Block
+
+                //AI combat block settings
+                L_CombatBLock.Enabled = true;
+                L_CombatBLock.UpdateTargetInterval = 4;
+                L_CombatBLock.SearchEnemyComponent.TargetingLockOptions = VRage.Game.ModAPI.Ingame.MyGridTargetingRelationFiltering.Enemy;
+                L_CombatBLock.SelectedAttackPattern = 3; //Sets To Intercept Mode
+                L_CombatBLock.SetValue<long>("OffensiveCombatIntercept_GuidanceType", 0); // 1 target prediction, 0 basic
+                L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true); //Sets To Ignore All Collision Detection
+                L_CombatBLock.ApplyAction("ActivateBehavior_On");
+                L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
+                L_CombatBLock.ApplyAction("SetTargetPriority_Largest");
+            }
+
+            /// <summary>
+            /// Call This Before Using Any Of The Properties, Updates Position
+            /// </summary>
+            public void UpdateTracking(long CurrentPBTime_Ticks)
+            {
+                //Updates Time
+                CurrentTime = CurrentPBTime_Ticks;
+
+                // Retrieves the flight block's waypoint
+                IMyAutopilotWaypoint currentWaypoint = L_FlightBlock.CurrentWaypoint;
+
+                // Null check, or check if block is currently tracking
+                if (currentWaypoint != null)
+                {
+                    //NB this can be up to 2 ticks out of date due to the asynch nature of this
+                    Vector3D TargetPosition = currentWaypoint.Matrix.Translation;
+
+                    //Need To Use This As Otherwise Gives False Data
+                    if (TargetPosition != p0.Position || CurrentTick > ForcedRefreshRate)
+                    {
+                        // Shift historical data
+                        p1 = p0;
+                        p0 = new TrackingPoint(TargetPosition, CurrentTime);
+
+                        //Resets Counter
+                        CurrentTick = 0;
+                    }
+                    else
+                    {
+                        //Increments
+                        CurrentTick++;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Gets the most recent velocity vector.
+            /// </summary>
+            public Vector3D TargetVelocity
+            {
+                get
+                {
+                    // Extract position and time from the stored tracking points
+                    Vector3D pos1 = p1.Position;
+                    double time1 = p1.Timestamp;
+
+                    Vector3D pos0 = p0.Position;
+                    double time0 = p0.Timestamp;
+
+                    //Calculates protecting against zero time errors (would give NaN)
+                    double dt = time0 - time1;
+                    if (dt <= 0) return Vector3D.Zero;
+
+                    //Returns
+                    return (pos0 - pos1) / (double)dt;
+                }
+            }
+
+            /// <summary>
+            /// Predicts the target's position using current velocity and acceleration.
+            /// </summary>
+            public Vector3D TargetPosition
+            {
+                get
+                {
+
+                    //This Is Emergency Ultra Burn, Use Only In Emergencies As Very Performance Intensive
+                    if (BoostMode)
+                    {
+                        L_CombatBLock.Enabled = false;
+                        L_CombatBLock.Enabled = true;
+                        var CurrentWaypoint = L_FlightBlock.CurrentWaypoint;
+                        var positionwaypoint = CurrentWaypoint.Matrix.GetRow(3);
+                        return new Vector3D(positionwaypoint.X, positionwaypoint.Y, positionwaypoint.Z);
+                    }
+
+                    // Extracts Current Position
+                    Vector3D lastPosition = p0.Position;
+                    double lastTime = p0.Timestamp;
+
+                    //Gets V and A
+                    Vector3D velocity = TargetVelocity;
+
+                    //Timestep
+                    double dt = (double)(CurrentTime - lastTime);
+
+                    //S1 = S0 + UT + 0.5AT^2 (simple suvat equation)
+                    return lastPosition + velocity * dt; //found is more stable withoput acceleration term, as its 1.6s of error
+                }
+            }
+
+            /// <summary>
+            /// Tells You If Is Tracking Or Not, If This Is True It Is Actively Seeking
+            /// </summary>
+            public bool IsTracking
+            {
+                get
+                {
+                    return L_CombatBLock.SearchEnemyComponent.FoundEnemyId == null ? false : true;
+                }
+            }
+
+            /// <summary>
+            /// Tells You Tracked Object Name
+            /// </summary>
+            public string TrackedObjectName
+            {
+                get
+                {
+                    //this is
+                    string detailedInfo = L_CombatBLock.DetailedInfo;
+
+                    // Split by new lines
+                    var lines = detailedInfo.Split('\n');
+
+                    return lines[0];
+                }
+            }
+
+            /// <summary>
+            /// Checks State Of Blocks Internal
+            /// </summary>
+            public bool CheckWorking(out string errormsg)
+            {
+                if (L_FlightBlock == null || L_FlightBlock.CubeGrid.GetCubeBlock(L_FlightBlock.Position) == null || !L_FlightBlock.IsWorking)
+                { errormsg = " ~ AI Flight Block Not Found,\nInstall Block And Press Recompile"; return false; }
+                if (L_CombatBLock == null || L_CombatBLock.CubeGrid.GetCubeBlock(L_CombatBLock.Position) == null || !L_CombatBLock.IsWorking)
+                { errormsg = " ~ AI Combat Block Not Found,\nInstall Block And Press Recompile"; return false; }
+                errormsg = null;
+                return true;
+            }
+
+            /// <summary>
+            /// Tells You What Is Setup For Line 1 (largest, smallest, closest)
+            /// </summary>
+            public string GetLine1Info()
+            {
+                return L_CombatBLock.TargetPriority + "";
+            }
+
+            /// <summary>
+            /// Tells You What Is Setup For Line 2 (weapons, thrusters etc)
+            /// </summary>
+            public string GetLine2Info()
+            {
+                return L_CombatBLock.SearchEnemyComponent.SubsystemsToDestroy + "";
+            }
+        }
+
         class AirtoAir : ProgramModule
         {
             private List<IMyShipMergeBlock> missileBays = new List<IMyShipMergeBlock>();
@@ -5098,17 +6406,12 @@ namespace IngameScript
 
             private List<int> lastSoundTickCounters = new List<int>();
             private int tickCounter = 0;
-            IMyLargeTurretBase turret;
+            // Sound state machine (Space Engineers requires 1 action per tick)
+            private List<int> soundStates = new List<int>(); // 0=idle, 1=stopping, 2=selecting, 3=playing
+            private List<string> pendingSounds = new List<string>();
+            private RadarTrackingModule radarTracker;
             private int ticket = 0;
-            MyDetectedEntityInfo detectedEntity;
-            private enum SearchDirection
-            {
-                Idle,
-                Left,
-                Right,
-                Up,
-                Down
-            }
+            private Jet myJet; // Reference to the jet for updating target tracking data
 
             private void UpdateCustomDataWithCache(string gpsCoordinates, string cachedSpeed)
             {
@@ -5145,9 +6448,13 @@ namespace IngameScript
                 }
 
                 ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
+                SystemManager.MarkCustomDataDirty();
             }
             public AirtoAir(Program program, Jet jet) : base(program)
             {
+                // Store jet reference
+                myJet = jet;
+
                 // Fetch missile bays
                 missileBays = jet._bays;
                 baySelected = new bool[missileBays.Count];
@@ -5160,6 +6467,8 @@ namespace IngameScript
 
                 // **Initialize lastPlayedSounds with empty strings corresponding to each sound block**
                 lastPlayedSounds = new List<string>();
+                soundStates = new List<int>();
+                pendingSounds = new List<string>();
                 foreach (var block in soundblocks)
                 {
                     if (block != null && block.IsFunctional)
@@ -5170,33 +6479,15 @@ namespace IngameScript
                     {
                         lastPlayedSounds.Add("");
                     }
+                    soundStates.Add(0); // Initialize to idle state
+                    pendingSounds.Add("");
                 }
 
-                // Fetch turret
-                turret = jet._radar;
-            }
-
-            // NOTE: Removed duplicate MathHelper class - VRageMath.MathHelper is used instead
-
-            private Vector3D CalculateDirectionVector(float azimuth, float elevation)
-            {
-                // Azimuth rotation around the Y-axis, elevation rotation around the X-axis
-                double cosElevation = Math.Cos(elevation);
-                double sinElevation = Math.Sin(elevation);
-                double cosAzimuth = Math.Cos(azimuth);
-                double sinAzimuth = Math.Sin(azimuth);
-
-                // Assuming the forward direction is along the positive Z-axis
-                Vector3D direction = new Vector3D(
-                    cosElevation * sinAzimuth, // X component
-                    sinElevation, // Y component
-                    cosElevation * cosAzimuth // Z component
-                );
-
-                // Normalize the direction vector
-                direction.Normalize();
-
-                return direction;
+                // Initialize radar tracker with AI blocks
+                if (jet._aiFlightBlock != null && jet._aiCombatBlock != null)
+                {
+                    radarTracker = new RadarTrackingModule(jet._aiFlightBlock, jet._aiCombatBlock);
+                }
             }
 
             public override string[] GetOptions()
@@ -5207,6 +6498,7 @@ namespace IngameScript
                     "Toggle Selected Bays",
                     string.Format("Seeker [{0}]", isAirtoAirenabled ? "ON" : "OFF")
                 };
+
                 for (int i = 0; i < missileBays.Count; i++)
                 {
                     string baySymbol = baySelected[i] ? "[X]" : "[ ]";
@@ -5228,12 +6520,7 @@ namespace IngameScript
             }
             public override void ExecuteOption(int index)
             {
-                if (index == 2)
-                {
-                    ToggleSensor();
-                    ToggleAirtoAirMode();
-                }
-                else if (index == 0)
+                if (index == 0)
                 {
                     FireSelectedBays();
                     TransferCacheToSlots();
@@ -5242,9 +6529,19 @@ namespace IngameScript
                 {
                     ToggleSelectedBays();
                 }
-                if (index > 2 && index - 3 < missileBays.Count)
+                else if (index == 2)
                 {
-                    ToggleBaySelection(index - 3);
+                    ToggleSensor();
+                    ToggleAirtoAirMode();
+                }
+                else
+                {
+                    // Calculate bay index
+                    int bayOffset = 3; // Base menu items
+                    if (index >= bayOffset && index - bayOffset < missileBays.Count)
+                    {
+                        ToggleBaySelection(index - bayOffset);
+                    }
                 }
             }
             private void ToggleAirtoAirMode()
@@ -5254,14 +6551,53 @@ namespace IngameScript
             }
             private void ToggleSensor()
             {
-                if (turret.Enabled && isAirtoAirenabled)
+                // Control AI blocks based on current state (ToggleAirtoAirMode will flip the state)
+                // Note: This is called BEFORE ToggleAirtoAirMode, so we check the CURRENT state
+                if (isAirtoAirenabled)
                 {
-                    turret.Enabled = false;
+                    // Currently ON, about to turn OFF - disable AI blocks
+                    if (radarTracker != null)
+                    {
+                        if (radarTracker.L_CombatBLock != null)
+                        {
+                            radarTracker.L_CombatBLock.Enabled = false;
+                            radarTracker.L_CombatBLock.ApplyAction("ActivateBehavior_Off");
+                        }
+                        if (radarTracker.L_FlightBlock != null)
+                        {
+                            radarTracker.L_FlightBlock.Enabled = false;
+                            radarTracker.L_FlightBlock.ApplyAction("ActivateBehavior_Off"); // Disable both to fully stop tracking
+                        }
+                    }
                 }
                 else
                 {
-                    turret.Enabled = true;
-                    turret.ShootOnce();
+                    // Currently OFF, about to turn ON - enable and configure AI blocks
+                    if (radarTracker != null)
+                    {
+                        if (radarTracker.L_CombatBLock != null)
+                        {
+                            radarTracker.L_CombatBLock.Enabled = true;
+                            radarTracker.L_CombatBLock.UpdateTargetInterval = 4;
+                            radarTracker.L_CombatBLock.SearchEnemyComponent.TargetingLockOptions = VRage.Game.ModAPI.Ingame.MyGridTargetingRelationFiltering.Enemy;
+                            radarTracker.L_CombatBLock.SelectedAttackPattern = 3; // Intercept mode
+                            radarTracker.L_CombatBLock.SetValue<long>("OffensiveCombatIntercept_GuidanceType", 0);
+                            radarTracker.L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true);
+                            radarTracker.L_CombatBLock.ApplyAction("ActivateBehavior_On");
+                            radarTracker.L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
+                            radarTracker.L_CombatBLock.ApplyAction("SetTargetPriority_Largest");
+                        }
+                        if (radarTracker.L_FlightBlock != null)
+                        {
+                            radarTracker.L_FlightBlock.Enabled = false; // Must be DISABLED to prevent autopilot control
+                            radarTracker.L_FlightBlock.MinimalAltitude = 10;
+                            radarTracker.L_FlightBlock.PrecisionMode = false;
+                            radarTracker.L_FlightBlock.SpeedLimit = 400;
+                            radarTracker.L_FlightBlock.AlignToPGravity = false;
+                            radarTracker.L_FlightBlock.CollisionAvoidance = false;
+                            radarTracker.L_FlightBlock.ApplyAction("ActivateBehavior_On"); // Behavior ON allows receiving waypoints from Combat Block
+                        }
+                    }
                 }
             }
             private void UpdateTopdownCustomData()
@@ -5291,33 +6627,77 @@ namespace IngameScript
 
             public override void Tick()
             {
-                detectedEntity = turret.GetTargetedEntity();
                 ticket++;
-                // Update hotkey text based on detected entity and mode
-                if (isAirtoAirenabled)
-                {
-                    if (!detectedEntity.IsEmpty())
-                    {
-                        hotkeytext = $"Entity Name: {detectedEntity.Name}\n";
-                    }
-                    else
-                    {
-                        hotkeytext =
-                            "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
-                        if (ticket % 32 == 0)
-                        {
-                            //turret.Enabled = !turret.Enabled;
-                            if (turret.Enabled)
-                            {
-                                turret.ShootOnce();
-                                turret.Azimuth = 0;
-                                turret.Elevation = 0;
-                                turret.SyncAzimuth();
-                                turret.SyncElevation();
-                            }
-                        }
 
+                // Update radar tracking
+                if (radarTracker != null && isAirtoAirenabled)
+                {
+                    radarTracker.UpdateTracking(ticket);
+
+                    // Debug output
+                    ParentProgram.Echo($"=== AIR-TO-AIR DEBUG ===");
+                    ParentProgram.Echo($"Seeker Enabled: {isAirtoAirenabled}");
+                    ParentProgram.Echo($"IsTracking: {radarTracker.IsTracking}");
+                    ParentProgram.Echo($"Combat Enabled: {radarTracker.L_CombatBLock?.Enabled}");
+                    ParentProgram.Echo($"Flight Enabled: {radarTracker.L_FlightBlock?.Enabled}");
+                    ParentProgram.Echo($"FoundEnemyId: {radarTracker.L_CombatBLock?.SearchEnemyComponent.FoundEnemyId}");
+                    var wp = radarTracker.L_FlightBlock?.CurrentWaypoint;
+                    ParentProgram.Echo($"CurrentWaypoint: {(wp != null ? "EXISTS" : "NULL")}");
+                    if (wp != null)
+                    {
+                        ParentProgram.Echo($"Waypoint Pos: {wp.Matrix.Translation}");
                     }
+                    ParentProgram.Echo($"TargetPosition: {radarTracker.TargetPosition}");
+                }
+
+                // Update Jet's target tracking data and GPS cache when tracking
+                if (radarTracker != null && radarTracker.IsTracking && isAirtoAirenabled)
+                {
+                    Vector3D targetPos = radarTracker.TargetPosition;
+                    Vector3D targetVel = radarTracker.TargetVelocity;
+
+                    // Update Jet's target tracking fields for HUD access
+                    myJet.isTrackingTarget = true;
+                    myJet.currentTargetPosition = targetPos;
+                    myJet.currentTargetVelocity = targetVel;
+                    myJet.currentTargetName = radarTracker.TrackedObjectName;
+
+                    // Update multi-target array (slot 0 = active target)
+                    myJet.targetPositions[0] = targetPos;
+                    myJet.hasValidTargets = true;
+
+                    ParentProgram.Echo($"TARGET LOCKED: {myJet.currentTargetName}");
+                    ParentProgram.Echo($"Position: {targetPos}");
+
+                    var customDataLines = ParentProgram.Me.CustomData.Split(
+                        new[] { '\n' },
+                        StringSplitOptions.RemoveEmptyEntries
+                    );
+                    string gpsCoordinates =
+                        "Cached:GPS:Target:"
+                        + targetPos.X
+                        + ":"
+                        + targetPos.Y
+                        + ":"
+                        + targetPos.Z
+                        + ":#FF75C9F1:";
+
+                    // Add the speed information to be cached
+                    string cachedSpeed =
+                        "CachedSpeed:"
+                        + targetVel.X
+                        + ":"
+                        + targetVel.Y
+                        + ":"
+                        + targetVel.Z
+                        + ":#FF75C9F1:";
+
+                    UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
+                }
+                else
+                {
+                    // Clear tracking data when not tracking
+                    myJet.isTrackingTarget = false;
                 }
 
                 // Manage sound blocks
@@ -5333,9 +6713,9 @@ namespace IngameScript
 
                     string desiredSound = string.Empty;
 
-                    if (isAirtoAirenabled)
+                    if (isAirtoAirenabled && radarTracker != null)
                     {
-                        desiredSound = !detectedEntity.IsEmpty() ? "AIM9Lock" : "AIM9Search";
+                        desiredSound = radarTracker.IsTracking ? "AIM9Lock" : "AIM9Search";
                     }
 
                     if (lastPlayedSounds.Count <= i)
@@ -5343,33 +6723,7 @@ namespace IngameScript
                         lastPlayedSounds.Add(string.Empty);
                         lastSoundTickCounters.Add(0);
                     }
-                    if (!detectedEntity.IsEmpty())
-                    {
-                        var customDataLines = ParentProgram.Me.CustomData.Split(
-                            new[] { '\n' },
-                            StringSplitOptions.RemoveEmptyEntries
-                        );
-                        string gpsCoordinates =
-                            "Cached:GPS:Target2:"
-                            + detectedEntity.Position.X
-                            + ":"
-                            + detectedEntity.Position.Y
-                            + ":"
-                            + detectedEntity.Position.Z
-                            + ":#FF75C9F1:";
 
-                        // Add the speed information to be cached
-                        string cachedSpeed =
-                            "CachedSpeed:"
-                            + detectedEntity.Velocity.X
-                            + ":"
-                            + detectedEntity.Velocity.Y
-                            + ":"
-                            + detectedEntity.Velocity.Z
-                            + ":#FF75C9F1:";
-
-                        UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
-                    }
                     ChangeSound(desiredSound, soundBlock, i);
                 }
 
@@ -5385,55 +6739,104 @@ namespace IngameScript
 
             private void RestartSounds()
             {
+                // Restart all currently playing sounds using the state machine
                 for (int i = 0; i < soundblocks.Count; i++)
                 {
                     var soundBlock = soundblocks[i];
+                    if (soundBlock == null || !soundBlock.IsFunctional)
+                        continue;
+
                     string currentSound = lastPlayedSounds[i];
-                    if (!string.IsNullOrEmpty(currentSound))
+                    if (!string.IsNullOrEmpty(currentSound) && soundStates[i] == 0)
                     {
-                        soundBlock.ApplyAction("StopSound");
-                        soundBlock.ApplyAction("PlaySound");
+                        // Trigger restart via state machine
+                        pendingSounds[i] = currentSound;
+                        soundStates[i] = 1;
                     }
                 }
             }
 
             private void ChangeSound(string desiredSound, IMySoundBlock block, int index)
             {
-                if (lastPlayedSounds[index] == desiredSound)
+                if (block == null || !block.IsFunctional)
+                    return;
+
+                // Ensure lists are properly sized
+                while (soundStates.Count <= index)
                 {
-                    // Same sound is already playing; no action needed
+                    soundStates.Add(0);
+                    pendingSounds.Add("");
+                    lastPlayedSounds.Add("");
+                }
+
+                // Multi-tick state machine (Space Engineers requires 1 action per tick)
+                // State 0: Idle - check if new sound needed
+                // State 1: Stopping - call Stop()
+                // State 2: Selecting - set SelectedSound property
+                // State 3: Playing - call Play()
+
+                int currentState = soundStates[index];
+
+                // Check if we need to start a new sound (only when idle)
+                if (currentState == 0 && desiredSound != lastPlayedSounds[index])
+                {
+                    pendingSounds[index] = desiredSound;
+                    soundStates[index] = 1; // Start sequence
                     return;
                 }
 
-                // Stop the current sound
-                block.ApplyAction("StopSound");
-
-                if (!string.IsNullOrEmpty(desiredSound))
+                // Execute current state
+                switch (currentState)
                 {
-                    // Set the new sound
-                    block.SelectedSound = desiredSound;
+                    case 1: // Stopping
+                        block.Stop();
+                        soundStates[index] = 2; // Next tick: select
+                        break;
 
-                    // Play the new sound once
-                    block.ApplyAction("PlaySound");
+                    case 2: // Selecting
+                        // Ensure block is enabled
+                        if (!block.Enabled)
+                            block.Enabled = true;
+
+                        block.SelectedSound = pendingSounds[index];
+
+                        if (!string.IsNullOrEmpty(pendingSounds[index]))
+                        {
+                            soundStates[index] = 3; // Next tick: play
+                        }
+                        else
+                        {
+                            // Just stopping, go back to idle
+                            soundStates[index] = 0;
+                            lastPlayedSounds[index] = "";
+                        }
+                        break;
+
+                    case 3: // Playing
+                        block.Play();
+                        lastPlayedSounds[index] = pendingSounds[index];
+                        soundStates[index] = 0; // Back to idle
+                        break;
                 }
-
-                // Update last played sound
-                lastPlayedSounds[index] = desiredSound;
             }
 
             private void LoopSounds()
             {
+                // Restart all currently playing sounds using the state machine
                 for (int i = 0; i < soundblocks.Count; i++)
                 {
                     var soundBlock = soundblocks[i];
+                    if (soundBlock == null || !soundBlock.IsFunctional)
+                        continue;
+
                     string currentSound =
                         lastPlayedSounds.Count > i ? lastPlayedSounds[i] : string.Empty;
 
-                    if (!string.IsNullOrEmpty(currentSound))
+                    if (!string.IsNullOrEmpty(currentSound) && soundStates[i] == 0)
                     {
-                        // Replay the sound
-                        soundBlock.ApplyAction("StopSound");
-                        soundBlock.ApplyAction("PlaySound");
+                        // Trigger restart by setting pending sound (state machine will handle it over 3 ticks)
+                        pendingSounds[i] = currentSound;
+                        soundStates[i] = 1; // Start the stop-select-play sequence
                     }
                 }
             }
@@ -6266,6 +7669,463 @@ namespace IngameScript
                     FontId = "White"
                 };
                 frame.Add(levelSprite);
+            }
+        }
+
+        class ConfigurationModule : ProgramModule
+        {
+            private enum MenuLevel { Category, ParameterList, ValueAdjust }
+            private MenuLevel currentLevel = MenuLevel.Category;
+            private int categoryIndex = 0;
+            private int parameterIndex = 0;
+            private int scrollOffset = 0;
+
+            private string[] categories = new string[]
+            {
+                "Flight Control",
+                "Weapons",
+                "HUD & Display",
+                "Radar & Sensors",
+                "Warnings & Alerts",
+                "Physics & Environment",
+                "Advanced Settings",
+                "Import/Export/Reset"
+            };
+
+            // Configuration storage
+            private Dictionary<string, ConfigParam> allConfigs = new Dictionary<string, ConfigParam>();
+
+            public ConfigurationModule(Program program) : base(program)
+            {
+                name = "Configuration";
+                InitializeConfigs();
+                LoadFromCustomData();
+            }
+
+            private class ConfigParam
+            {
+                public string Category;
+                public string Name;
+                public string DisplayName;
+                public float Value;
+                public float DefaultValue;
+                public float MinValue;
+                public float MaxValue;
+                public float StepSize;
+                public string Unit;
+                public bool IsModified => Math.Abs(Value - DefaultValue) > 0.0001f;
+
+                public ConfigParam(string category, string name, string displayName, float defaultValue,
+                                 float minValue, float maxValue, float stepSize, string unit = "")
+                {
+                    Category = category;
+                    Name = name;
+                    DisplayName = displayName;
+                    Value = defaultValue;
+                    DefaultValue = defaultValue;
+                    MinValue = minValue;
+                    MaxValue = maxValue;
+                    StepSize = stepSize;
+                    Unit = unit;
+                }
+
+                public void Adjust(int direction)
+                {
+                    Value = Math.Max(MinValue, Math.Min(MaxValue, Value + direction * StepSize));
+                }
+
+                public void Reset()
+                {
+                    Value = DefaultValue;
+                }
+            }
+
+            private void InitializeConfigs()
+            {
+                // FLIGHT CONTROL CATEGORY (Critical - top priority)
+                AddConfig("Flight Control", "stabilizer_kp", "Stabilizer Kp", 1.2f, 0.1f, 5.0f, 0.1f);
+                AddConfig("Flight Control", "stabilizer_ki", "Stabilizer Ki", 0.0024f, 0.0f, 0.1f, 0.0001f);
+                AddConfig("Flight Control", "stabilizer_kd", "Stabilizer Kd", 0.5f, 0.0f, 2.0f, 0.1f);
+                AddConfig("Flight Control", "max_pid_output", "Max PID Output", 60f, 10f, 90f, 5f, "deg");
+                AddConfig("Flight Control", "max_aoa", "Max AoA Limit", 36f, 10f, 60f, 1f, "deg");
+                AddConfig("Flight Control", "integral_clamp", "Integral Clamp", 200f, 50f, 500f, 10f);
+                AddConfig("Flight Control", "optimal_aoa_min", "Optimal AoA Min", 8f, 0f, 20f, 1f, "deg");
+                AddConfig("Flight Control", "optimal_aoa_max", "Optimal AoA Max", 15f, 10f, 30f, 1f, "deg");
+
+                // WEAPONS CATEGORY
+                AddConfig("Weapons", "bombardment_spacing", "Bombardment Spacing", 4.0f, 1.0f, 20.0f, 0.5f, "m");
+                AddConfig("Weapons", "circular_pattern_radius", "Circular Pattern Radius", 4.0f, 2.0f, 20.0f, 1.0f, "m");
+                AddConfig("Weapons", "shoot_range_inner", "Shoot Cue Range", 1500f, 500f, 5000f, 100f, "m");
+                AddConfig("Weapons", "shoot_range_outer", "In Range Cue", 2500f, 1000f, 8000f, 100f, "m");
+                AddConfig("Weapons", "proximity_warning", "Proximity Warning", 500f, 100f, 1000f, 50f, "m");
+                AddConfig("Weapons", "min_closure_rate", "Min Closure Rate", 100f, 10f, 500f, 10f, "m/s");
+
+                // HUD & DISPLAY CATEGORY
+                AddConfig("HUD & Display", "fov_scale_x", "FOV Scale X", 0.3434f, 0.1f, 1.0f, 0.01f);
+                AddConfig("HUD & Display", "fov_scale_y", "FOV Scale Y", 0.31f, 0.1f, 1.0f, 0.01f);
+                AddConfig("HUD & Display", "velocity_indicator_scale", "Velocity Indicator Scale", 20f, 5f, 50f, 1f);
+                AddConfig("HUD & Display", "min_pip_distance", "Min Pip Distance", 50f, 10f, 200f, 10f, "m");
+                AddConfig("HUD & Display", "max_pip_distance", "Max Pip Distance", 3000f, 1000f, 10000f, 100f, "m");
+                AddConfig("HUD & Display", "max_pip_size", "Max Pip Size Factor", 0.1f, 0.01f, 0.5f, 0.01f);
+                AddConfig("HUD & Display", "min_pip_size", "Min Pip Size Factor", 0.01f, 0.001f, 0.1f, 0.001f);
+                AddConfig("HUD & Display", "intercept_iterations", "Intercept Iterations", 10f, 1f, 20f, 1f);
+
+                // RADAR & SENSORS CATEGORY
+                AddConfig("Radar & Sensors", "radar_range", "Radar Range", 15000f, 1000f, 30000f, 1000f, "m");
+                AddConfig("Radar & Sensors", "radar_box_size", "Radar Box Size", 100f, 50f, 200f, 10f, "px");
+                AddConfig("Radar & Sensors", "targeting_kp_rotor", "Targeting Pod Kp (Rotor)", 0.05f, 0.01f, 0.5f, 0.01f);
+                AddConfig("Radar & Sensors", "targeting_kp_hinge", "Targeting Pod Kp (Hinge)", 0.05f, 0.01f, 0.5f, 0.01f);
+                AddConfig("Radar & Sensors", "targeting_max_velocity", "Targeting Max Velocity", 5.0f, 1.0f, 10.0f, 0.5f, "RPM");
+
+                // WARNINGS & ALERTS CATEGORY
+                AddConfig("Warnings & Alerts", "bingo_fuel_percent", "Bingo Fuel %", 0.20f, 0.05f, 0.50f, 0.05f, "%");
+                AddConfig("Warnings & Alerts", "low_fuel_percent", "Low Fuel %", 0.35f, 0.10f, 0.60f, 0.05f, "%");
+                AddConfig("Warnings & Alerts", "altitude_warning_threshold", "Altitude Warning", 380f, 100f, 1000f, 10f, "m");
+                AddConfig("Warnings & Alerts", "speed_warning_threshold", "Speed Warning", 360f, 100f, 600f, 10f, "kph");
+                AddConfig("Warnings & Alerts", "low_altitude_threshold", "Low Altitude Limit", 100f, 50f, 300f, 10f, "m");
+                AddConfig("Warnings & Alerts", "descent_rate_warning", "Descent Rate Warning", -5f, -20f, -1f, 1f, "m/s");
+
+                // PHYSICS & ENVIRONMENT CATEGORY
+                AddConfig("Physics & Environment", "speed_of_sound", "Speed of Sound", 343.0f, 300f, 400f, 1f, "m/s");
+                AddConfig("Physics & Environment", "gravity", "Gravity", 9.81f, 0.5f, 20f, 0.1f, "m/s²");
+                AddConfig("Physics & Environment", "smoothing_window", "Smoothing Window Size", 10f, 1f, 30f, 1f);
+
+                // ADVANCED SETTINGS CATEGORY
+                AddConfig("Advanced", "throttle_h2_threshold", "Throttle H2 Threshold", 0.8f, 0.5f, 1.0f, 0.05f);
+                AddConfig("Advanced", "gps_cache_slots", "GPS Cache Slots", 4f, 1f, 10f, 1f);
+                AddConfig("Advanced", "targeting_angle_threshold", "Targeting Angle Threshold", 2.0f, 0.1f, 10.0f, 0.1f, "deg");
+            }
+
+            private void AddConfig(string category, string name, string displayName, float defaultValue,
+                                  float minValue, float maxValue, float stepSize, string unit = "")
+            {
+                allConfigs[name] = new ConfigParam(category, name, displayName, defaultValue,
+                                                  minValue, maxValue, stepSize, unit);
+            }
+
+            private void LoadFromCustomData()
+            {
+                string customData = ParentProgram.Me.CustomData;
+                if (string.IsNullOrEmpty(customData)) return;
+
+                string[] lines = customData.Split('\n');
+                foreach (string line in lines)
+                {
+                    if (line.StartsWith("Config:"))
+                    {
+                        string[] parts = line.Substring(7).Split(':');
+                        if (parts.Length == 2)
+                        {
+                            string configName = parts[0];
+                            float value;
+                            if (allConfigs.ContainsKey(configName) && float.TryParse(parts[1], out value))
+                            {
+                                allConfigs[configName].Value = value;
+                            }
+                        }
+                    }
+                }
+            }
+
+            private void SaveToCustomData()
+            {
+                StringBuilder sb = new StringBuilder();
+
+                // Preserve non-config lines
+                string currentData = ParentProgram.Me.CustomData;
+                if (!string.IsNullOrEmpty(currentData))
+                {
+                    string[] lines = currentData.Split('\n');
+                    foreach (string line in lines)
+                    {
+                        if (!line.StartsWith("Config:"))
+                        {
+                            sb.AppendLine(line);
+                        }
+                    }
+                }
+
+                // Add all config values
+                foreach (var kvp in allConfigs)
+                {
+                    sb.AppendLine($"Config:{kvp.Key}:{kvp.Value.Value}");
+                }
+
+                ParentProgram.Me.CustomData = sb.ToString();
+                SystemManager.MarkCustomDataDirty();
+            }
+
+            public float GetValue(string configName)
+            {
+                if (allConfigs.ContainsKey(configName))
+                    return allConfigs[configName].Value;
+                return 0f;
+            }
+
+            public override string[] GetOptions()
+            {
+                switch (currentLevel)
+                {
+                    case MenuLevel.Category:
+                        return categories;
+
+                    case MenuLevel.ParameterList:
+                        string selectedCategory = categories[categoryIndex];
+                        List<string> options = new List<string>();
+                        foreach (var kvp in allConfigs)
+                        {
+                            if (kvp.Value.Category == selectedCategory)
+                            {
+                                string modified = kvp.Value.IsModified ? " *" : "";
+                                string valueStr = kvp.Value.Value.ToString("F4").TrimEnd('0').TrimEnd('.');
+                                options.Add($"{kvp.Value.DisplayName}: {valueStr}{kvp.Value.Unit}{modified}");
+                            }
+                        }
+                        if (selectedCategory == "Import/Export/Reset")
+                        {
+                            options.Clear();
+                            options.Add("Export Config to Antenna");
+                            options.Add("Import Config from Argument");
+                            options.Add("Reset All to Defaults");
+                            options.Add("Back to Categories");
+                        }
+                        else
+                        {
+                            options.Add("Reset Category to Defaults");
+                            options.Add("Back to Categories");
+                        }
+                        return options.ToArray();
+
+                    case MenuLevel.ValueAdjust:
+                        var currentParams = GetCurrentCategoryParams();
+                        if (parameterIndex < currentParams.Count)
+                        {
+                            var param = currentParams[parameterIndex];
+                            return new string[]
+                            {
+                                $"Adjusting: {param.DisplayName}",
+                                "",
+                                "^ Increase (Navigate Up)",
+                                $"  Current: {param.Value:F4}{param.Unit}",
+                                "V Decrease (Navigate Down)",
+                                "",
+                                $"Default: {param.DefaultValue:F4}{param.Unit}",
+                                $"Range: {param.MinValue:F2} - {param.MaxValue:F2}{param.Unit}",
+                                "",
+                                "SELECT to save changes",
+                                "BACK to cancel (no save)"
+                            };
+                        }
+                        break;
+                }
+                return new string[] { "Error" };
+            }
+
+            private List<ConfigParam> GetCurrentCategoryParams()
+            {
+                string selectedCategory = categories[categoryIndex];
+                List<ConfigParam> params_list = new List<ConfigParam>();
+                foreach (var kvp in allConfigs)
+                {
+                    if (kvp.Value.Category == selectedCategory)
+                    {
+                        params_list.Add(kvp.Value);
+                    }
+                }
+                return params_list;
+            }
+
+            public override void ExecuteOption(int index)
+            {
+                switch (currentLevel)
+                {
+                    case MenuLevel.Category:
+                        categoryIndex = index;
+                        currentLevel = MenuLevel.ParameterList;
+                        parameterIndex = 0;
+                        scrollOffset = 0;
+                        SystemManager.currentMenuIndex = 0; // Reset selector to first option
+                        break;
+
+                    case MenuLevel.ParameterList:
+                        string selectedCategory = categories[categoryIndex];
+                        if (selectedCategory == "Import/Export/Reset")
+                        {
+                            HandleImportExportReset(index);
+                        }
+                        else
+                        {
+                            var params_list = GetCurrentCategoryParams();
+                            if (index < params_list.Count)
+                            {
+                                parameterIndex = index;
+                                currentLevel = MenuLevel.ValueAdjust;
+                                SystemManager.currentMenuIndex = 0; // Reset selector to first line
+                            }
+                            else if (index == params_list.Count)
+                            {
+                                // Reset category
+                                foreach (var param in params_list)
+                                {
+                                    param.Reset();
+                                }
+                                SaveToCustomData();
+                            }
+                            else
+                            {
+                                // Back to categories
+                                currentLevel = MenuLevel.Category;
+                                SystemManager.currentMenuIndex = 0; // Reset selector to first category
+                            }
+                        }
+                        break;
+
+                    case MenuLevel.ValueAdjust:
+                        // Save and go back to parameter list
+                        SaveToCustomData();
+                        currentLevel = MenuLevel.ParameterList;
+                        SystemManager.currentMenuIndex = parameterIndex; // Return to the parameter we were editing
+                        break;
+                }
+            }
+
+            private void HandleImportExportReset(int index)
+            {
+                switch (index)
+                {
+                    case 0: // Export
+                        ExportConfig();
+                        break;
+                    case 1: // Import
+                        ParentProgram.Echo("Run with argument: ConfigImport:<config_string>");
+                        break;
+                    case 2: // Reset All
+                        foreach (var kvp in allConfigs)
+                        {
+                            kvp.Value.Reset();
+                        }
+                        SaveToCustomData();
+                        ParentProgram.Echo("All settings reset to defaults");
+                        break;
+                    case 3: // Back
+                        currentLevel = MenuLevel.Category;
+                        break;
+                }
+            }
+
+            private void ExportConfig()
+            {
+                StringBuilder export = new StringBuilder("JetOSConfig:");
+                foreach (var kvp in allConfigs)
+                {
+                    if (kvp.Value.IsModified)
+                    {
+                        export.Append($"{kvp.Key}={kvp.Value.Value},");
+                    }
+                }
+                string exportString = export.ToString().TrimEnd(',');
+
+                // Try to broadcast via antenna
+                List<IMyRadioAntenna> antennas = new List<IMyRadioAntenna>();
+                ParentProgram.GridTerminalSystem.GetBlocksOfType(antennas);
+                if (antennas.Count > 0)
+                {
+                    foreach (var antenna in antennas)
+                    {
+                        antenna.HudText = exportString;
+                    }
+                    ParentProgram.Echo($"Config exported to {antennas.Count} antenna(s)");
+                }
+                ParentProgram.Echo(exportString);
+            }
+
+            public void ImportConfig(string configString)
+            {
+                if (!configString.StartsWith("JetOSConfig:")) return;
+
+                string data = configString.Substring(12);
+                string[] pairs = data.Split(',');
+                foreach (string pair in pairs)
+                {
+                    string[] parts = pair.Split('=');
+                    if (parts.Length == 2)
+                    {
+                        string key = parts[0];
+                        float value;
+                        if (allConfigs.ContainsKey(key) && float.TryParse(parts[1], out value))
+                        {
+                            allConfigs[key].Value = value;
+                        }
+                    }
+                }
+                SaveToCustomData();
+                ParentProgram.Echo("Configuration imported successfully");
+            }
+
+            public override void HandleSpecialFunction(int key)
+            {
+                // No special function keys needed - using navigation instead
+            }
+
+            public override string GetHotkeys()
+            {
+                if (currentLevel == MenuLevel.ValueAdjust)
+                {
+                    return "";
+                }
+                else if (currentLevel == MenuLevel.ParameterList)
+                {
+                    return "";
+                }
+                return "";
+            }
+
+            public override bool HandleNavigation(bool isUp)
+            {
+                if (currentLevel == MenuLevel.ValueAdjust)
+                {
+                    // In value adjust mode, up/down changes the value
+                    var params_list = GetCurrentCategoryParams();
+                    if (parameterIndex < params_list.Count)
+                    {
+                        var param = params_list[parameterIndex];
+                        if (isUp)
+                        {
+                            param.Adjust(1); // Increase value
+                        }
+                        else
+                        {
+                            param.Adjust(-1); // Decrease value
+                        }
+                        return true; // We handled navigation
+                    }
+                }
+                return false; // Use default navigation
+            }
+
+            public override bool HandleBack()
+            {
+                if (currentLevel == MenuLevel.ValueAdjust)
+                {
+                    // Cancel editing and go back without saving
+                    currentLevel = MenuLevel.ParameterList;
+                    SystemManager.currentMenuIndex = parameterIndex; // Return to the parameter we were editing
+                    return true; // We handled the back button
+                }
+                else if (currentLevel == MenuLevel.ParameterList)
+                {
+                    // Go back to category selection
+                    currentLevel = MenuLevel.Category;
+                    SystemManager.currentMenuIndex = categoryIndex; // Return to the category we were in
+                    return true; // We handled the back button
+                }
+                // At category level, let default behavior exit the module
+                return false;
+            }
+
+            public override void Tick()
+            {
+                // Configuration module doesn't need per-frame updates
             }
         }
 
