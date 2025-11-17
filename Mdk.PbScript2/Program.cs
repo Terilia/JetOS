@@ -59,6 +59,35 @@ namespace IngameScript
                 // This helps identify bugs during development
             }
         }
+
+        // Helper function for finding slot for new target
+        public static int FindEmptyOrOldestSlot(Jet jet)
+        {
+            // First pass: find empty slot
+            for (int i = 0; i < jet.targetSlots.Length; i++)
+            {
+                if (!jet.targetSlots[i].IsOccupied)
+                {
+                    return i;
+                }
+            }
+
+            // Second pass: all slots occupied, find oldest by timestamp
+            int oldestIndex = 0;
+            long oldestTimestamp = jet.targetSlots[0].TimestampTicks;
+
+            for (int i = 1; i < jet.targetSlots.Length; i++)
+            {
+                if (jet.targetSlots[i].TimestampTicks < oldestTimestamp)
+                {
+                    oldestTimestamp = jet.targetSlots[i].TimestampTicks;
+                    oldestIndex = i;
+                }
+            }
+
+            return oldestIndex;
+        }
+
         public class Jet
         {
             // Core blocks
@@ -68,16 +97,90 @@ namespace IngameScript
             public List<IMySoundBlock> _soundBlocks;
             public IMyFlightMovementBlock _aiFlightBlock;
             public IMyOffensiveCombatBlock _aiCombatBlock;
+            public IMyFlightMovementBlock _aiFlightBlock2;  // RWR radar
+            public IMyOffensiveCombatBlock _aiCombatBlock2; // RWR radar
 
-            // Target tracking data (populated by AirtoAir module)
-            public Vector3D? currentTargetPosition = null;
-            public Vector3D? currentTargetVelocity = null;
-            public string currentTargetName = "";
-            public bool isTrackingTarget = false;
+            // Multi-target tracking system - unified slot structure
+            public struct TargetSlot
+            {
+                public bool IsOccupied;
+                public Vector3D Position;
+                public Vector3D Velocity;
+                public string Name;
+                public long TimestampTicks;
 
-            // Multi-target tracking (5 slots: 1 primary + 4 secondary)
-            public Vector3D[] targetPositions = new Vector3D[5];
-            public bool hasValidTargets = false;
+                public TargetSlot(Vector3D pos, Vector3D vel, string name)
+                {
+                    IsOccupied = true;
+                    Position = pos;
+                    Velocity = vel;
+                    Name = name;
+                    TimestampTicks = DateTime.Now.Ticks;
+                }
+
+                public void Clear()
+                {
+                    IsOccupied = false;
+                    Position = Vector3D.Zero;
+                    Velocity = Vector3D.Zero;
+                    Name = "";
+                    TimestampTicks = 0;
+                }
+            }
+
+            public TargetSlot[] targetSlots = new TargetSlot[5];  // 5 target slots (0-4)
+            public int activeSlotIndex = 0;                        // Currently selected slot
+
+            // Enemy contact tracking with decay
+            public struct EnemyContact
+            {
+                public Vector3D Position;
+                public Vector3D Velocity;
+                public string Name;
+                public long LastSeenTicks;
+                public int SourceIndex;  // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
+
+                public EnemyContact(Vector3D pos, Vector3D vel, string name, int source)
+                {
+                    Position = pos;
+                    Velocity = vel;
+                    Name = name;
+                    LastSeenTicks = DateTime.Now.Ticks;
+                    SourceIndex = source;
+                }
+
+                public long AgeTicks()
+                {
+                    return DateTime.Now.Ticks - LastSeenTicks;
+                }
+
+                public double AgeSeconds()
+                {
+                    return (DateTime.Now.Ticks - LastSeenTicks) / (double)TimeSpan.TicksPerSecond;
+                }
+            }
+
+            public List<EnemyContact> enemyList = new List<EnemyContact>();
+            public const long CONTACT_DECAY_TICKS = 180 * TimeSpan.TicksPerSecond; // 3 minute decay
+
+            // Scalable radar tracking modules
+            public List<RadarTrackingModule> radarModules = new List<RadarTrackingModule>();
+
+            // RWR AI block pairs (stored in reverse order for priority assignment)
+            public struct AIBlockPair
+            {
+                public IMyFlightMovementBlock FlightBlock;
+                public IMyOffensiveCombatBlock CombatBlock;
+                public int Index; // Original index (1-99)
+
+                public AIBlockPair(IMyFlightMovementBlock flight, IMyOffensiveCombatBlock combat, int idx)
+                {
+                    FlightBlock = flight;
+                    CombatBlock = combat;
+                    Index = idx;
+                }
+            }
+            public List<AIBlockPair> rwrAIBlocks = new List<AIBlockPair>();
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -110,9 +213,37 @@ namespace IngameScript
                     s => s.CustomName.Contains("Sound Block Warning")
                 );
 
-                // AI blocks for radar tracking
+                // AI blocks for radar tracking (targeting) - now scalable
+                // Try to find: "AI Flight", "AI Flight 2", "AI Flight 3", etc.
+                // and matching: "AI Combat", "AI Combat 2", "AI Combat 3", etc.
                 _aiFlightBlock = grid.GetBlockWithName("AI Flight") as IMyFlightMovementBlock;
                 _aiCombatBlock = grid.GetBlockWithName("AI Combat") as IMyOffensiveCombatBlock;
+
+                // Second AI blocks for RWR (Radar Warning Receiver) - backward compatibility
+                _aiFlightBlock2 = grid.GetBlockWithName("AI Flight 2") as IMyFlightMovementBlock;
+                _aiCombatBlock2 = grid.GetBlockWithName("AI Combat 2") as IMyOffensiveCombatBlock;
+
+                // Auto-detect all AI Flight/Combat pairs for RWR system
+                // Scan from 1 to 99 and store in reverse order (highest numbers first for RWR priority)
+                List<AIBlockPair> detectedPairs = new List<AIBlockPair>();
+
+                for (int i = 1; i <= 99; i++) // Check up to 99 AI combos
+                {
+                    string flightName = i == 1 ? "AI Flight" : $"AI Flight {i}";
+                    string combatName = i == 1 ? "AI Combat" : $"AI Combat {i}";
+
+                    var flightBlock = grid.GetBlockWithName(flightName) as IMyFlightMovementBlock;
+                    var combatBlock = grid.GetBlockWithName(combatName) as IMyOffensiveCombatBlock;
+
+                    if (flightBlock != null && combatBlock != null)
+                    {
+                        detectedPairs.Add(new AIBlockPair(flightBlock, combatBlock, i));
+                    }
+                }
+
+                // Reverse the list so highest-numbered blocks come first (RWR priority)
+                detectedPairs.Reverse();
+                rwrAIBlocks = detectedPairs;
 
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
@@ -152,6 +283,112 @@ namespace IngameScript
                 }
                 return -1;
             }
+
+            // ------------------------------
+            // ENEMY CONTACT MANAGEMENT
+            // ------------------------------
+
+            /// <summary>
+            /// Updates or adds an enemy contact to the enemy list
+            /// </summary>
+            public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex)
+            {
+                // Try to find existing contact by name
+                int existingIndex = -1;
+                for (int i = 0; i < enemyList.Count; i++)
+                {
+                    if (enemyList[i].Name == name)
+                    {
+                        existingIndex = i;
+                        break;
+                    }
+                }
+
+                EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex);
+
+                if (existingIndex >= 0)
+                {
+                    // Update existing contact
+                    enemyList[existingIndex] = contact;
+                }
+                else
+                {
+                    // Add new contact
+                    enemyList.Add(contact);
+                }
+            }
+
+            /// <summary>
+            /// Removes contacts older than CONTACT_DECAY_TICKS (3 minutes)
+            /// </summary>
+            public void UpdateEnemyDecay()
+            {
+                long currentTicks = DateTime.Now.Ticks;
+                for (int i = enemyList.Count - 1; i >= 0; i--)
+                {
+                    if ((currentTicks - enemyList[i].LastSeenTicks) > CONTACT_DECAY_TICKS)
+                    {
+                        enemyList.RemoveAt(i);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Gets the N closest enemies sorted by distance from cockpit
+            /// </summary>
+            public List<EnemyContact> GetClosestNEnemies(int n)
+            {
+                if (_cockpit == null || enemyList.Count == 0)
+                    return new List<EnemyContact>();
+
+                Vector3D cockpitPos = GetCockpitPosition();
+
+                // Create list with distances
+                var enemiesWithDistance = new List<KeyValuePair<double, EnemyContact>>();
+                foreach (var enemy in enemyList)
+                {
+                    double distance = (enemy.Position - cockpitPos).Length();
+                    enemiesWithDistance.Add(new KeyValuePair<double, EnemyContact>(distance, enemy));
+                }
+
+                // Sort by distance
+                enemiesWithDistance.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                // Take top N
+                var result = new List<EnemyContact>();
+                int count = Math.Min(n, enemiesWithDistance.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    result.Add(enemiesWithDistance[i].Value);
+                }
+
+                return result;
+            }
+
+            /// <summary>
+            /// Gets a color for enemy contacts based on age (for HUD decay visualization)
+            /// </summary>
+            public Color GetEnemyContactColor(EnemyContact contact)
+            {
+                double ageSeconds = contact.AgeSeconds();
+
+                if (ageSeconds < 30)
+                {
+                    // Fresh: Bright red
+                    return new Color(255, 0, 0);
+                }
+                else if (ageSeconds < 60)
+                {
+                    // Recent: Orange
+                    return new Color(255, 165, 0);
+                }
+                else
+                {
+                    // Old: Yellow
+                    return new Color(255, 255, 0);
+                }
+            }
+
             // ------------------------------
             // COCKPIT & SHIP INFO
             // ------------------------------
@@ -253,6 +490,8 @@ namespace IngameScript
             private static Program.RaycastCameraControl raycastProgram;
             private static Program.HUDModule hudProgram;
             private static Program.ConfigurationModule configModule;
+            private static Program.RWRModule rwrModule;
+            private static Program.AirtoAir airtoAirModule; // For continuous passive radar scanning
             private static int gpsindex = 0;
             private static List<IMySoundBlock> soundblocks = new List<IMySoundBlock>();
             private static List<IMyThrust> thrusters = new List<IMyThrust>();
@@ -324,10 +563,13 @@ namespace IngameScript
                 parentProgram = program;
                 modules = new List<ProgramModule>();
                 modules.Add(new AirToGround(parentProgram, _myJet));
-                modules.Add(new AirtoAir(parentProgram, _myJet));
+                airtoAirModule = new AirtoAir(parentProgram, _myJet); // Store reference for continuous scanning
+                modules.Add(airtoAirModule);
+                rwrModule = new RWRModule(parentProgram, _myJet);  // Radar Warning Receiver
+                modules.Add(rwrModule);
 
                 raycastProgram = new RaycastCameraControl(parentProgram, _myJet);
-                hudProgram = new HUDModule(parentProgram, _myJet, lcdWeapons);
+                hudProgram = new HUDModule(parentProgram, _myJet, lcdWeapons, rwrModule);
                 modules.Add(hudProgram);
                 modules.Add(raycastProgram);
                 uiController = new UIController(lcdMain, lcdExtra);
@@ -336,7 +578,6 @@ namespace IngameScript
                 modules.Add(configModule);
 
                 modules.Add(new LogoDisplay(parentProgram, uiController));
-                modules.Add(new FroggerGameControl(parentProgram, uiController));
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
                 {
@@ -601,6 +842,26 @@ namespace IngameScript
                     hudProgram.Tick();
                 }
 
+                // Always run passive radar scanning (even in main menu)
+                // This builds the enemy contact list for situational awareness
+                // Only call if NOT already the active module (to avoid double-tick)
+                if (airtoAirModule != null && currentModule != airtoAirModule)
+                {
+                    // Call tick to run passive scanning logic
+                    // The AirtoAir.Tick() method handles passive vs active mode internally
+                    airtoAirModule.Tick();
+                }
+
+                // Always run RWR threat detection (even in main menu)
+                // This provides continuous background threat warnings
+                // Only call if NOT already the active module (to avoid double-tick)
+                if (rwrModule != null && currentModule != rwrModule)
+                {
+                    // Call tick to run threat detection
+                    // The RWR.Tick() method handles enabled/disabled state internally
+                    rwrModule.Tick();
+                }
+
                 HandleSpecialFunctionInputs(argument);
 
                 // 1) How long since we last ran
@@ -732,6 +993,40 @@ namespace IngameScript
                                 FontId = "White"
                             };
                             cachedSprites.Add(targettext);
+
+                            // RWR status display
+                            string rwrStatusText = "RWR: ";
+                            Color rwrColor = Color.Gray;
+                            if (rwrModule != null && rwrModule.IsEnabled)
+                            {
+                                if (rwrModule.IsThreat)
+                                {
+                                    rwrStatusText += "THREAT!";
+                                    rwrColor = Color.Red;
+                                }
+                                else
+                                {
+                                    rwrStatusText += "Scanning";
+                                    rwrColor = Color.Green;
+                                }
+                            }
+                            else
+                            {
+                                rwrStatusText += "OFF";
+                                rwrColor = Color.Gray;
+                            }
+
+                            MySprite rwrStatusSprite = new MySprite()
+                            {
+                                Type = SpriteType.TEXT,
+                                Data = rwrStatusText,
+                                Position = new Vector2(220, 60),  // Below Manual Fire
+                                RotationOrScale = 1f,
+                                Color = rwrColor,
+                                Alignment = TextAlignment.RIGHT,
+                                FontId = "White"
+                            };
+                            cachedSprites.Add(rwrStatusSprite);
                             // Step 4: Draw only outline blocks
                             for (int x = 0; x < width; x++)
                             {
@@ -965,53 +1260,111 @@ namespace IngameScript
                         FlipGPS();
                         break;
                     default:
-                        parentProgram.Echo("Invalid input. Use keys 1-9.");
                         break;
                 }
             }
             private static void FlipGPS()
             {
-                // Validate GPS index is within bounds
-                if (gpsindex < 0 || gpsindex >= GPS_INDEX_MAX)
+                // Cycle through occupied slots only, skipping empty and stale ones
+                int startIndex = _myJet.activeSlotIndex;
+                int nextIndex = (startIndex + 1) % _myJet.targetSlots.Length;
+
+                // Search for next occupied AND fresh slot (wrap around once)
+                int searchCount = 0;
+                const long STALE_THRESHOLD_TICKS = 60 * TimeSpan.TicksPerSecond; // 60 seconds
+
+                while (searchCount < _myJet.targetSlots.Length)
                 {
-                    gpsindex = 0; // Reset to safe value
+                    if (_myJet.targetSlots[nextIndex].IsOccupied)
+                    {
+                        // Check if slot is still fresh (< 60 seconds old)
+                        long age = DateTime.Now.Ticks - _myJet.targetSlots[nextIndex].TimestampTicks;
+
+                        if (age < STALE_THRESHOLD_TICKS)
+                        {
+                            // Found fresh occupied slot - make it active
+                            _myJet.activeSlotIndex = nextIndex;
+
+                            // Update CustomData GPS for missiles
+                            UpdateActiveTargetGPS();
+                            return;
+                        }
+                        else
+                        {
+                            // Slot is stale, clear it and continue searching
+                            _myJet.targetSlots[nextIndex].Clear();
+                        }
+                    }
+                    nextIndex = (nextIndex + 1) % _myJet.targetSlots.Length;
+                    searchCount++;
                 }
 
-                // Store current active target in Jet array slot
-                if (_myJet.currentTargetPosition.HasValue)
-                {
-                    _myJet.targetPositions[gpsindex + 1] = _myJet.currentTargetPosition.Value;
-                }
-
-                // Also update CustomData for persistence
-                string cachedGPSData;
-                if (TryGetCustomDataValue("Cached", out cachedGPSData))
-                {
-                    string currentSlotKey = $"CacheGPS{gpsindex}";
-                    SetCustomDataValue(currentSlotKey, cachedGPSData);
-                }
-
-                // Move to next slot
-                gpsindex = (gpsindex + 1) % GPS_INDEX_MAX;
-
-                // Load next target from Jet array
-                Vector3D nextTarget = _myJet.targetPositions[gpsindex + 1];
-                _myJet.currentTargetPosition = nextTarget;
-                _myJet.targetPositions[0] = nextTarget;
-
-                // Check if we have any valid targets
-                _myJet.hasValidTargets = (nextTarget != Vector3D.Zero);
-
-                // Also update CustomData for persistence
-                string nextSlotKey = $"CacheGPS{gpsindex}";
-                string nextGPSData;
-                if (!TryGetCustomDataValue(nextSlotKey, out nextGPSData))
-                {
-                    nextGPSData = "";
-                }
-                SetCustomDataValue("Cached", nextGPSData);
-
+                // If we get here, no fresh targets found
             }
+
+            // Update CustomData with active target GPS for missiles to read
+            public static void UpdateActiveTargetGPS()
+            {
+                if (!_myJet.targetSlots[_myJet.activeSlotIndex].IsOccupied)
+                {
+                    return; // No active target
+                }
+
+                Vector3D targetPos = _myJet.targetSlots[_myJet.activeSlotIndex].Position;
+                Vector3D targetVel = _myJet.targetSlots[_myJet.activeSlotIndex].Velocity;
+
+                // Format GPS coordinates (missiles expect this format)
+                string gpsCoordinates =
+                    "Cached:GPS:Target:"
+                    + targetPos.X + ":"
+                    + targetPos.Y + ":"
+                    + targetPos.Z + ":#FF75C9F1:";
+
+                // Format cached speed
+                string cachedSpeed =
+                    "CachedSpeed:"
+                    + targetVel.X + ":"
+                    + targetVel.Y + ":"
+                    + targetVel.Z + ":#FF75C9F1:";
+
+                // Update CustomData
+                var customDataLines = parentProgram.Me.CustomData.Split('\n');
+                bool cachedLineFound = false;
+                bool cachedSpeedFound = false;
+
+                for (int i = 0; i < customDataLines.Length; i++)
+                {
+                    if (customDataLines[i].StartsWith("Cached:"))
+                    {
+                        customDataLines[i] = gpsCoordinates;
+                        cachedLineFound = true;
+                    }
+                    else if (customDataLines[i].StartsWith("CachedSpeed:"))
+                    {
+                        customDataLines[i] = cachedSpeed;
+                        cachedSpeedFound = true;
+                    }
+                }
+
+                if (!cachedLineFound)
+                {
+                    List<string> customDataList = new List<string>(customDataLines);
+                    customDataList.Add(gpsCoordinates);
+                    customDataLines = customDataList.ToArray();
+                }
+
+                if (!cachedSpeedFound)
+                {
+                    List<string> customDataList = new List<string>(customDataLines);
+                    customDataList.Add(cachedSpeed);
+                    customDataLines = customDataList.ToArray();
+                }
+
+                parentProgram.Me.CustomData = string.Join("\n", customDataLines);
+                MarkCustomDataDirty();
+            }
+
+            // Note: FindEmptyOrOldestSlot is now a static method in Program class
             private static void NavigateUp()
             {
                 // Check if current module wants to handle navigation
@@ -1533,7 +1886,6 @@ namespace IngameScript
             private int animationTicks = 0;
             private bool animating = false;
             private const int maxAnimationTicks = 100;
-            private Vector3D currentTargetPosition = Vector3D.Zero;
             private Jet myJet;
             public RaycastCameraControl(Program program, Jet jet) : base(program)
             {
@@ -1614,12 +1966,14 @@ namespace IngameScript
                         Vector3D target = hitInfo.HitPosition ?? Vector3D.Zero;
                         Vector3D targetVelocity = hitInfo.Velocity;
 
-                        // Update Jet object for HUD access
-                        myJet.currentTargetPosition = target;
-                        myJet.currentTargetVelocity = targetVelocity;
-                        myJet.isTrackingTarget = true;
-                        myJet.targetPositions[0] = target;
-                        myJet.hasValidTargets = true;
+                        // Find first empty slot or overwrite oldest
+                        int slotIndex = Program.FindEmptyOrOldestSlot(myJet);
+
+                        // Store target in slot (don't auto-activate, user cycles manually)
+                        myJet.targetSlots[slotIndex] = new Jet.TargetSlot(target, targetVelocity, "Raycast");
+
+                        // Add to enemy contact list (source index -1 indicates raycast)
+                        myJet.UpdateOrAddEnemy(target, targetVelocity, "Raycast", -1);
 
                         string gpsCoordinates =
                             "Cached:GPS:Target:"
@@ -1804,12 +2158,10 @@ namespace IngameScript
                 }
                 else
                 {
-                    string customData = ParentProgram.Me.CustomData;
-                    Vector3D targetPosition;
-                    if (TryParseCachedGPSCoordinates(customData, out targetPosition))
+                    // Tracking uses active slot - no separate local variable needed
+                    trackingActive = myJet.targetSlots[myJet.activeSlotIndex].IsOccupied;
+                    if (trackingActive)
                     {
-                        currentTargetPosition = targetPosition;
-                        trackingActive = true;
                         animationTicks = 0;
                         animating = true;
                     }
@@ -1822,15 +2174,18 @@ namespace IngameScript
                 {
                     return;
                 }
-                string customData = ParentProgram.Me.CustomData;
-                Vector3D targetPosition;
-                if (TryParseCachedGPSCoordinates(customData, out targetPosition))
+
+                // Get active target position from Jet slot
+                if (!myJet.targetSlots[myJet.activeSlotIndex].IsOccupied)
                 {
-                    currentTargetPosition = targetPosition;
+                    return;  // No target to track
                 }
+
+                Vector3D targetPosition = myJet.targetSlots[myJet.activeSlotIndex].Position;
+
                 Vector3D cameraPosition = camera.GetPosition();
                 Vector3D directionToTarget = VectorMath.SafeNormalize(
-                    currentTargetPosition - cameraPosition
+                    targetPosition - cameraPosition
                 );
                 Vector3D cameraForward = -camera.WorldMatrix.Forward;
                 double dotProductForward = Vector3D.Dot(cameraForward, directionToTarget);
@@ -1841,7 +2196,7 @@ namespace IngameScript
                 Vector3D remotePosition = remoteControl.GetPosition();
                 MatrixD remoteOrientation = remoteControl.WorldMatrix;
                 Vector3D relativeTargetPosition = Vector3D.TransformNormal(
-                    currentTargetPosition - remotePosition,
+                    targetPosition - remotePosition,
                     MatrixD.Transpose(remoteOrientation)
                 );
                 float kP_rotor = 0.05f;
@@ -1996,6 +2351,7 @@ namespace IngameScript
             private List<IMyGasTank> tanks = new List<IMyGasTank>();
             private List<IMyDoor> airbreaks = new List<IMyDoor>();
             Jet myjet;
+            RWRModule rwrModule; // Reference to RWR module for threat cone display
 
             // --- Flight Data ---
             double peakGForce = 0;
@@ -2038,7 +2394,6 @@ namespace IngameScript
 
             // --- NEW: Enhanced HUD Features ---
             // Velocity trail (tadpole)
-            private CircularBuffer<Vector3D> velocityTrail = new CircularBuffer<Vector3D>(15);
 
             // Missile tracking
             private struct MissileTrackingData
@@ -2061,12 +2416,13 @@ namespace IngameScript
             private const double BINGO_FUEL_PERCENT = 0.20; // 20% fuel = Bingo state
             private const double LOW_FUEL_PERCENT = 0.35;   // 35% fuel = Low fuel warning
 
-            public HUDModule(Program program, Jet jet, IMyTextSurface weaponSurface) : base(program)
+            public HUDModule(Program program, Jet jet, IMyTextSurface weaponSurface, RWRModule rwr) : base(program)
             {
                 cockpit = jet._cockpit;
                 hudBlock = jet.hudBlock;
                 hud = jet.hud;
                 weaponScreen = weaponSurface; // Store weapon screen reference
+                rwrModule = rwr; // Store RWR module reference
 
                 rightstab = jet.rightstab;
                 leftstab = jet.leftstab;
@@ -2768,11 +3124,7 @@ namespace IngameScript
                 UpdateSmoothedValues(velocityKPH, altitude, gForces, aoa, throttlecontrol);
                 AdjustStabilizers(aoa, myjet);
 
-                // Update velocity trail for tadpole visualization
-                if (currentVelocity.LengthSquared() > 0.1) // Only add if moving
-                {
-                    velocityTrail.Enqueue(currentVelocity);
-                }
+
             }
 
             private void UpdateThrottleControl(double throttle, double jumpthrottle)
@@ -2962,8 +3314,13 @@ namespace IngameScript
                         panelY += activeMissiles.Count * 20f + 25f;
                     }
 
-                    // Multi-Target Threat Display
-                    if (myjet.hasValidTargets && myjet.targetPositions.Length > 1)
+                    // Multi-Target Threat Display - check if we have multiple occupied slots
+                    int occupiedSlotCount = 0;
+                    for (int i = 0; i < myjet.targetSlots.Length; i++)
+                    {
+                        if (myjet.targetSlots[i].IsOccupied) occupiedSlotCount++;
+                    }
+                    if (occupiedSlotCount > 1)
                     {
                         // Separator line
                         frame.Add(new MySprite()
@@ -2990,7 +3347,17 @@ namespace IngameScript
                         });
                         panelY += 30f;
 
-                        DrawMultiTargetPanelToScreen(frame, myjet.targetPositions, shooterPosition, margin, panelY, screenWidth - margin * 2);
+                        // Extract positions from occupied slots
+                        Vector3D[] occupiedPositions = new Vector3D[occupiedSlotCount];
+                        int posIndex = 0;
+                        for (int i = 0; i < myjet.targetSlots.Length; i++)
+                        {
+                            if (myjet.targetSlots[i].IsOccupied)
+                            {
+                                occupiedPositions[posIndex++] = myjet.targetSlots[i].Position;
+                            }
+                        }
+                        DrawMultiTargetPanelToScreen(frame, occupiedPositions, shooterPosition, margin, panelY, screenWidth - margin * 2);
                     }
                 }
             }
@@ -3035,7 +3402,6 @@ namespace IngameScript
                     );
 
                     // NEW: Velocity trail (tadpole)
-                    DrawVelocityTrail(frame, cockpit, hud, roll, centerX, centerY, pixelsPerDegree);
 
                     DrawLeftInfoBox(
                         frame,
@@ -3056,9 +3422,9 @@ namespace IngameScript
                         mach
                     );
                     DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
-                    DrawRadar(frame, myjet, centerX - centerX * 0.70f,
-                        centerY + centerY * 0.75f, 70, 30,
-                        pixelsPerDegree);
+                    //DrawRadar(frame, myjet, centerX - centerX * 0.70f,
+                    //    centerY + centerY * 0.75f, 70, 30,
+                    //    pixelsPerDegree);
                     DrawCompass(frame, heading);
                     DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
                     DrawGForceIndicator(frame, smoothedGForces, peakGForce);
@@ -3070,28 +3436,60 @@ namespace IngameScript
                         DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
                     }
 
-                    // === PHASE 2: TARGETING ELEMENTS ===
-                    if (myjet.hasValidTargets && myjet.currentTargetPosition.HasValue)
+                    // === PHASE 2: MINIMAP (ALWAYS VISIBLE) ===
+                    // Draw top-down radar with all targets and sweep animation
+                    Vector2 surfaceSize = hud.SurfaceSize;
+                    const float RADAR_BOX_SIZE_PX = 100f;
+                    const float RADAR_BORDER_MARGIN = 10f;
+                    Vector2 radarOrigin = new Vector2(
+                        hud.SurfaceSize.X * 0.8f - RADAR_BORDER_MARGIN,
+                        surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
+                    );
+                    Vector2 radarCenter = radarOrigin + new Vector2(RADAR_BOX_SIZE_PX / 2f, RADAR_BOX_SIZE_PX / 2f);
+
+                    // Extract occupied slot positions for radar display
+                    // IMPORTANT: Put active target FIRST so it gets highlighted (index 0 = primary color)
+                    Vector3D[] radarTargetPositions = new Vector3D[myjet.targetSlots.Length];
+                    int radarTargetCount = 0;
+
+                    // Add active target first (if occupied)
+                    if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied)
                     {
+                        radarTargetPositions[radarTargetCount++] = myjet.targetSlots[myjet.activeSlotIndex].Position;
+                    }
+
+                    // Add other occupied slots
+                    for (int i = 0; i < myjet.targetSlots.Length; i++)
+                    {
+                        if (i != myjet.activeSlotIndex && myjet.targetSlots[i].IsOccupied)
+                        {
+                            radarTargetPositions[radarTargetCount++] = myjet.targetSlots[i].Position;
+                        }
+                    }
+
+                    // Resize array to actual count
+                    Array.Resize(ref radarTargetPositions, radarTargetCount);
+
+                    // Always draw minimap (even with zero targets)
+                    DrawTopDownRadarOptimized(frame, cockpit, hud,
+                        radarTargetPositions,
+                        Color.White, HUD_PRIMARY, HUD_EMPHASIS, HUD_WARNING);
+
+                    // Radar sweep animation
+                    DrawRadarSweepLine(frame, radarCenter, RADAR_BOX_SIZE_PX / 2f);
+
+                    // RWR threat cones (if RWR is enabled and has threats)
+                    DrawRWRThreatCones(frame, cockpit, radarCenter, RADAR_BOX_SIZE_PX / 2f);
+
+                    // === PHASE 3: TARGETING ELEMENTS (ONLY WHEN TARGET LOCKED) ===
+                    // Check if active slot has a target
+                    if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied)
+                    {
+                        Vector3D activeTargetPos = myjet.targetSlots[myjet.activeSlotIndex].Position;
+                        Vector3D activeTargetVel = myjet.targetSlots[myjet.activeSlotIndex].Velocity;
+
                         double muzzleVelocity = 910; // Muzzle velocity in m/s
-                        double range = Vector3D.Distance(shooterPosition, myjet.currentTargetPosition.Value);
-
-                        // Draw top-down radar with all targets and sweep animation
-                        Vector2 surfaceSize = hud.SurfaceSize;
-                        const float RADAR_BOX_SIZE_PX = 100f;
-                        const float RADAR_BORDER_MARGIN = 10f;
-                        Vector2 radarOrigin = new Vector2(
-                            hud.SurfaceSize.X * 0.8f - RADAR_BORDER_MARGIN,
-                            surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
-                        );
-                        Vector2 radarCenter = radarOrigin + new Vector2(RADAR_BOX_SIZE_PX / 2f, RADAR_BOX_SIZE_PX / 2f);
-
-                        DrawTopDownRadarOptimized(frame, cockpit, hud,
-                            myjet.targetPositions,
-                            Color.White, HUD_PRIMARY, HUD_EMPHASIS, HUD_WARNING);
-
-                        // NEW: Radar sweep animation
-                        DrawRadarSweepLine(frame, radarCenter, RADAR_BOX_SIZE_PX / 2f);
+                        double range = Vector3D.Distance(shooterPosition, activeTargetPos);
 
                         // Calculate intercept for leading pip and gun funnel
                         Vector3D interceptPoint;
@@ -3100,8 +3498,8 @@ namespace IngameScript
                             shooterPosition,
                             currentVelocity,
                             muzzleVelocity,
-                            myjet.currentTargetPosition.Value,
-                            myjet.currentTargetVelocity ?? Vector3D.Zero,
+                            activeTargetPos,
+                            activeTargetVel,
                             gravityDirection,
                             INTERCEPT_ITERATIONS,
                             out interceptPoint,
@@ -3138,8 +3536,8 @@ namespace IngameScript
                             // Draw leading pip for main target
                             DrawLeadingPip(
                                 frame, cockpit, hud,
-                                myjet.currentTargetPosition.Value,
-                                myjet.currentTargetVelocity ?? Vector3D.Zero,
+                                activeTargetPos,
+                                activeTargetVel,
                                 shooterPosition,
                                 currentVelocity,
                                 muzzleVelocity,
@@ -3149,14 +3547,14 @@ namespace IngameScript
 
                             // NEW: Target acquisition brackets (keep on main HUD for situational awareness)
                             DrawTargetBrackets(frame, cockpit, hud,
-                                myjet.currentTargetPosition.Value,
-                                myjet.currentTargetVelocity ?? Vector3D.Zero,
+                                activeTargetPos,
+                                activeTargetVel,
                                 shooterPosition,
                                 currentVelocity);
                         }
 
                         // NEW: Breakaway warning (keep on main HUD - critical safety feature)
-                        DrawBreakawayWarning(frame, altitude, currentVelocity, myjet.currentTargetPosition.Value, shooterPosition);
+                        DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition);
                     }
 
                     // NEW: Formation ghosts (keep on main HUD for formation flying)
@@ -4267,9 +4665,9 @@ namespace IngameScript
                     }
                 }
 
-                // Targeting pod status (check if AI radar is tracking)
+                // Targeting pod status (check if active slot has target)
                 textY += LINE_HEIGHT * 2;
-                bool radarTracking = myjet.isTrackingTarget;
+                bool radarTracking = myjet.targetSlots[myjet.activeSlotIndex].IsOccupied;
                 string podStatus = radarTracking ? "LOCK \u2713" : "----";
                 Color podColor = radarTracking ? HUD_PRIMARY : HUD_WARNING;
                 frame.Add(new MySprite()
@@ -4605,51 +5003,6 @@ namespace IngameScript
                 });
             }
 
-            // --- 7. VELOCITY VECTOR TRAIL (TADPOLE) ---
-            private void DrawVelocityTrail(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud, double roll, float centerX, float centerY, float pixelsPerDegree)
-            {
-                if (velocityTrail.Count < 2) return;
-
-                MatrixD worldMatrix = cockpit.WorldMatrix;
-                MatrixD worldToCockpitMatrix = MatrixD.Transpose(worldMatrix);
-
-                const double DegToRad = Math.PI / 180.0;
-                float rollRad = (float)(roll * DegToRad);
-
-                Vector3D[] trailPoints = velocityTrail.ToArray();
-                Color trailColor = HUD_INFO;
-
-                for (int i = 0; i < trailPoints.Length - 1; i++)
-                {
-                    Vector3D velocityDirection1 = Vector3D.Normalize(trailPoints[i]);
-                    Vector3D velocityDirection2 = Vector3D.Normalize(trailPoints[i + 1]);
-
-                    Vector3D localVelocity1 = Vector3D.TransformNormal(velocityDirection1, worldToCockpitMatrix);
-                    Vector3D localVelocity2 = Vector3D.TransformNormal(velocityDirection2, worldToCockpitMatrix);
-
-                    double velocityYaw1 = Math.Atan2(localVelocity1.X, -localVelocity1.Z) * 180.0 / Math.PI;
-                    double velocityPitch1 = Math.Atan2(localVelocity1.Y, -localVelocity1.Z) * 180.0 / Math.PI;
-
-                    double velocityYaw2 = Math.Atan2(localVelocity2.X, -localVelocity2.Z) * 180.0 / Math.PI;
-                    double velocityPitch2 = Math.Atan2(localVelocity2.Y, -localVelocity2.Z) * 180.0 / Math.PI;
-
-                    Vector2 markerOffset1 = new Vector2((float)(-velocityYaw1 * pixelsPerDegree), (float)(velocityPitch1 * pixelsPerDegree));
-                    Vector2 markerOffset2 = new Vector2((float)(-velocityYaw2 * pixelsPerDegree), (float)(velocityPitch2 * pixelsPerDegree));
-
-                    Vector2 rotatedOffset1 = RotatePoint(markerOffset1, Vector2.Zero, -rollRad);
-                    Vector2 rotatedOffset2 = RotatePoint(markerOffset2, Vector2.Zero, -rollRad);
-
-                    Vector2 pos1 = new Vector2(centerX, centerY) + rotatedOffset1;
-                    Vector2 pos2 = new Vector2(centerX, centerY) + rotatedOffset2;
-
-                    // Fade older trail segments
-                    float alpha = (float)i / trailPoints.Length;
-                    Color segmentColor = new Color(trailColor, alpha * 0.7f);
-
-                    AddLineSprite(frame, pos1, pos2, 1.5f, segmentColor);
-                }
-            }
-
             // --- 8. HORIZON BANK ANGLE MARKERS ---
             private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
             {
@@ -4743,19 +5096,159 @@ namespace IngameScript
                 Color sweepColor = new Color(HUD_EMPHASIS, 0.6f);
                 AddLineSprite(frame, radarCenter, sweepEnd, 2f, sweepColor);
 
-                // Draw fading trail
-                for (int i = 1; i < 10; i++)
+                //// Draw fading trail
+                //for (int i = 1; i < 10; i++)
+                //{
+                //    float trailAngle = sweepAngle - i * 3f;
+                //    float trailRad = MathHelper.ToRadians(trailAngle);
+                //    Vector2 trailEnd = radarCenter + new Vector2(
+                //        (float)Math.Cos(trailRad) * radarRadius,
+                //        (float)Math.Sin(trailRad) * radarRadius
+                //    );
+
+                //    float alpha = (10 - i) / 10f * 0.4f;
+                //    Color trailColor = new Color(HUD_EMPHASIS, alpha);
+                //    AddLineSprite(frame, radarCenter, trailEnd, 1f, trailColor);
+                //}
+            }
+
+            // --- RWR THREAT CONE VISUALIZATION ---
+            private void DrawRWRThreatCones(MySpriteDrawFrame frame, IMyCockpit cockpit, Vector2 radarCenter, float radarRadius)
+            {
+                if (rwrModule == null || !rwrModule.IsEnabled)
+                    return;
+
+                // Get active threats from RWR
+                var threats = rwrModule.activeThreats;
+                if (threats.Count == 0)
+                    return;
+
+                Vector3D cockpitPos = cockpit.GetPosition();
+                Vector3D worldUp = -Vector3D.Normalize(cockpit.GetNaturalGravity());
+
+                // Build yaw-plane matrix (same as radar targets use)
+                Vector3D shipForward = cockpit.WorldMatrix.Forward;
+                Vector3D shipRight = cockpit.WorldMatrix.Right;
+
+                Vector3D shipForwardProjected = shipForward - Vector3D.Dot(shipForward, worldUp) * worldUp;
+                Vector3D shipRightProjected = shipRight - Vector3D.Dot(shipRight, worldUp) * worldUp;
+
+                Vector3D yawForward;
+                if (shipForwardProjected.LengthSquared() > 0.01)
                 {
-                    float trailAngle = sweepAngle - i * 3f;
-                    float trailRad = MathHelper.ToRadians(trailAngle);
-                    Vector2 trailEnd = radarCenter + new Vector2(
-                        (float)Math.Cos(trailRad) * radarRadius,
-                        (float)Math.Sin(trailRad) * radarRadius
+                    yawForward = Vector3D.Normalize(shipForwardProjected);
+                }
+                else
+                {
+                    yawForward = Vector3D.Cross(shipRightProjected, worldUp);
+                }
+
+                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp);
+                MatrixD yawMatrix = MatrixD.Identity;
+                yawMatrix.Forward = yawForward;
+                yawMatrix.Right = yawRight;
+                yawMatrix.Up = worldUp;
+
+                MatrixD worldToYawPlaneMatrix = MatrixD.Transpose(yawMatrix);
+
+                foreach (var threat in threats)
+                {
+                    // Calculate direction to threat in yaw-plane coordinates (same as radar)
+                    Vector3D directionToThreat = threat.Position - cockpitPos;
+                    Vector3D localDirection = Vector3D.TransformNormal(directionToThreat, worldToYawPlaneMatrix);
+
+                    // Project onto horizontal plane - X is right, Z is forward
+                    Vector2 horizontalDirection = new Vector2((float)localDirection.X, (float)localDirection.Z);
+
+                    if (horizontalDirection.LengthSquared() < 0.001f)
+                        continue; // Threat directly above/below
+
+                    horizontalDirection.Normalize();
+
+                    // Calculate angle for cone (atan2 needs Y, X for screen coordinates where Y is forward/Z)
+                    float angleRad = (float)Math.Atan2(horizontalDirection.Y, horizontalDirection.X);
+                    float CONE_WIDTH_RAD = MathHelper.ToRadians(30f); // 30-degree cone
+
+                    // Draw cone edges
+                    float leftAngle = angleRad - CONE_WIDTH_RAD / 2f;
+                    float rightAngle = angleRad + CONE_WIDTH_RAD / 2f;
+
+                    Vector2 leftEdge = radarCenter + new Vector2(
+                        (float)Math.Cos(leftAngle) * radarRadius,
+                        (float)Math.Sin(leftAngle) * radarRadius
                     );
 
-                    float alpha = (10 - i) / 10f * 0.4f;
-                    Color trailColor = new Color(HUD_EMPHASIS, alpha);
-                    AddLineSprite(frame, radarCenter, trailEnd, 1f, trailColor);
+                    Vector2 rightEdge = radarCenter + new Vector2(
+                        (float)Math.Cos(rightAngle) * radarRadius,
+                        (float)Math.Sin(rightAngle) * radarRadius
+                    );
+
+                    // Choose color based on threat type
+                    Color coneColor = threat.IsIncoming ? HUD_WARNING : HUD_EMPHASIS; // Red for incoming, Yellow for tracking
+                    Color coneColorFaded = new Color(coneColor, 0.3f);
+
+                    // Draw cone edges
+                    AddLineSprite(frame, radarCenter, leftEdge, 2f, coneColor);
+                    AddLineSprite(frame, radarCenter, rightEdge, 2f, coneColor);
+
+                    // Draw arc connecting cone edges (approximate with line segments)
+                    const int ARC_SEGMENTS = 8;
+                    for (int i = 0; i < ARC_SEGMENTS; i++)
+                    {
+                        float t1 = i / (float)ARC_SEGMENTS;
+                        float t2 = (i + 1) / (float)ARC_SEGMENTS;
+
+                        float angle1 = leftAngle + t1 * CONE_WIDTH_RAD;
+                        float angle2 = leftAngle + t2 * CONE_WIDTH_RAD;
+
+                        Vector2 arc1 = radarCenter + new Vector2(
+                            (float)Math.Cos(angle1) * radarRadius,
+                            (float)Math.Sin(angle1) * radarRadius
+                        );
+
+                        Vector2 arc2 = radarCenter + new Vector2(
+                            (float)Math.Cos(angle2) * radarRadius,
+                            (float)Math.Sin(angle2) * radarRadius
+                        );
+
+                        AddLineSprite(frame, arc1, arc2, 1f, coneColorFaded);
+                    }
+
+                    // Draw threat indicator at cone center
+                    Vector2 threatIndicator = radarCenter + new Vector2(
+                        (float)Math.Cos(angleRad) * (radarRadius * 0.9f),
+                        (float)Math.Sin(angleRad) * (radarRadius * 0.9f)
+                    );
+
+                    // Draw threat symbol (triangle or exclamation)
+                    if (threat.IsIncoming)
+                    {
+                        // Draw filled triangle for incoming threat
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "!",
+                            Position = threatIndicator,
+                            RotationOrScale = 0.6f,
+                            Color = HUD_WARNING,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        });
+                    }
+                    else
+                    {
+                        // Draw hollow triangle for tracking only
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "^",
+                            Position = threatIndicator,
+                            RotationOrScale = 0.5f,
+                            Color = HUD_EMPHASIS,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "White"
+                        });
+                    }
                 }
             }
 
@@ -4899,9 +5392,9 @@ namespace IngameScript
                 double radarX = 0.0;  // -1.0 ... +1.0
                 double radarY = 0.0;  // -1.0 ... +1.0
 
-                if (myjet.isTrackingTarget && myjet.currentTargetPosition.HasValue)
+                if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied)
                 {
-                    Vector3D targetPos = myjet.currentTargetPosition.Value;
+                    Vector3D targetPos = myjet.targetSlots[myjet.activeSlotIndex].Position;
                     Vector3D cockpitPos = myjet._cockpit.GetPosition();
                     Vector3D toTarget = targetPos - cockpitPos;
 
@@ -4974,9 +5467,9 @@ namespace IngameScript
                 };
                 frame.Add(rightLineSprite);
                 string targetName = "null";
-                if (myjet.isTrackingTarget && !string.IsNullOrEmpty(myjet.currentTargetName))
+                if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied && !string.IsNullOrEmpty(myjet.targetSlots[myjet.activeSlotIndex].Name))
                 {
-                    targetName = myjet.currentTargetName;
+                    targetName = myjet.targetSlots[myjet.activeSlotIndex].Name;
                 }
                 MySprite targettext = new MySprite()
                 {
@@ -4990,7 +5483,7 @@ namespace IngameScript
                 };
                 frame.Add(targettext);
 
-                // --- Draw radar dot --------------------------------------
+                // --- Draw active target radar dot (main target) ----------
                 // If radarX = -1 => far left; +1 => far right, etc.
                 // If radarY = -1 => top; +1 => bottom.
                 MySprite radarDot = new MySprite()
@@ -5006,6 +5499,71 @@ namespace IngameScript
                     Alignment = TextAlignment.CENTER
                 };
                 frame.Add(radarDot);
+
+                // --- Draw all enemy contacts from enemy list with decay colors ---
+                var closestEnemies = myjet.GetClosestNEnemies(10); // Get 10 closest
+                foreach (var enemy in closestEnemies)
+                {
+                    Vector3D enemyPos = enemy.Position;
+                    Vector3D cockpitPos = myjet._cockpit.GetPosition();
+                    Vector3D toEnemy = enemyPos - cockpitPos;
+
+                    // Get cockpit orientation
+                    MatrixD cockpitMatrix = myjet._cockpit.WorldMatrix;
+                    Vector3D forward = cockpitMatrix.Forward;
+                    Vector3D right = cockpitMatrix.Right;
+                    Vector3D up = cockpitMatrix.Up;
+
+                    // Project enemy onto forward plane
+                    double forwardDist = Vector3D.Dot(toEnemy, forward);
+                    double rightDist = Vector3D.Dot(toEnemy, right);
+                    double upDist = Vector3D.Dot(toEnemy, up);
+
+                    // Calculate radar position
+                    double enemyRadarX = 0.0;
+                    double enemyRadarY = 0.0;
+
+                    if (forwardDist > 0)
+                    {
+                        enemyRadarX = Math.Max(-1.0, Math.Min(1.0, rightDist / forwardDist));
+                        enemyRadarY = Math.Max(-1.0, Math.Min(1.0, -upDist / forwardDist));
+                    }
+
+                    // Get decay color based on age
+                    Color enemyColor = myjet.GetEnemyContactColor(enemy);
+
+                    // Draw enemy blip
+                    MySprite enemyBlip = new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "Circle",
+                        Position = new Vector2(
+                            boxCenterX + (float)enemyRadarX * halfWidth * -1,
+                            boxCenterY + (float)enemyRadarY * halfHeight * -1
+                        ),
+                        Size = new Vector2(6, 6),
+                        Color = enemyColor,
+                        Alignment = TextAlignment.CENTER
+                    };
+                    frame.Add(enemyBlip);
+
+                    // Draw small source indicator (AI1, AI2, RAY, etc.)
+                    string sourceLabel = enemy.SourceIndex == -1 ? "RAY" : $"A{enemy.SourceIndex + 1}";
+                    MySprite sourceText = new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = sourceLabel,
+                        Position = new Vector2(
+                            boxCenterX + (float)enemyRadarX * halfWidth * -1 + 8,
+                            boxCenterY + (float)enemyRadarY * halfHeight * -1 - 3
+                        ),
+                        RotationOrScale = 0.3f,
+                        Color = enemyColor,
+                        Alignment = TextAlignment.LEFT,
+                        FontId = "White"
+                    };
+                    frame.Add(sourceText);
+                }
             }
 
             private double CalculateHeading()
@@ -5907,7 +6465,6 @@ namespace IngameScript
                         }
                         catch (Exception e)
                         {
-                            ParentProgram.Echo($"Error firing bay {i}: {e.Message}");
                             // Continue to next bay instead of crashing
                         }
                     }
@@ -6037,7 +6594,6 @@ namespace IngameScript
                 }
                 catch (Exception e)
                 {
-                    ParentProgram.Echo($"Error firing missile from bay {bayIndex}: {e.Message}");
                 }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
@@ -6109,7 +6665,6 @@ namespace IngameScript
                 }
                 catch (Exception e)
                 {
-                    ParentProgram.Echo($"Error transferring cache to slots: {e.Message}");
                 }
             }
             private List<Vector3D> CalculateTargetPositions(Vector3D centralTarget)
@@ -6180,7 +6735,7 @@ namespace IngameScript
         }
 
         // Radar Tracking Module using AI Blocks
-        class RadarTrackingModule
+        public class RadarTrackingModule
         {
             //===============================================================================================
             //This Is A Pretty Generic Targeting Class, I Have Kept It Relatively CLean And Understandable
@@ -6244,7 +6799,7 @@ namespace IngameScript
                 L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true); //Sets To Ignore All Collision Detection
                 L_CombatBLock.ApplyAction("ActivateBehavior_On");
                 L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
-                L_CombatBLock.ApplyAction("SetTargetPriority_Largest");
+                L_CombatBLock.ApplyAction("SetTargetPriority_Closest");
             }
 
             /// <summary>
@@ -6483,11 +7038,35 @@ namespace IngameScript
                     pendingSounds.Add("");
                 }
 
-                // Initialize radar tracker with AI blocks
+                // Initialize radar tracker with AI blocks (backward compatibility - primary only)
                 if (jet._aiFlightBlock != null && jet._aiCombatBlock != null)
                 {
                     radarTracker = new RadarTrackingModule(jet._aiFlightBlock, jet._aiCombatBlock);
                 }
+
+                // Initialize scalable radar modules - auto-detect all AI Flight/Combat pairs
+                for (int i = 1; i <= 10; i++) // Check up to 10 AI combos
+                {
+                    string flightName = i == 1 ? "AI Flight" : $"AI Flight {i}";
+                    string combatName = i == 1 ? "AI Combat" : $"AI Combat {i}";
+
+                    var flightBlock = program.GridTerminalSystem.GetBlockWithName(flightName) as IMyFlightMovementBlock;
+                    var combatBlock = program.GridTerminalSystem.GetBlockWithName(combatName) as IMyOffensiveCombatBlock;
+
+                    if (flightBlock != null && combatBlock != null)
+                    {
+                        // Create and add radar module for this combo
+                        var radarModule = new RadarTrackingModule(flightBlock, combatBlock);
+                        jet.radarModules.Add(radarModule);
+                    }
+                    else
+                    {
+                        // No more combos found
+                        break;
+                    }
+                }
+
+                program.Echo($"Total AI combos detected: {jet.radarModules.Count}");
             }
 
             public override string[] GetOptions()
@@ -6585,7 +7164,7 @@ namespace IngameScript
                             radarTracker.L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true);
                             radarTracker.L_CombatBLock.ApplyAction("ActivateBehavior_On");
                             radarTracker.L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
-                            radarTracker.L_CombatBLock.ApplyAction("SetTargetPriority_Largest");
+                            radarTracker.L_CombatBLock.ApplyAction("SetTargetPriority_Closest");
                         }
                         if (radarTracker.L_FlightBlock != null)
                         {
@@ -6629,75 +7208,86 @@ namespace IngameScript
             {
                 ticket++;
 
-                // Update radar tracking
-                if (radarTracker != null && isAirtoAirenabled)
+                // ===== PASSIVE MODE: Scan and build enemy list without active lock =====
+                if (!isAirtoAirenabled)
                 {
-                    radarTracker.UpdateTracking(ticket);
-
-                    // Debug output
-                    ParentProgram.Echo($"=== AIR-TO-AIR DEBUG ===");
-                    ParentProgram.Echo($"Seeker Enabled: {isAirtoAirenabled}");
-                    ParentProgram.Echo($"IsTracking: {radarTracker.IsTracking}");
-                    ParentProgram.Echo($"Combat Enabled: {radarTracker.L_CombatBLock?.Enabled}");
-                    ParentProgram.Echo($"Flight Enabled: {radarTracker.L_FlightBlock?.Enabled}");
-                    ParentProgram.Echo($"FoundEnemyId: {radarTracker.L_CombatBLock?.SearchEnemyComponent.FoundEnemyId}");
-                    var wp = radarTracker.L_FlightBlock?.CurrentWaypoint;
-                    ParentProgram.Echo($"CurrentWaypoint: {(wp != null ? "EXISTS" : "NULL")}");
-                    if (wp != null)
+                    // Update all radar modules
+                    for (int i = 0; i < myJet.radarModules.Count; i++)
                     {
-                        ParentProgram.Echo($"Waypoint Pos: {wp.Matrix.Translation}");
+                        var radarModule = myJet.radarModules[i];
+                        if (radarModule != null)
+                        {
+                            radarModule.UpdateTracking(ticket);
+
+                            // If tracking, add to enemy list (no slot activation, no GPS update)
+                            if (radarModule.IsTracking)
+                            {
+                                Vector3D targetPos = radarModule.TargetPosition;
+                                Vector3D targetVel = radarModule.TargetVelocity;
+                                string targetName = radarModule.TrackedObjectName;
+
+                                // Add/update in enemy list
+                                myJet.UpdateOrAddEnemy(targetPos, targetVel, targetName, i);
+
+                                // Store in slot for HUD display but DON'T activate
+                                int slotIndex = Program.FindEmptyOrOldestSlot(myJet);
+                                myJet.targetSlots[slotIndex] = new Jet.TargetSlot(targetPos, targetVel, targetName);
+                            }
+                        }
                     }
-                    ParentProgram.Echo($"TargetPosition: {radarTracker.TargetPosition}");
+
+                    // Decay old contacts every 60 ticks (~1 second)
+                    if (ticket % 60 == 0)
+                    {
+                        myJet.UpdateEnemyDecay();
+                    }
                 }
-
-                // Update Jet's target tracking data and GPS cache when tracking
-                if (radarTracker != null && radarTracker.IsTracking && isAirtoAirenabled)
-                {
-                    Vector3D targetPos = radarTracker.TargetPosition;
-                    Vector3D targetVel = radarTracker.TargetVelocity;
-
-                    // Update Jet's target tracking fields for HUD access
-                    myJet.isTrackingTarget = true;
-                    myJet.currentTargetPosition = targetPos;
-                    myJet.currentTargetVelocity = targetVel;
-                    myJet.currentTargetName = radarTracker.TrackedObjectName;
-
-                    // Update multi-target array (slot 0 = active target)
-                    myJet.targetPositions[0] = targetPos;
-                    myJet.hasValidTargets = true;
-
-                    ParentProgram.Echo($"TARGET LOCKED: {myJet.currentTargetName}");
-                    ParentProgram.Echo($"Position: {targetPos}");
-
-                    var customDataLines = ParentProgram.Me.CustomData.Split(
-                        new[] { '\n' },
-                        StringSplitOptions.RemoveEmptyEntries
-                    );
-                    string gpsCoordinates =
-                        "Cached:GPS:Target:"
-                        + targetPos.X
-                        + ":"
-                        + targetPos.Y
-                        + ":"
-                        + targetPos.Z
-                        + ":#FF75C9F1:";
-
-                    // Add the speed information to be cached
-                    string cachedSpeed =
-                        "CachedSpeed:"
-                        + targetVel.X
-                        + ":"
-                        + targetVel.Y
-                        + ":"
-                        + targetVel.Z
-                        + ":#FF75C9F1:";
-
-                    UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
-                }
+                // ===== ACTIVE MODE: Lock closest N enemies and update missile GPS =====
                 else
                 {
-                    // Clear tracking data when not tracking
-                    myJet.isTrackingTarget = false;
+                    // Get closest N enemies (N = number of radar modules)
+                    var closestEnemies = myJet.GetClosestNEnemies(myJet.radarModules.Count);
+
+                    // Update all radar modules to track their assigned targets
+                    for (int i = 0; i < myJet.radarModules.Count; i++)
+                    {
+                        var radarModule = myJet.radarModules[i];
+                        if (radarModule != null)
+                        {
+                            radarModule.UpdateTracking(ticket);
+
+                            // If tracking, store target
+                            if (radarModule.IsTracking)
+                            {
+                                Vector3D targetPos = radarModule.TargetPosition;
+                                Vector3D targetVel = radarModule.TargetVelocity;
+                                string targetName = radarModule.TrackedObjectName;
+
+                                // Find slot or create new one
+                                int slotIndex = Program.FindEmptyOrOldestSlot(myJet);
+                                myJet.targetSlots[slotIndex] = new Jet.TargetSlot(targetPos, targetVel, targetName);
+
+                                // Add to enemy list
+                                myJet.UpdateOrAddEnemy(targetPos, targetVel, targetName, i);
+
+                                // First radar module (closest target) auto-activates for missiles
+                                if (i == 0)
+                                {
+                                    myJet.activeSlotIndex = slotIndex;
+                                    SystemManager.UpdateActiveTargetGPS(); // Update CustomData for missiles
+                                }
+                                else
+                                {
+                                }
+                            }
+                        }
+                    }
+
+                    // Backward compatibility: Update old radarTracker if it exists
+                    if (radarTracker != null)
+                    {
+                        radarTracker.UpdateTracking(ticket);
+                    }
                 }
 
                 // Manage sound blocks
@@ -6867,7 +7457,6 @@ namespace IngameScript
                         }
                         catch (Exception e)
                         {
-                            ParentProgram.Echo($"Error firing bay {i}: {e.Message}");
                             // Continue to next bay instead of crashing
                         }
                     }
@@ -7003,7 +7592,6 @@ namespace IngameScript
                 }
                 catch (Exception e)
                 {
-                    ParentProgram.Echo($"Error firing missile from bay {bayIndex}: {e.Message}");
                 }
             }
             private void UpdateCustomDataWithGpsData(int bayIndex, string gpsData)
@@ -7138,6 +7726,780 @@ namespace IngameScript
             }
         }
 
+        // RWR (Radar Warning Receiver) Module
+        // Detects when enemies are on intercept course toward us
+        // RWR Warning data structure - accessible by HUD and other modules
+        public class RWRWarning
+        {
+            public Vector3D Position;
+            public Vector3D Velocity;
+            public string Name;
+            public bool IsIncoming; // True if enemy is on intercept course and pursuing
+            public int RWRIndex; // Which RWR unit detected this (0-based)
+            public long LastSeenTicks;
+
+            public RWRWarning(Vector3D pos, Vector3D vel, string name, bool incoming, int rwrIdx)
+            {
+                Position = pos;
+                Velocity = vel;
+                Name = name;
+                IsIncoming = incoming;
+                RWRIndex = rwrIdx;
+                LastSeenTicks = DateTime.Now.Ticks;
+            }
+
+            public double AgeSeconds()
+            {
+                return (DateTime.Now.Ticks - LastSeenTicks) / (double)TimeSpan.TicksPerSecond;
+            }
+        }
+
+        class RWRModule : ProgramModule
+        {
+            // Multi-RWR tracking
+            private List<RadarTrackingModule> rwrRadars = new List<RadarTrackingModule>();
+            private int configuredRWRCount = 0; // How many RWRs user wants to use (0 = all available)
+            private int availableRWRCount = 0; // How many AI pairs are actually available
+
+            // Per-RWR tracking state
+            private class RWRTrackingState
+            {
+                public string CurrentEnemyName = "";
+                public int TicksSinceEnemyChange = 0;
+                public List<Vector3D> PositionHistory = new List<Vector3D>();
+                public int HistoryIndex = 0;
+                public int TickCounter = 0;
+
+                public RWRTrackingState()
+                {
+                    for (int i = 0; i < POSITION_HISTORY_SIZE; i++)
+                    {
+                        PositionHistory.Add(Vector3D.Zero);
+                    }
+                }
+
+                public void ClearHistory()
+                {
+                    for (int i = 0; i < POSITION_HISTORY_SIZE; i++)
+                    {
+                        PositionHistory[i] = Vector3D.Zero;
+                    }
+                    HistoryIndex = 0;
+                }
+            }
+
+            private List<RWRTrackingState> rwrStates = new List<RWRTrackingState>();
+
+            private Jet myJet;
+            private List<IMySoundBlock> warningSoundBlocks;
+            private bool rwrEnabled = false;
+            private bool anyThreatDetected = false;  // Track if ANY RWR has a threat
+
+            // Public accessors for status display
+            public bool IsEnabled { get { return rwrEnabled; } }
+            public bool IsThreat { get { return anyThreatDetected; } }
+
+            // Active warnings list (accessible by HUD and other modules)
+            public List<RWRWarning> activeThreats = new List<RWRWarning>();
+
+            // Enemy position tracking for pursuit detection (per-RWR history)
+            private const int POSITION_HISTORY_SIZE = 10;
+            private const int POSITION_SAMPLE_INTERVAL = 10; // Sample position every 10 ticks
+            private const int MIN_TRACKING_TICKS = 30; // Need 30 ticks (0.5 sec) of tracking same enemy
+
+            // Sound state machine (same pattern as AirtoAir)
+            private int soundState = 0; // 0=idle, 1=stopping, 2=selecting, 3=playing, 4=waiting
+            private string lastPlayedSound = "";
+            private string pendingSound = "";
+            private int soundTickCounter = 0;
+            private const int SOUND_PLAY_INTERVAL = 60; // Play sound every 60 ticks (1 second)
+
+            // Threat detection parameters
+            private const double INTERCEPT_TOLERANCE_ANGLE = 15.0; // degrees of "play" in intercept calculation
+            private const double MIN_PURSUIT_SAMPLES = 3; // Need 3 consistent samples to confirm pursuit
+            private const double ASSUMED_ENEMY_WEAPON_SPEED = 400.0; // m/s - assume enemy has similar weapons
+            private const double MIN_ENEMY_MOVEMENT = 50.0; // Minimum movement in meters to be considered moving
+
+            // Console output tracking to only print when state changes
+            private string lastConsoleOutput = "";
+
+            public RWRModule(Program program, Jet jet) : base(program)
+            {
+                myJet = jet;
+                name = "RWR System";
+
+                // Fetch warning sound blocks (reuse altitude warning blocks)
+                warningSoundBlocks = jet._soundBlocks;
+
+                // Count available RWR AI blocks (from Jet's reversed list)
+                availableRWRCount = jet.rwrAIBlocks.Count;
+
+                // Initialize RWR radars from all detected AI block pairs
+                for (int i = 0; i < availableRWRCount; i++)
+                {
+                    var aiPair = jet.rwrAIBlocks[i];
+                    rwrRadars.Add(new RadarTrackingModule(aiPair.FlightBlock, aiPair.CombatBlock));
+                    rwrStates.Add(new RWRTrackingState());
+                }
+
+                // Load configured count from CustomData (0 = use all)
+                string savedCount = GetCustomDataValue("RWRCount");
+                int count;
+                if (!string.IsNullOrEmpty(savedCount) && int.TryParse(savedCount, out count))
+                {
+                    configuredRWRCount = Math.Max(0, Math.Min(count, availableRWRCount));
+                }
+                else
+                {
+                    configuredRWRCount = availableRWRCount; // Default: use all
+                }
+            }
+
+            private string GetCustomDataValue(string key)
+            {
+                var lines = ParentProgram.Me.CustomData.Split('\n');
+                foreach (var line in lines)
+                {
+                    if (line.StartsWith(key + ":"))
+                    {
+                        return line.Substring(key.Length + 1);
+                    }
+                }
+                return null;
+            }
+
+            private void SetCustomDataValue(string key, string value)
+            {
+                var lines = ParentProgram.Me.CustomData.Split('\n').ToList();
+                bool found = false;
+
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    if (lines[i].StartsWith(key + ":"))
+                    {
+                        lines[i] = key + ":" + value;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    lines.Add(key + ":" + value);
+                }
+
+                ParentProgram.Me.CustomData = string.Join("\n", lines);
+            }
+
+            public override string[] GetOptions()
+            {
+                var options = new List<string>();
+
+                if (availableRWRCount > 0)
+                {
+                    options.Add(string.Format("RWR [{0}]", rwrEnabled ? "ON" : "OFF"));
+
+                    // Two separate menu items for increasing/decreasing RWR count
+                    int activeCount = GetActiveRWRCount();
+                    options.Add(string.Format("RWR Units + (Current: {0}/{1})", activeCount, availableRWRCount));
+                    options.Add(string.Format("RWR Units - (Current: {0}/{1})", activeCount, availableRWRCount));
+
+                    if (rwrEnabled)
+                    {
+                        int threatCount = activeThreats.Count;
+                        if (threatCount > 0)
+                        {
+                            options.Add(string.Format("Status: {0} THREAT{1}", threatCount, threatCount > 1 ? "S" : ""));
+                        }
+                        else
+                        {
+                            options.Add("Status: Scanning...");
+                        }
+                    }
+                }
+                else
+                {
+                    options.Add("RWR: NO AI BLOCKS");
+                }
+
+                return options.ToArray();
+            }
+
+            public override void ExecuteOption(int index)
+            {
+                if (availableRWRCount == 0)
+                    return;
+
+                switch (index)
+                {
+                    case 0: // Toggle RWR ON/OFF
+                        rwrEnabled = !rwrEnabled;
+
+                        if (!rwrEnabled)
+                        {
+                            // Stop warning sound when disabling
+                            StopWarningSound();
+
+                            // Clear all tracking states
+                            foreach (var state in rwrStates)
+                            {
+                                state.ClearHistory();
+                                state.CurrentEnemyName = "";
+                                state.TicksSinceEnemyChange = 0;
+                            }
+
+                            activeThreats.Clear();
+                        }
+                        break;
+
+                    case 1: // Increase RWR count
+                        if (configuredRWRCount < availableRWRCount)
+                        {
+                            configuredRWRCount++;
+                            SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                        }
+                        break;
+
+                    case 2: // Decrease RWR count
+                        if (configuredRWRCount > 1)
+                        {
+                            configuredRWRCount--;
+                            SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                        }
+                        break;
+                }
+            }
+
+            private int GetActiveRWRCount()
+            {
+                return configuredRWRCount == 0 ? availableRWRCount : Math.Min(configuredRWRCount, availableRWRCount);
+            }
+
+            public override void Tick()
+            {
+                if (!rwrEnabled || availableRWRCount == 0)
+                {
+                    return;
+                }
+
+                // Update sound state machine
+                UpdateSoundStateMachine();
+
+                // Get player position/velocity once for all RWRs
+                Vector3D playerPos = myJet._cockpit.GetPosition();
+                Vector3D playerVel = myJet._cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D gravity = myJet._cockpit.GetNaturalGravity();
+
+                // Clear previous threats
+                activeThreats.Clear();
+                anyThreatDetected = false;
+
+                // Process each active RWR
+                int activeCount = GetActiveRWRCount();
+                for (int i = 0; i < activeCount; i++)
+                {
+                    ProcessRWR(i, playerPos, playerVel, gravity);
+                }
+
+                // Update console output (only when state changes)
+                UpdateConsoleOutput();
+
+                // Play sound if any threat detected
+                if (anyThreatDetected)
+                {
+                    PlayWarningSound();
+                }
+                else
+                {
+                    StopWarningSound();
+                }
+            }
+
+            private void ProcessRWR(int rwrIndex, Vector3D playerPos, Vector3D playerVel, Vector3D gravity)
+            {
+                var radar = rwrRadars[rwrIndex];
+                var state = rwrStates[rwrIndex];
+
+                // Update radar tracking
+                radar.UpdateTracking(ParentProgram.Runtime.TimeSinceLastRun.Ticks);
+
+                // Increment tick counter
+                state.TickCounter++;
+
+                if (radar.IsTracking)
+                {
+                    string enemyName = radar.TrackedObjectName;
+                    Vector3D enemyPos = radar.TargetPosition;
+                    Vector3D enemyVel = radar.TargetVelocity;
+
+                    // Check if this is the SAME enemy we were tracking
+                    if (enemyName != state.CurrentEnemyName)
+                    {
+                        // NEW enemy detected - reset tracking
+                        state.CurrentEnemyName = enemyName;
+                        state.TicksSinceEnemyChange = 0;
+                        state.ClearHistory();
+                    }
+                    else
+                    {
+                        // Same enemy - increment tracking time
+                        state.TicksSinceEnemyChange++;
+                    }
+
+                    // Sample position at intervals (not every tick)
+                    if (state.TickCounter % POSITION_SAMPLE_INTERVAL == 0)
+                    {
+                        state.PositionHistory[state.HistoryIndex] = enemyPos;
+                        state.HistoryIndex = (state.HistoryIndex + 1) % POSITION_HISTORY_SIZE;
+                    }
+
+                    // Only evaluate threat if we've been tracking same enemy for enough ticks
+                    if (state.TicksSinceEnemyChange >= MIN_TRACKING_TICKS)
+                    {
+                        // Check if enemy is a threat
+                        bool isThreatening = IsThreatening(enemyPos, enemyVel, playerPos, playerVel, gravity, state.PositionHistory);
+
+                        if (isThreatening)
+                        {
+                            // Add to active threats
+                            activeThreats.Add(new RWRWarning(enemyPos, enemyVel, enemyName, true, rwrIndex));
+                            anyThreatDetected = true;
+                        }
+                        else
+                        {
+                            // Tracking but not incoming - still add to threats list
+                            activeThreats.Add(new RWRWarning(enemyPos, enemyVel, enemyName, false, rwrIndex));
+                        }
+                    }
+                }
+                else
+                {
+                    // No enemy detected - reset state
+                    if (state.CurrentEnemyName != "")
+                    {
+                        state.CurrentEnemyName = "";
+                        state.TicksSinceEnemyChange = 0;
+                        state.ClearHistory();
+                    }
+                }
+            }
+
+            // Check if enemy is threatening using proportional navigation intercept detection
+            private bool IsThreatening(Vector3D enemyPos, Vector3D enemyVel, Vector3D playerPos, Vector3D playerVel, Vector3D gravity, List<Vector3D> positionHistory)
+            {
+                // PROPORTIONAL NAVIGATION THREAT DETECTION
+                // A real RWR detects when an enemy's trajectory is pointing toward our future position
+                // This works even when both entities are stationary or moving
+
+                // Step 1: Calculate relative position and velocity
+                Vector3D relativePos = playerPos - enemyPos;
+                Vector3D relativeVel = playerVel - enemyVel;
+
+                double range = relativePos.Length();
+                if (range < 1.0)
+                    return false; // Too close, avoid division by zero
+
+                // Step 2: Check if there's any relative motion at all
+                double relativeSpeed = relativeVel.Length();
+                const double MIN_RELATIVE_SPEED = 1.0; // m/s - minimum relative motion to consider
+
+                // If both are stationary or moving together, check if enemy is ACTIVELY pointing at us
+                if (relativeSpeed < MIN_RELATIVE_SPEED)
+                {
+                    // No relative motion - only threat if enemy velocity is pointing AT us
+                    double enemySpeed = enemyVel.Length();
+                    if (enemySpeed < 0.5) // Enemy is stationary (< 0.5 m/s)
+                        return false; // Stationary enemy is NOT a threat
+
+                    // Enemy is moving - check if they're flying toward us
+                    Vector3D enemyToUs = relativePos; // Vector from enemy to us
+                    enemyToUs.Normalize();
+                    Vector3D enemyVelNorm = Vector3D.Normalize(enemyVel);
+
+                    double dotProduct = Vector3D.Dot(enemyVelNorm, enemyToUs);
+                    double aspectAngleDeg = Math.Acos(MathHelper.Clamp(dotProduct, -1.0, 1.0)) * (180.0 / Math.PI);
+
+                    // Only threat if enemy is pointing almost directly at us (within 30 degrees)
+                    return aspectAngleDeg < 30.0;
+                }
+
+                // Step 3: Calculate Line of Sight (LOS) direction
+                Vector3D losDirection = relativePos / range; // Normalized
+
+                // Step 4: Calculate closing velocity (range rate)
+                double closingVelocity = -Vector3D.Dot(relativeVel, losDirection);
+
+                // If opening (moving apart), NOT a threat
+                if (closingVelocity <= 0)
+                    return false; // Moving apart or parallel
+
+                // Step 5: Calculate time to closest approach
+                double timeToClosestApproach = range / closingVelocity;
+
+                // Sanity check - ignore very long times (> 5 minutes)
+                if (timeToClosestApproach > 300.0 || timeToClosestApproach < 0)
+                    return false;
+
+                // Step 6: PROPORTIONAL NAVIGATION CHECK
+                // Calculate where we'll be at closest approach
+                Vector3D ourFuturePos = playerPos + playerVel * timeToClosestApproach;
+                Vector3D enemyFuturePos = enemyPos + enemyVel * timeToClosestApproach;
+
+                // Calculate closest approach distance
+                double closestApproachDistance = Vector3D.Distance(ourFuturePos, enemyFuturePos);
+
+                // If closest approach is too far, not an intercept
+                const double THREAT_INTERCEPT_DISTANCE = 500.0; // 500m closest approach = threat
+                if (closestApproachDistance > THREAT_INTERCEPT_DISTANCE)
+                    return false;
+
+                // Step 7: Verify trajectory consistency using position history
+                // Check if enemy has been consistently pointing toward us
+                if (!IsTrajectoryConsistent(enemyPos, enemyVel, playerPos, playerVel, positionHistory))
+                    return false;
+
+                // Step 8: Additional verification - aspect angle check
+                // Make sure enemy velocity is generally pointing toward us
+                double enemySpd = enemyVel.Length();
+                if (enemySpd > 1.0) // Enemy is moving
+                {
+                    Vector3D enemyToUs = relativePos;
+                    enemyToUs.Normalize();
+                    Vector3D enemyVelNorm = enemyVel / enemySpd;
+
+                    double dotProduct = Vector3D.Dot(enemyVelNorm, enemyToUs);
+                    double aspectAngleDeg = Math.Acos(MathHelper.Clamp(dotProduct, -1.0, 1.0)) * (180.0 / Math.PI);
+
+                    // Enemy must be pointing toward us (within 90 degrees)
+                    if (aspectAngleDeg > 90.0)
+                        return false; // Enemy is pointing away from us
+                }
+
+                // All checks passed - this is a threat!
+                return true;
+            }
+
+            // Check if enemy trajectory has been consistently pointing toward us over time
+            private bool IsTrajectoryConsistent(Vector3D currentEnemyPos, Vector3D currentEnemyVel, Vector3D playerPos, Vector3D playerVel, List<Vector3D> positionHistory)
+            {
+                // Need at least 3 samples to determine trajectory consistency
+                int validSamples = 0;
+                for (int i = 0; i < POSITION_HISTORY_SIZE; i++)
+                {
+                    if (positionHistory[i] != Vector3D.Zero)
+                        validSamples++;
+                }
+
+                if (validSamples < 3)
+                    return true; // Not enough data, give benefit of doubt
+
+                // Calculate historical velocities from position deltas
+                int interceptingSamples = 0;
+                int totalComparisons = 0;
+
+                for (int i = 1; i < POSITION_HISTORY_SIZE; i++)
+                {
+                    Vector3D prevPos = positionHistory[i - 1];
+                    Vector3D currPos = positionHistory[i];
+
+                    if (prevPos == Vector3D.Zero || currPos == Vector3D.Zero)
+                        continue;
+
+                    // Calculate historical velocity from position change
+                    // Each sample is POSITION_SAMPLE_INTERVAL ticks apart (10 ticks = 1/6 second)
+                    double deltaTime = POSITION_SAMPLE_INTERVAL / 60.0; // Convert to seconds (60 ticks/sec)
+                    Vector3D historicalVel = (currPos - prevPos) / deltaTime;
+
+                    // Check if this historical velocity was pointing toward us
+                    Vector3D relativePos = playerPos - currPos;
+                    if (relativePos.LengthSquared() < 1.0)
+                        continue;
+
+                    if (historicalVel.LengthSquared() > 1.0) // Was moving
+                    {
+                        Vector3D relativeDir = Vector3D.Normalize(relativePos);
+                        Vector3D velDir = Vector3D.Normalize(historicalVel);
+
+                        double dotProduct = Vector3D.Dot(velDir, relativeDir);
+                        double angleDeg = Math.Acos(MathHelper.Clamp(dotProduct, -1.0, 1.0)) * (180.0 / Math.PI);
+
+                        totalComparisons++;
+
+                        // If pointing within 90 degrees toward us, count as intercepting
+                        if (angleDeg < 90.0)
+                            interceptingSamples++;
+                    }
+                }
+
+                if (totalComparisons < 2)
+                    return true; // Not enough data
+
+                // Require at least 50% of samples showing intercept trajectory
+                double interceptRatio = (double)interceptingSamples / totalComparisons;
+                return interceptRatio >= 0.5;
+            }
+
+            // Update console output with compact format (only when state changes)
+            private void UpdateConsoleOutput()
+            {
+                if (activeThreats.Count == 0 && lastConsoleOutput == "")
+                    return; // No change, no output needed
+
+                var sb = new StringBuilder();
+                sb.Append("RWR: ");
+
+                int activeCount = GetActiveRWRCount();
+                for (int i = 0; i < activeCount; i++)
+                {
+                    if (i > 0) sb.Append(" ");
+
+                    sb.Append("R").Append(i + 1).Append(":");
+
+                    var radar = rwrRadars[i];
+                    var state = rwrStates[i];
+
+                    // A = Active (radar functional)
+                    if (radar != null)
+                    {
+                        sb.Append("A");
+                    }
+                    else
+                    {
+                        sb.Append("-");
+                    }
+
+                    sb.Append(",");
+
+                    // T = Tracking
+                    if (radar != null && radar.IsTracking)
+                    {
+                        sb.Append("T");
+                    }
+                    else
+                    {
+                        sb.Append("-");
+                    }
+
+                    sb.Append(",");
+
+                    // H+ = Hostile Incoming, H = Hostile (not incoming)
+                    bool foundThreat = false;
+                    foreach (var threat in activeThreats)
+                    {
+                        if (threat.RWRIndex == i)
+                        {
+                            if (threat.IsIncoming)
+                            {
+                                sb.Append("H+");
+                            }
+                            else
+                            {
+                                sb.Append("H");
+                            }
+                            foundThreat = true;
+                            break;
+                        }
+                    }
+
+                    if (!foundThreat)
+                    {
+                        sb.Append("-");
+                    }
+                }
+
+                string newOutput = sb.ToString();
+
+                // Only echo if output changed
+                if (newOutput != lastConsoleOutput)
+                {
+                    ParentProgram.Echo(newOutput);
+                    lastConsoleOutput = newOutput;
+                }
+            }
+
+            // Play RWR warning sound
+            private void PlayWarningSound()
+            {
+                if (soundState == 3 && lastPlayedSound == "SoundBlockAlert")
+                {
+                    return; // Already playing warning sound
+                }
+
+                // Queue warning sound
+                pendingSound = "SoundBlockAlert";
+            }
+
+            // Stop RWR warning sound
+            private void StopWarningSound()
+            {
+                if (soundState == 0)
+                {
+                    return; // Already stopped
+                }
+
+                pendingSound = ""; // Clear pending sound, will trigger stop
+            }
+
+            // Sound state machine (7-tick cycle like AirtoAir)
+            private void UpdateSoundStateMachine()
+            {
+                soundTickCounter++;
+
+                if (warningSoundBlocks.Count == 0)
+                    return;
+
+                var soundBlock = warningSoundBlocks[0]; // Use first warning sound block
+
+                if (soundBlock == null || !soundBlock.IsFunctional)
+                    return;
+
+                switch (soundState)
+                {
+                    case 0: // Idle - check if we need to play a sound
+                        if (!string.IsNullOrEmpty(pendingSound))
+                        {
+                            soundState = 1; // Move to stopping state
+                            soundTickCounter = 0;
+                        }
+                        break;
+
+                    case 1: // Stopping previous sound
+                        if (soundTickCounter >= 1)
+                        {
+                            soundBlock.Stop();
+                            soundState = 2;
+                            soundTickCounter = 0;
+                        }
+                        break;
+
+                    case 2: // Selecting new sound
+                        if (soundTickCounter >= 1)
+                        {
+                            if (!string.IsNullOrEmpty(pendingSound))
+                            {
+                                soundBlock.SelectedSound = pendingSound;
+                                soundState = 3;
+                            }
+                            else
+                            {
+                                soundState = 0; // No sound to play, return to idle
+                            }
+                            soundTickCounter = 0;
+                        }
+                        break;
+
+                    case 3: // Playing sound
+                        if (soundTickCounter >= 1)
+                        {
+                            soundBlock.Volume = 1.0f; // Full volume for warning
+                            soundBlock.Play();
+                            lastPlayedSound = pendingSound;
+                            soundTickCounter = 0;
+
+                            // Check if we should stop or continue
+                            if (string.IsNullOrEmpty(pendingSound))
+                            {
+                                soundState = 1; // Stop playing
+                            }
+                            else
+                            {
+                                soundState = 4; // Move to waiting state
+                            }
+                        }
+                        break;
+
+                    case 4: // Waiting before next play (beeping interval)
+                        if (soundTickCounter >= SOUND_PLAY_INTERVAL)
+                        {
+                            soundTickCounter = 0;
+                            if (!string.IsNullOrEmpty(pendingSound))
+                            {
+                                soundState = 3; // Play again
+                            }
+                            else
+                            {
+                                soundState = 1; // Stop
+                            }
+                        }
+                        break;
+                }
+            }
+
+            public override void HandleSpecialFunction(int key)
+            {
+                // No special functions for RWR - count adjustment is via menu items
+            }
+
+            public override string GetHotkeys()
+            {
+                return "RWR has no hotkeys - use menu to adjust count";
+            }
+
+            // Use HUDModule's intercept calculation (need to access it)
+            // This is a simplified copy - ideally would share the method
+            private bool CalculateInterceptPointIterative(
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity,
+                double projectileSpeed,
+                Vector3D targetPosition,
+                Vector3D targetVelocity,
+                Vector3D gravity,
+                int maxIterations,
+                out Vector3D interceptPoint,
+                out double timeToIntercept)
+            {
+                interceptPoint = Vector3D.Zero;
+                timeToIntercept = 0;
+
+                Vector3D relativePosition = targetPosition - shooterPosition;
+                Vector3D relativeVelocity = targetVelocity - shooterVelocity;
+
+                // Quadratic formula to solve for intercept time
+                double a = relativeVelocity.LengthSquared() - projectileSpeed * projectileSpeed;
+                double b = 2 * Vector3D.Dot(relativePosition, relativeVelocity);
+                double c = relativePosition.LengthSquared();
+
+                double discriminant = b * b - 4 * a * c;
+
+                if (discriminant < 0)
+                {
+                    return false; // No solution - can't intercept
+                }
+
+                double sqrtDiscriminant = Math.Sqrt(discriminant);
+                double t1 = (-b + sqrtDiscriminant) / (2 * a);
+                double t2 = (-b - sqrtDiscriminant) / (2 * a);
+
+                // Use the smallest positive time
+                timeToIntercept = (t2 > 0) ? t2 : t1;
+
+                if (timeToIntercept < 0)
+                {
+                    return false; // Can't intercept in the future
+                }
+
+                // Calculate intercept point with gravity compensation
+                Vector3D gravityAccel = gravity;
+                for (int i = 0; i < maxIterations; i++)
+                {
+                    interceptPoint = targetPosition + targetVelocity * timeToIntercept + 0.5 * gravityAccel * timeToIntercept * timeToIntercept;
+
+                    Vector3D newRelPos = interceptPoint - shooterPosition;
+                    double distance = newRelPos.Length();
+                    double newTime = distance / projectileSpeed;
+
+                    if (Math.Abs(newTime - timeToIntercept) < 0.01)
+                    {
+                        break; // Converged
+                    }
+
+                    timeToIntercept = newTime;
+                }
+
+                return true;
+            }
+        }
+
         public static class VectorMath
         {
             public static Vector3D SafeNormalize(Vector3D a)
@@ -7206,469 +8568,6 @@ namespace IngameScript
                 double num =
                     a.LengthSquared() * b.LengthSquared() * tolerance * Math.Abs(tolerance);
                 return Math.Abs(dot) * dot > num;
-            }
-        }
-
-        private class FroggerGameControl : ProgramModule
-        {
-            private UIController uiController;
-            private Player player;
-            private List<Obstacle> obstacles;
-            private int playerScore;
-            private int tickCounter;
-            private bool isGameActive = false;
-            private bool isPaused = false;
-            private Random random = new Random();
-            private const float ObstacleHeight = 5f;
-            private int highestScore = 0;
-            private const float PlayerSize = 5f;
-            private const int SafeZoneLines = 2;
-            private const int LaneHeight = 20;
-            private const float PlayerSpeed = 5f;
-            private int playerLives = 3;
-            private int currentLevel = 1;
-
-            public FroggerGameControl(Program program, UIController uiController) : base(program)
-            {
-                name = "Frogger Game";
-                this.uiController = uiController;
-                InitializeGame();
-            }
-
-            private void InitializeGame()
-            {
-                player = new Player(
-                    uiController.MainScreen.SurfaceSize.X / 2,
-                    uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10
-                );
-                obstacles = new List<Obstacle>();
-                playerScore = 0;
-                highestScore = 0;
-                currentLevel = 1;
-                playerLives = 3;
-                isPaused = false;
-                GenerateObstacles();
-                tickCounter = 0;
-            }
-
-            private void GenerateObstacles()
-            {
-                obstacles.Clear();
-                int numberOfLanes = (int)uiController.MainScreen.SurfaceSize.Y / LaneHeight;
-                float minSpeed = 1 + currentLevel * 0.5f;
-                float maxSpeed = 2 + currentLevel * 0.5f;
-
-                for (int i = SafeZoneLines; i < numberOfLanes; i++)
-                {
-                    float speed = random.NextFloat(minSpeed, maxSpeed);
-                    speed *= (random.Next(2) == 0 ? 1 : -1);
-                    int length = random.Next(10, 30);
-                    Color color = GetObstacleColorBySpeed(Math.Abs(speed), playerScore);
-                    obstacles.Add(
-                        new Obstacle(
-                            random.Next((int)uiController.MainScreen.SurfaceSize.X),
-                            i * LaneHeight,
-                            speed,
-                            length,
-                            color
-                        )
-                    );
-                }
-            }
-
-            private Color GetObstacleColorBySpeed(float speed, int score)
-            {
-                int level = score / 35;
-                float greenChance,
-                    yellowChance;
-                if (level < 1)
-                {
-                    greenChance = 0.7f;
-                    yellowChance = 0.2f;
-                }
-                else if (level < 3)
-                {
-                    greenChance = 0.5f;
-                    yellowChance = 0.3f;
-                }
-                else
-                {
-                    greenChance = 0.3f;
-                    yellowChance = 0.4f;
-                }
-
-                float randomValue = (float)random.NextDouble();
-                if (randomValue < greenChance)
-                    return new Color(0, 255, 0);
-                else if (randomValue < greenChance + yellowChance)
-                    return new Color(255, 255, 0);
-                else
-                    return new Color(255, 0, 0);
-            }
-
-            public override string[] GetOptions() => new string[] { "Frogger Game", "Back" };
-            public override void ExecuteOption(int index)
-            {
-                if (index == 0)
-                {
-                    if (isGameActive)
-                    {
-                        TogglePause();
-                    }
-                    else
-                    {
-                        StartGame();
-                    }
-                }
-                else
-                {
-                    RenderMenu();
-                }
-            }
-
-            private void StartGame()
-            {
-                isGameActive = true;
-                InitializeGame();
-            }
-
-            private void TogglePause()
-            {
-                isPaused = !isPaused;
-            }
-
-            public override void HandleSpecialFunction(int key)
-            {
-                if (!isGameActive || isPaused)
-                    return;
-
-                switch (key)
-                {
-                    case 5: // Left
-                        player.PositionX = Math.Max(0, player.PositionX - PlayerSpeed);
-                        break;
-                    case 6: // Up
-                        player.PositionY = Math.Max(0, player.PositionY - PlayerSpeed);
-                        playerScore += 10 * currentLevel;
-                        if (playerScore > highestScore)
-                            highestScore = playerScore;
-                        if (player.PositionY <= 0)
-                        {
-                            currentLevel++;
-                            GenerateObstacles();
-                            player.PositionY =
-                                uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
-                        }
-                        break;
-                    case 7: // Right
-                        player.PositionX = Math.Min(
-                            uiController.MainScreen.SurfaceSize.X - PlayerSize,
-                            player.PositionX + PlayerSpeed
-                        );
-                        break;
-                    case 8: // Down
-                        player.PositionY = Math.Min(
-                            uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10,
-                            player.PositionY + PlayerSpeed
-                        );
-                        playerScore = Math.Max(0, playerScore - 5 * currentLevel);
-                        break;
-                }
-            }
-
-            public override void Tick()
-            {
-                if (isGameActive && !isPaused)
-                {
-                    tickCounter++;
-                    UpdateObstacles();
-                    CheckCollisions();
-                    RenderGame();
-                }
-            }
-
-            private void UpdateObstacles()
-            {
-                foreach (var obstacle in obstacles)
-                {
-                    obstacle.PositionX += obstacle.Speed;
-                    if (
-                        obstacle.PositionX > uiController.MainScreen.SurfaceSize.X + obstacle.Length
-                    )
-                    {
-                        obstacle.PositionX = -obstacle.Length;
-                    }
-                    else if (obstacle.PositionX < -obstacle.Length)
-                    {
-                        obstacle.PositionX =
-                            uiController.MainScreen.SurfaceSize.X + obstacle.Length;
-                    }
-                }
-            }
-
-            private void CheckCollisions()
-            {
-                foreach (var obstacle in obstacles)
-                {
-                    if (IsColliding(player, obstacle))
-                    {
-                        playerLives--;
-                        if (playerLives <= 0)
-                        {
-                            isGameActive = false;
-                            if (playerScore > highestScore)
-                                highestScore = playerScore;
-                            playerScore = 0;
-                            RenderMenu();
-                        }
-                        else
-                        {
-                            // Reset player position
-                            player.PositionX = uiController.MainScreen.SurfaceSize.X / 2;
-                            player.PositionY =
-                                uiController.MainScreen.SurfaceSize.Y - PlayerSize - 10;
-                        }
-                        break;
-                    }
-                }
-            }
-
-            private bool IsColliding(Player player, Obstacle obstacle)
-            {
-                float playerLeft = player.PositionX;
-                float playerRight = player.PositionX + PlayerSize;
-                float playerTop = player.PositionY;
-                float playerBottom = player.PositionY + PlayerSize;
-
-                float obstacleLeft = obstacle.PositionX;
-                float obstacleRight = obstacle.PositionX + obstacle.Length;
-                float obstacleTop = obstacle.PositionY;
-                float obstacleBottom = obstacle.PositionY + ObstacleHeight;
-
-                return playerLeft < obstacleRight
-                    && playerRight > obstacleLeft
-                    && playerTop < obstacleBottom
-                    && playerBottom > obstacleTop;
-            }
-
-            private void RenderMenu()
-            {
-                uiController.RenderCustomFrame(
-                    (frame, area) =>
-                    {
-                        var menuSprite = new MySprite
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = "Frogger Game - Start",
-                            Position = new Vector2(
-                                uiController.MainScreen.SurfaceSize.X / 2,
-                                uiController.MainScreen.SurfaceSize.Y / 2 - 20
-                            ),
-                            RotationOrScale = 0.8f,
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER,
-                            FontId = "White"
-                        };
-                        frame.Add(menuSprite);
-
-                        var backSprite = new MySprite
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = "Back",
-                            Position = new Vector2(
-                                uiController.MainScreen.SurfaceSize.X / 2,
-                                uiController.MainScreen.SurfaceSize.Y / 2
-                            ),
-                            RotationOrScale = 0.8f,
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER,
-                            FontId = "White"
-                        };
-                        frame.Add(backSprite);
-
-                        var highScoreSprite = new MySprite
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = $"High Score: {highestScore}",
-                            Position = new Vector2(
-                                uiController.MainScreen.SurfaceSize.X / 2,
-                                uiController.MainScreen.SurfaceSize.Y / 2 + 20
-                            ),
-                            RotationOrScale = 0.6f,
-                            Color = Color.Yellow,
-                            Alignment = TextAlignment.CENTER,
-                            FontId = "White"
-                        };
-                        frame.Add(highScoreSprite);
-
-                        var latestScoreSprite = new MySprite
-                        {
-                            Type = SpriteType.TEXT,
-                            Data = $"Latest Score: {playerScore}",
-                            Position = new Vector2(
-                                uiController.MainScreen.SurfaceSize.X / 2,
-                                uiController.MainScreen.SurfaceSize.Y / 2 + 40
-                            ),
-                            RotationOrScale = 0.6f,
-                            Color = Color.White,
-                            Alignment = TextAlignment.CENTER,
-                            FontId = "White"
-                        };
-                        frame.Add(latestScoreSprite);
-                    },
-                    new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize)
-                );
-            }
-
-            private void RenderGame()
-            {
-                uiController.RenderCustomFrame(
-                    (frame, area) =>
-                    {
-                        DrawBackground(frame);
-                        DrawVerticalLines(frame);
-                        DrawPlayer(frame, player);
-                        foreach (var obstacle in obstacles)
-                        {
-                            DrawObstacle(frame, obstacle);
-                        }
-                        DrawScore(frame);
-                        DrawHighestScore(frame);
-                        DrawGameInfo(frame);
-                    },
-                    new RectangleF(Vector2.Zero, uiController.MainScreen.SurfaceSize)
-                );
-            }
-
-            private void DrawVerticalLines(MySpriteDrawFrame frame)
-            {
-                int numberOfLanes = (int)uiController.MainScreen.SurfaceSize.Y / LaneHeight;
-
-                for (int i = SafeZoneLines; i < numberOfLanes; i++)
-                {
-                    var linePosition = new Vector2(
-                        uiController.MainScreen.SurfaceSize.X / 2,
-                        i * LaneHeight
-                    );
-                    var line = new MySprite
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = linePosition,
-                        Size = new Vector2(uiController.MainScreen.SurfaceSize.X, 12),
-                        Color = new Color(255, 255, 255, 30),
-                        Alignment = TextAlignment.CENTER
-                    };
-                    frame.Add(line);
-                }
-            }
-
-            private void DrawHighestScore(MySpriteDrawFrame frame)
-            {
-                var highestScoreSprite = new MySprite
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"High Score: {highestScore}",
-                    Position = new Vector2(
-                        uiController.MainScreen.SurfaceSize.X - 10,
-                        uiController.MainScreen.SurfaceSize.Y - 20
-                    ),
-                    RotationOrScale = 0.5f,
-                    Color = Color.Yellow,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "White"
-                };
-                frame.Add(highestScoreSprite);
-            }
-
-            private void DrawBackground(MySpriteDrawFrame frame)
-            {
-                var background = new MySprite
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Gradient",
-                    Position = new Vector2(
-                        uiController.MainScreen.SurfaceSize.X / 2,
-                        uiController.MainScreen.SurfaceSize.Y / 2
-                    ),
-                    Size = uiController.MainScreen.SurfaceSize,
-                    Color = new Color(0, 30, 60),
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(background);
-            }
-
-            private void DrawPlayer(MySpriteDrawFrame frame, Player player)
-            {
-                var playerSprite = new MySprite
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Circle",
-                    Position = new Vector2(player.PositionX, player.PositionY),
-                    Size = new Vector2(PlayerSize * 2f, PlayerSize * 2f),
-                    Color = new Color(0, 255, 0),
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(playerSprite);
-            }
-
-            private void DrawObstacle(MySpriteDrawFrame frame, Obstacle obstacle)
-            {
-                var obstacleSprite = new MySprite
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(obstacle.PositionX, obstacle.PositionY),
-                    Size = new Vector2(obstacle.Length, ObstacleHeight),
-                    Color = obstacle.Color,
-                    Alignment = TextAlignment.CENTER
-                };
-                frame.Add(obstacleSprite);
-                // Optional: Draw a trail or animation for the obstacle
-            }
-
-            private void DrawScore(MySpriteDrawFrame frame)
-            {
-                var scoreSprite = new MySprite
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"Score: {playerScore}",
-                    Position = new Vector2(10, uiController.MainScreen.SurfaceSize.Y - 20),
-                    RotationOrScale = 0.5f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.LEFT,
-                    FontId = "White"
-                };
-                frame.Add(scoreSprite);
-            }
-
-            private void DrawGameInfo(MySpriteDrawFrame frame)
-            {
-                // Draw Lives
-                var livesSprite = new MySprite
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"Lives: {playerLives}",
-                    Position = new Vector2(10, 10),
-                    RotationOrScale = 0.5f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.LEFT,
-                    FontId = "White"
-                };
-                frame.Add(livesSprite);
-
-                // Draw Level
-                var levelSprite = new MySprite
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"Level: {currentLevel}",
-                    Position = new Vector2(uiController.MainScreen.SurfaceSize.X - 10, 10),
-                    RotationOrScale = 0.5f,
-                    Color = Color.White,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "White"
-                };
-                frame.Add(levelSprite);
             }
         }
 
@@ -7997,7 +8896,6 @@ namespace IngameScript
                         ExportConfig();
                         break;
                     case 1: // Import
-                        ParentProgram.Echo("Run with argument: ConfigImport:<config_string>");
                         break;
                     case 2: // Reset All
                         foreach (var kvp in allConfigs)
@@ -8005,7 +8903,6 @@ namespace IngameScript
                             kvp.Value.Reset();
                         }
                         SaveToCustomData();
-                        ParentProgram.Echo("All settings reset to defaults");
                         break;
                     case 3: // Back
                         currentLevel = MenuLevel.Category;
@@ -8034,7 +8931,6 @@ namespace IngameScript
                     {
                         antenna.HudText = exportString;
                     }
-                    ParentProgram.Echo($"Config exported to {antennas.Count} antenna(s)");
                 }
                 ParentProgram.Echo(exportString);
             }
