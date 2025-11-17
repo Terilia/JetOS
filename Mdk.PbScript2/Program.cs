@@ -4184,51 +4184,6 @@ namespace IngameScript
                 );
             }
 
-            private void DrawTextWithManualBox(
-                MySpriteDrawFrame frame,
-                IMyTextSurface surface,
-                string text,
-                Vector2 position,
-                TextAlignment alignment,
-                float boxPadding,
-                float maxWidth,
-                float textScale
-            )
-            {
-                // Measure the text size
-                Vector2 textSize = surface.MeasureStringInPixels(
-                    new StringBuilder(text),
-                    "White",
-                    textScale
-                );
-                Vector2 boxSize = new Vector2(maxWidth, textSize.Y + boxPadding * 2);
-
-                // Adjust the position so it's the top-left corner of the box
-                Vector2 boxTopLeft = position;
-
-                // Define text position based on alignment
-                Vector2 textPosition = boxTopLeft + new Vector2(boxPadding, boxPadding);
-
-                if (alignment == TextAlignment.RIGHT)
-                {
-                    textPosition.X = boxTopLeft.X + maxWidth - boxPadding;
-                }
-
-                // Draw the text inside the box
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = text,
-                        Position = textPosition, // Position the text based on padding
-                        RotationOrScale = textScale,
-                        Color = Color.Lime,
-                        Alignment = alignment,
-                        FontId = "White"
-                    }
-                );
-            }
-
             private void DrawThrottleBarWithBox(
                 MySpriteDrawFrame frame,
                 IMyTextSurface surface,
@@ -4753,101 +4708,6 @@ namespace IngameScript
                         Color = cueColor,
                         Alignment = TextAlignment.CENTER,
                         FontId = "White"
-                    });
-                }
-            }
-
-            // --- 4. FUEL RING INDICATOR ---
-            private void DrawFuelRing(MySpriteDrawFrame frame, List<IMyGasTank> tanks)
-            {
-                if (tanks == null || tanks.Count == 0) return;
-
-                // Calculate total fuel percentage
-                double totalCapacity = 0;
-                double totalFilled = 0;
-                foreach (var tank in tanks)
-                {
-                    if (tank.BlockDefinition.SubtypeId.Contains("Hydrogen"))
-                    {
-                        totalCapacity += tank.Capacity;
-                        totalFilled += tank.Capacity * tank.FilledRatio;
-                    }
-                }
-
-                if (totalCapacity <= 0) return;
-
-                double fuelPercent = totalFilled / totalCapacity;
-
-                // Arc parameters
-                Vector2 center = new Vector2(hud.SurfaceSize.X / 2f, 50f);
-                float radius = hud.SurfaceSize.X * 0.35f;
-                float arcThickness = 8f;
-                float arcSpan = 120f; // degrees
-
-                // Color based on fuel level
-                Color fuelColor;
-                if (fuelPercent < BINGO_FUEL_PERCENT)
-                    fuelColor = HUD_WARNING; // Red
-                else if (fuelPercent < LOW_FUEL_PERCENT)
-                    fuelColor = HUD_EMPHASIS; // Yellow
-                else
-                    fuelColor = HUD_PRIMARY; // Green
-
-                // Draw arc segments
-                int segments = 30;
-                float startAngle = 90f - arcSpan / 2f;
-                float filledAngle = startAngle + (float)(fuelPercent * arcSpan);
-
-                for (int i = 0; i < segments; i++)
-                {
-                    float angle1 = startAngle + (arcSpan / segments) * i;
-                    float angle2 = startAngle + (arcSpan / segments) * (i + 1);
-
-                    float rad1 = MathHelper.ToRadians(angle1);
-                    float rad2 = MathHelper.ToRadians(angle2);
-
-                    Vector2 p1 = center + new Vector2((float)Math.Cos(rad1) * radius, (float)Math.Sin(rad1) * radius);
-                    Vector2 p2 = center + new Vector2((float)Math.Cos(rad2) * radius, (float)Math.Sin(rad2) * radius);
-
-                    // Only draw if within filled portion
-                    Color segmentColor = angle2 <= filledAngle ? fuelColor : new Color(fuelColor, 0.2f);
-
-                    AddLineSprite(frame, p1, p2, arcThickness, segmentColor);
-                }
-
-                // Draw fuel percentage text
-                string fuelText = $"FUEL {fuelPercent*100:F0}%";
-                if (fuelPercent < BINGO_FUEL_PERCENT)
-                    fuelText = "BINGO FUEL";
-
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = fuelText,
-                    Position = new Vector2(center.X, center.Y + 15f),
-                    RotationOrScale = 0.6f,
-                    Color = fuelColor,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                });
-
-                // Estimated flight time
-                if (fuelPercent > 0.01)
-                {
-                    double burnRate = 0.1; // Rough estimate, would need actual calculation
-                    double timeRemaining = (totalFilled / totalCapacity) * 600; // seconds estimate
-                    int minutes = (int)(timeRemaining / 60);
-                    int seconds = (int)(timeRemaining % 60);
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = $"{minutes:D2}:{seconds:D2}",
-                        Position = new Vector2(center.X, center.Y + 28f),
-                        RotationOrScale = 0.5f,
-                        Color = fuelColor,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
                     });
                 }
             }
@@ -7792,7 +7652,7 @@ namespace IngameScript
 
             private Jet myJet;
             private List<IMySoundBlock> warningSoundBlocks;
-            private bool rwrEnabled = false;
+            private bool rwrEnabled = true; // Start enabled by default (RWR is always on in real aircraft)
             private bool anyThreatDetected = false;  // Track if ANY RWR has a threat
 
             // Public accessors for status display
