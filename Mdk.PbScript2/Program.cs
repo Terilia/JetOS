@@ -49,6 +49,24 @@ namespace IngameScript
             }
         }
 
+        // Helper: find existing slot tracking the same target name, or find empty/oldest slot
+        public static int FindSlotForTarget(Jet jet, string targetName)
+        {
+            // First: check if already tracking this target by name
+            if (!string.IsNullOrEmpty(targetName))
+            {
+                for (int i = 0; i < jet.targetSlots.Length; i++)
+                {
+                    if (jet.targetSlots[i].IsOccupied && jet.targetSlots[i].Name == targetName)
+                    {
+                        return i;
+                    }
+                }
+            }
+
+            return FindEmptyOrOldestSlot(jet);
+        }
+
         // Helper function for finding slot for new target
         public static int FindEmptyOrOldestSlot(Jet jet)
         {

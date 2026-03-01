@@ -13,16 +13,15 @@ namespace IngameScript
             private MenuLevel currentLevel = MenuLevel.Category;
             private int categoryIndex = 0;
             private int parameterIndex = 0;
-            private int scrollOffset = 0;
 
             private string[] categories = new string[]
             {
                 "Flight Control",
                 "Weapons",
-                "HUD & Display",
-                "Radar & Sensors",
-                "Warnings & Alerts",
-                "Physics & Environment",
+                "HUD ",
+                "Radar ",
+                "Warnings ",
+                "Physics",
                 "Advanced Settings",
                 "Import/Export/Reset"
             };
@@ -96,20 +95,20 @@ namespace IngameScript
                 AddConfig("Weapons", "min_closure_rate", "Min Closure Rate", 100f, 10f, 500f, 10f, "m/s");
 
                 // HUD & DISPLAY CATEGORY
-                AddConfig("HUD & Display", "fov_scale_x", "FOV Scale X", 0.3434f, 0.1f, 1.0f, 0.01f);
-                AddConfig("HUD & Display", "fov_scale_y", "FOV Scale Y", 0.31f, 0.1f, 1.0f, 0.01f);
-                AddConfig("HUD & Display", "velocity_indicator_scale", "Velocity Indicator Scale", 20f, 5f, 50f, 1f);
-                AddConfig("HUD & Display", "min_pip_distance", "Min Pip Distance", 50f, 10f, 200f, 10f, "m");
-                AddConfig("HUD & Display", "max_pip_distance", "Max Pip Distance", 3000f, 1000f, 10000f, 100f, "m");
-                AddConfig("HUD & Display", "max_pip_size", "Max Pip Size Factor", 0.1f, 0.01f, 0.5f, 0.01f);
-                AddConfig("HUD & Display", "min_pip_size", "Min Pip Size Factor", 0.01f, 0.001f, 0.1f, 0.001f);
-                AddConfig("HUD & Display", "intercept_iterations", "Intercept Iterations", 10f, 1f, 20f, 1f);
+                AddConfig("HUD & Display", "fov_scale_x", "FOV  X", 0.3434f, 0.1f, 1.0f, 0.01f);
+                AddConfig("HUD & Display", "fov_scale_y", "FOV  Y", 0.31f, 0.1f, 1.0f, 0.01f);
+                AddConfig("HUD & Display", "velocity_indicator_scale", "Velocity Indicator ", 20f, 5f, 50f, 1f);
+                AddConfig("HUD & Display", "min_pip_distance", "Min Pip ", 50f, 10f, 200f, 10f, "m");
+                AddConfig("HUD & Display", "max_pip_distance", "Max Pip ", 3000f, 1000f, 10000f, 100f, "m");
+                AddConfig("HUD & Display", "max_pip_size", "Max Pip Size ", 0.1f, 0.01f, 0.5f, 0.01f);
+                AddConfig("HUD & Display", "min_pip_size", "Min Pip Size ", 0.01f, 0.001f, 0.1f, 0.001f);
+                AddConfig("HUD & Display", "intercept_iterations", "Intercept ", 10f, 1f, 20f, 1f);
 
                 // RADAR & SENSORS CATEGORY
                 AddConfig("Radar & Sensors", "radar_range", "Radar Range", 15000f, 1000f, 30000f, 1000f, "m");
                 AddConfig("Radar & Sensors", "radar_box_size", "Radar Box Size", 100f, 50f, 200f, 10f, "px");
-                AddConfig("Radar & Sensors", "targeting_kp_rotor", "Targeting Pod Kp (Rotor)", 0.05f, 0.01f, 0.5f, 0.01f);
-                AddConfig("Radar & Sensors", "targeting_kp_hinge", "Targeting Pod Kp (Hinge)", 0.05f, 0.01f, 0.5f, 0.01f);
+                AddConfig("Radar & Sensors", "targeting_kp_rotor", "Targeting (Rotor)", 0.05f, 0.01f, 0.5f, 0.01f);
+                AddConfig("Radar & Sensors", "targeting_kp_hinge", "Targeting (Hinge)", 0.05f, 0.01f, 0.5f, 0.01f);
                 AddConfig("Radar & Sensors", "targeting_max_velocity", "Targeting Max Velocity", 5.0f, 1.0f, 10.0f, 0.5f, "RPM");
 
                 // WARNINGS & ALERTS CATEGORY
@@ -126,9 +125,9 @@ namespace IngameScript
                 AddConfig("Physics & Environment", "smoothing_window", "Smoothing Window Size", 10f, 1f, 30f, 1f);
 
                 // ADVANCED SETTINGS CATEGORY
-                AddConfig("Advanced", "throttle_h2_threshold", "Throttle H2 Threshold", 0.8f, 0.5f, 1.0f, 0.05f);
-                AddConfig("Advanced", "gps_cache_slots", "GPS Cache Slots", 4f, 1f, 10f, 1f);
-                AddConfig("Advanced", "targeting_angle_threshold", "Targeting Angle Threshold", 2.0f, 0.1f, 10.0f, 0.1f, "deg");
+                AddConfig("Advanced", "throttle_h2_threshold", "Throttle H2 ", 0.8f, 0.5f, 1.0f, 0.05f);
+                AddConfig("Advanced", "gps_cache_slots", "GPS", 4f, 1f, 10f, 1f);
+                AddConfig("Advanced", "targeting_angle_threshold", "Targeting Angle ", 2.0f, 0.1f, 10.0f, 0.1f, "deg");
             }
 
             private void AddConfig(string category, string name, string displayName, float defaultValue,
@@ -219,15 +218,15 @@ namespace IngameScript
                         if (selectedCategory == "Import/Export/Reset")
                         {
                             options.Clear();
-                            options.Add("Export Config to Antenna");
-                            options.Add("Import Config from Argument");
-                            options.Add("Reset All to Defaults");
-                            options.Add("Back to Categories");
+                            options.Add("Export Antenna");
+                            options.Add("Import Argument");
+                            options.Add("Reset ");
+                            options.Add("Back");
                         }
                         else
                         {
                             options.Add("Reset Category to Defaults");
-                            options.Add("Back to Categories");
+                            options.Add("Back");
                         }
                         return options.ToArray();
 
@@ -278,7 +277,6 @@ namespace IngameScript
                         categoryIndex = index;
                         currentLevel = MenuLevel.ParameterList;
                         parameterIndex = 0;
-                        scrollOffset = 0;
                         SystemManager.currentMenuIndex = 0; // Reset selector to first option
                         break;
 
@@ -363,10 +361,7 @@ namespace IngameScript
                 ParentProgram.GridTerminalSystem.GetBlocksOfType(antennas);
                 if (antennas.Count > 0)
                 {
-                    foreach (var antenna in antennas)
-                    {
-                        antenna.HudText = exportString;
-                    }
+                    antennas[0].HudText = exportString;
                 }
                 ParentProgram.Echo(exportString);
             }
@@ -391,7 +386,7 @@ namespace IngameScript
                     }
                 }
                 SaveToCustomData();
-                ParentProgram.Echo("Configuration imported successfully");
+                ParentProgram.Echo("Configuration imported");
             }
 
             public override void HandleSpecialFunction(int key)

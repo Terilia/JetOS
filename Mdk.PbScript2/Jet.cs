@@ -1,5 +1,4 @@
 using Sandbox.ModAPI.Ingame;
-using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
@@ -16,11 +15,11 @@ namespace IngameScript
             public IMyCockpit _cockpit;
             public List<IMyThrust> _thrusters;
             public List<IMyThrust> _thrustersbackwards;
-            public List<IMySoundBlock> _soundBlocks;
             public IMyFlightMovementBlock _aiFlightBlock;
             public IMyOffensiveCombatBlock _aiCombatBlock;
-            public IMyFlightMovementBlock _aiFlightBlock2;  // RWR radar
-            public IMyOffensiveCombatBlock _aiCombatBlock2; // RWR radar
+
+            // Game tick counter for consistent timing (updated by SystemManager)
+            public static long GameTicks = 0;
 
             // Multi-target tracking system - unified slot structure
             public struct TargetSlot
@@ -28,16 +27,18 @@ namespace IngameScript
                 public bool IsOccupied;
                 public Vector3D Position;
                 public Vector3D Velocity;
+                public Vector3D Acceleration;
                 public string Name;
-                public long TimestampTicks;
+                public long TimestampTicks; // Uses GameTicks for consistency across save/load
 
-                public TargetSlot(Vector3D pos, Vector3D vel, string name)
+                public TargetSlot(Vector3D pos, Vector3D vel, string name, Vector3D accel = default(Vector3D))
                 {
                     IsOccupied = true;
                     Position = pos;
                     Velocity = vel;
+                    Acceleration = accel;
                     Name = name;
-                    TimestampTicks = DateTime.Now.Ticks;
+                    TimestampTicks = GameTicks;
                 }
 
                 public void Clear()
@@ -45,9 +46,13 @@ namespace IngameScript
                     IsOccupied = false;
                     Position = Vector3D.Zero;
                     Velocity = Vector3D.Zero;
+                    Acceleration = Vector3D.Zero;
                     Name = "";
                     TimestampTicks = 0;
                 }
+
+                public long AgeTicks => GameTicks - TimestampTicks;
+                public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
             }
 
             public TargetSlot[] targetSlots = new TargetSlot[5];  // 5 target slots (0-4)
@@ -58,54 +63,34 @@ namespace IngameScript
             {
                 public Vector3D Position;
                 public Vector3D Velocity;
+                public Vector3D Acceleration;
                 public string Name;
-                public long LastSeenTicks;
-                public int SourceIndex;  // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
+                public long EntityId;      // For reliable matching (0 if unknown)
+                public long LastSeenTicks; // Uses GameTicks
+                public int SourceIndex;    // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
 
-                public EnemyContact(Vector3D pos, Vector3D vel, string name, int source)
+                public EnemyContact(Vector3D pos, Vector3D vel, string name, int source, long entityId = 0, Vector3D accel = default(Vector3D))
                 {
                     Position = pos;
                     Velocity = vel;
+                    Acceleration = accel;
                     Name = name;
-                    LastSeenTicks = DateTime.Now.Ticks;
+                    EntityId = entityId;
+                    LastSeenTicks = GameTicks;
                     SourceIndex = source;
                 }
 
-                public long AgeTicks()
-                {
-                    return DateTime.Now.Ticks - LastSeenTicks;
-                }
-
-                public double AgeSeconds()
-                {
-                    return (DateTime.Now.Ticks - LastSeenTicks) / (double)TimeSpan.TicksPerSecond;
-                }
+                public long AgeTicks => GameTicks - LastSeenTicks;
+                public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
             }
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
-            public const long CONTACT_DECAY_TICKS = 180 * TimeSpan.TicksPerSecond; // 3 minute decay
-
-            // Scalable radar tracking modules (DEPRECATED - use radarControl instead)
-            public List<RadarTrackingModule> radarModules = new List<RadarTrackingModule>();
+            public const long CONTACT_DECAY_TICKS = 180 * 60; // 3 minutes at 60 ticks/second = 10800 ticks
+            private int decayCheckCounter = 0;
+            private const int DECAY_CHECK_INTERVAL = 60; // Check decay every 60 ticks (1 second)
 
             // Centralized radar control
             public RadarControlModule radarControl;
-
-            // RWR AI block pairs (stored in reverse order for priority assignment)
-            public struct AIBlockPair
-            {
-                public IMyFlightMovementBlock FlightBlock;
-                public IMyOffensiveCombatBlock CombatBlock;
-                public int Index; // Original index (1-99)
-
-                public AIBlockPair(IMyFlightMovementBlock flight, IMyOffensiveCombatBlock combat, int idx)
-                {
-                    FlightBlock = flight;
-                    CombatBlock = combat;
-                    Index = idx;
-                }
-            }
-            public List<AIBlockPair> rwrAIBlocks = new List<AIBlockPair>();
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -119,8 +104,17 @@ namespace IngameScript
             // Constructor: gather all relevant blocks
             public Jet(IMyGridTerminalSystem grid)
             {
-                // Find the cockpit
+                // Find the cockpit - CRITICAL: must exist for jet to function
                 _cockpit = grid.GetBlockWithName("Jet Pilot Seat") as IMyCockpit;
+                if (_cockpit == null)
+                {
+                    // Cannot initialize without cockpit - leave everything empty
+                    _thrusters = new List<IMyThrust>();
+                    _thrustersbackwards = new List<IMyThrust>();
+                    _bays = new List<IMyShipMergeBlock>();
+                    return;
+                }
+
                 grid.GetBlocksOfType(
                                     _gatlings,
                                     t => t.CubeGrid == _cockpit.CubeGrid
@@ -131,44 +125,9 @@ namespace IngameScript
                     t => t.CubeGrid == _cockpit.CubeGrid && !t.CustomName.Contains("Industrial")
                 );
 
-                // Sound blocks with "Sound Block Warning" in name
-                _soundBlocks = new List<IMySoundBlock>();
-                grid.GetBlocksOfType(
-                    _soundBlocks,
-                    s => s.CustomName.Contains("Sound Block Warning")
-                );
-
-                // AI blocks for radar tracking (targeting) - now scalable
-                // Try to find: "AI Flight", "AI Flight 2", "AI Flight 3", etc.
-                // and matching: "AI Combat", "AI Combat 2", "AI Combat 3", etc.
+                // AI blocks for radar tracking (primary pair, used by AirtoAir)
                 _aiFlightBlock = grid.GetBlockWithName("AI Flight") as IMyFlightMovementBlock;
                 _aiCombatBlock = grid.GetBlockWithName("AI Combat") as IMyOffensiveCombatBlock;
-
-                // Second AI blocks for RWR (Radar Warning Receiver) - backward compatibility
-                _aiFlightBlock2 = grid.GetBlockWithName("AI Flight 2") as IMyFlightMovementBlock;
-                _aiCombatBlock2 = grid.GetBlockWithName("AI Combat 2") as IMyOffensiveCombatBlock;
-
-                // Auto-detect all AI Flight/Combat pairs for RWR system
-                // Scan from 1 to 99 and store in reverse order (highest numbers first for RWR priority)
-                List<AIBlockPair> detectedPairs = new List<AIBlockPair>();
-
-                for (int i = 1; i <= 99; i++) // Check up to 99 AI combos
-                {
-                    string flightName = i == 1 ? "AI Flight" : $"AI Flight {i}";
-                    string combatName = i == 1 ? "AI Combat" : $"AI Combat {i}";
-
-                    var flightBlock = grid.GetBlockWithName(flightName) as IMyFlightMovementBlock;
-                    var combatBlock = grid.GetBlockWithName(combatName) as IMyOffensiveCombatBlock;
-
-                    if (flightBlock != null && combatBlock != null)
-                    {
-                        detectedPairs.Add(new AIBlockPair(flightBlock, combatBlock, i));
-                    }
-                }
-
-                // Reverse the list so highest-numbered blocks come first (RWR priority)
-                detectedPairs.Reverse();
-                rwrAIBlocks = detectedPairs;
 
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
@@ -214,80 +173,135 @@ namespace IngameScript
             // ------------------------------
 
             /// <summary>
-            /// Updates or adds an enemy contact to the enemy list
+            /// Updates or adds an enemy contact to the enemy list.
+            /// Matches by EntityId first, then by name, then by position proximity.
             /// </summary>
-            public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex)
+            public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex, long entityId = 0)
             {
-                // Try to find existing contact by name
+                const double PROXIMITY_THRESHOLD = 50.0; // Merge contacts within 50m
+
                 int existingIndex = -1;
-                for (int i = 0; i < enemyList.Count; i++)
+
+                // Priority 1: Match by EntityId (most reliable)
+                if (entityId != 0)
                 {
-                    if (enemyList[i].Name == name)
+                    for (int i = 0; i < enemyList.Count; i++)
                     {
-                        existingIndex = i;
-                        break;
+                        if (enemyList[i].EntityId == entityId)
+                        {
+                            existingIndex = i;
+                            break;
+                        }
                     }
                 }
 
-                EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex);
+                // Priority 2: Match by name
+                if (existingIndex < 0 && !string.IsNullOrEmpty(name))
+                {
+                    for (int i = 0; i < enemyList.Count; i++)
+                    {
+                        if (enemyList[i].Name == name)
+                        {
+                            existingIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // Priority 3: Match by position proximity (for unnamed/unknown targets)
+                if (existingIndex < 0)
+                {
+                    for (int i = 0; i < enemyList.Count; i++)
+                    {
+                        if (Vector3D.Distance(enemyList[i].Position, pos) < PROXIMITY_THRESHOLD)
+                        {
+                            existingIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                Vector3D accel = Vector3D.Zero;
+                if (existingIndex >= 0)
+                {
+                    long tickDelta = GameTicks - enemyList[existingIndex].LastSeenTicks;
+                    if (tickDelta > 0 && tickDelta < 300) // <5 seconds old
+                    {
+                        double dt = tickDelta / 60.0;
+                        Vector3D rawAccel = (vel - enemyList[existingIndex].Velocity) / dt;
+                        accel = enemyList[existingIndex].Acceleration * 0.6 + rawAccel * 0.4; // EMA α=0.4
+                    }
+                }
+
+                EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, entityId, accel);
 
                 if (existingIndex >= 0)
                 {
-                    // Update existing contact
                     enemyList[existingIndex] = contact;
                 }
                 else
                 {
-                    // Add new contact
                     enemyList.Add(contact);
                 }
             }
 
             /// <summary>
-            /// Removes contacts older than CONTACT_DECAY_TICKS (3 minutes)
+            /// Removes contacts older than CONTACT_DECAY_TICKS (3 minutes).
+            /// Optimized to only check every DECAY_CHECK_INTERVAL ticks.
             /// </summary>
             public void UpdateEnemyDecay()
             {
-                long currentTicks = DateTime.Now.Ticks;
+                decayCheckCounter++;
+                if (decayCheckCounter < DECAY_CHECK_INTERVAL)
+                    return;
+
+                decayCheckCounter = 0;
+
                 for (int i = enemyList.Count - 1; i >= 0; i--)
                 {
-                    if ((currentTicks - enemyList[i].LastSeenTicks) > CONTACT_DECAY_TICKS)
+                    if (enemyList[i].AgeTicks > CONTACT_DECAY_TICKS)
                     {
                         enemyList.RemoveAt(i);
                     }
                 }
             }
 
+            // Reusable lists to reduce GC pressure
+            private List<KeyValuePair<double, EnemyContact>> _sortBuffer = new List<KeyValuePair<double, EnemyContact>>();
+            private List<EnemyContact> _resultBuffer = new List<EnemyContact>();
+
             /// <summary>
-            /// Gets the N closest enemies sorted by distance from cockpit
+            /// Gets the N closest enemies sorted by distance from cockpit.
+            /// Uses pre-allocated buffers to reduce garbage collection.
             /// </summary>
             public List<EnemyContact> GetClosestNEnemies(int n)
             {
+                _resultBuffer.Clear();
+
                 if (_cockpit == null || enemyList.Count == 0)
-                    return new List<EnemyContact>();
+                    return _resultBuffer;
 
                 Vector3D cockpitPos = GetCockpitPosition();
 
-                // Create list with distances
-                var enemiesWithDistance = new List<KeyValuePair<double, EnemyContact>>();
-                foreach (var enemy in enemyList)
+                // Reuse sort buffer
+                _sortBuffer.Clear();
+                for (int i = 0; i < enemyList.Count; i++)
                 {
-                    double distance = (enemy.Position - cockpitPos).Length();
-                    enemiesWithDistance.Add(new KeyValuePair<double, EnemyContact>(distance, enemy));
+                    double distance = Vector3D.Distance(enemyList[i].Position, cockpitPos);
+                    _sortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
                 }
 
                 // Sort by distance
-                enemiesWithDistance.Sort((a, b) => a.Key.CompareTo(b.Key));
+                _sortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
 
                 // Take top N
-                var result = new List<EnemyContact>();
-                int count = Math.Min(n, enemiesWithDistance.Count);
+                int count = Math.Min(n, _sortBuffer.Count);
                 for (int i = 0; i < count; i++)
                 {
-                    result.Add(enemiesWithDistance[i].Value);
+                    _resultBuffer.Add(_sortBuffer[i].Value);
                 }
 
-                return result;
+                return _resultBuffer;
             }
 
             /// <summary>
@@ -306,7 +320,7 @@ namespace IngameScript
             /// </summary>
             public Color GetEnemyContactColor(EnemyContact contact)
             {
-                double ageSeconds = contact.AgeSeconds();
+                double ageSeconds = contact.AgeSeconds;
 
                 if (ageSeconds < 30)
                 {
@@ -407,6 +421,62 @@ namespace IngameScript
             {
                 if (_aiCombatBlock != null)
                     _aiCombatBlock.Enabled = enabled;
+            }
+
+            // ------------------------------
+            // GUN SYSTEM
+            // ------------------------------
+
+            /// <summary>
+            /// Gets total ammo count across all gatling guns.
+            /// Returns the number of ammunition items (NATO 25x184mm or similar).
+            /// </summary>
+            public int GetTotalGunAmmo()
+            {
+                int total = 0;
+                for (int i = 0; i < _gatlings.Count; i++)
+                {
+                    var gun = _gatlings[i];
+                    if (gun == null || !gun.IsFunctional)
+                        continue;
+
+                    var inventory = gun.GetInventory();
+                    if (inventory == null)
+                        continue;
+
+                    // Sum all items in the gun's inventory (ammo magazines)
+                    for (int j = 0; j < inventory.ItemCount; j++)
+                    {
+                        var item = inventory.GetItemAt(j);
+                        if (item.HasValue)
+                        {
+                            total += (int)item.Value.Amount;
+                        }
+                    }
+                }
+                return total;
+            }
+
+            /// <summary>
+            /// Checks if any gatling gun has ammo and is functional.
+            /// </summary>
+            public bool HasGunAmmo()
+            {
+                return GetTotalGunAmmo() > 0;
+            }
+
+            /// <summary>
+            /// Gets the number of functional gatling guns.
+            /// </summary>
+            public int GetGunCount()
+            {
+                int count = 0;
+                for (int i = 0; i < _gatlings.Count; i++)
+                {
+                    if (_gatlings[i] != null && _gatlings[i].IsFunctional)
+                        count++;
+                }
+                return count;
             }
         }
     }

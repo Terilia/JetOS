@@ -30,34 +30,6 @@ namespace IngameScript
             }
         }
 
-        public class Player
-        {
-            public float PositionX;
-            public float PositionY;
-            public Player(float x, float y)
-            {
-                PositionX = x;
-                PositionY = y;
-            }
-        }
-
-        public class Obstacle
-        {
-            public float PositionX;
-            public float PositionY;
-            public float Speed;
-            public int Length;
-            public Color Color;
-            public Obstacle(float x, float y, float speed, int length, Color color)
-            {
-                PositionX = x;
-                PositionY = y;
-                Speed = speed;
-                Length = length;
-                Color = color;
-            }
-        }
-
         struct Vector2I
         {
             public int X;

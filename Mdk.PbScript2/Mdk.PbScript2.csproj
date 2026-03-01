@@ -30,4 +30,9 @@
       <AdditionalFiles Include="Instructions.readme" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Compile Remove="Diagnostics\**" />
+      <None Include="Diagnostics\**" />
+    </ItemGroup>
+
 </Project>

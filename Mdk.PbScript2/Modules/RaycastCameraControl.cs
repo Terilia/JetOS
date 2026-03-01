@@ -57,7 +57,7 @@ namespace IngameScript
                 return new[]
                 {
                     "Perform Raycast",
-                    "Activate TV Screen",
+                    "Activate TV",
                     $"Toggle GPS Lock {trackingStatus}",
                     "Back to Main Menu"
                 };
@@ -130,68 +130,31 @@ namespace IngameScript
                             + ":#FF75C9F1:";
 
                         UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
-                        DisplayRaycastResult(gpsCoordinates);
                     }
                     else
                     {
-                        DisplayRaycastResult("No target detected.");
                     }
                 }
                 else
                 {
-                    DisplayRaycastResult("Camera is not ready or cannot perform raycast.");
-                }
-            }
-            private void DisplayRaycastResult(string result)
-            {
-                if (lcdTGP != null)
-                {
-                    StringBuilder output = new StringBuilder();
-                    output.AppendLine("╔════════════════════╗");
-                    output.AppendLine("║    RAYCAST RESULT   ║");
-                    output.AppendLine("╠════════════════════╣");
-                    output.AppendLine(result);
-                    output.AppendLine("╚════════════════════╝");
-                    lcdTGP.WriteText(output.ToString());
                 }
             }
 
             private void UpdateCustomDataWithCache(string gpsCoordinates, string cachedSpeed)
             {
-                string[] customDataLines = ParentProgram.Me.CustomData.Split('\n');
-                bool cachedLineFound = false;
-                bool cachedSpeedFound = false;
-
-                for (int i = 0; i < customDataLines.Length; i++)
+                // gpsCoordinates format: "Cached:GPS:Target:X:Y:Z:#FF75C9F1:"
+                // cachedSpeed format: "CachedSpeed:X:Y:Z:#FF75C9F1:"
+                int cachedColonIdx = gpsCoordinates.IndexOf(':');
+                if (cachedColonIdx > 0)
                 {
-                    if (customDataLines[i].StartsWith("Cached:"))
-                    {
-                        customDataLines[i] = gpsCoordinates;
-                        cachedLineFound = true;
-                    }
-                    else if (customDataLines[i].StartsWith("CachedSpeed:"))
-                    {
-                        customDataLines[i] = cachedSpeed;
-                        cachedSpeedFound = true;
-                    }
+                    SystemManager.SetCustomDataValue("Cached", gpsCoordinates.Substring(cachedColonIdx + 1));
                 }
 
-                if (!cachedLineFound)
+                int speedColonIdx = cachedSpeed.IndexOf(':');
+                if (speedColonIdx > 0)
                 {
-                    List<string> customDataList = new List<string>(customDataLines);
-                    customDataList.Add(gpsCoordinates);
-                    customDataLines = customDataList.ToArray();
+                    SystemManager.SetCustomDataValue("CachedSpeed", cachedSpeed.Substring(speedColonIdx + 1));
                 }
-
-                if (!cachedSpeedFound)
-                {
-                    List<string> customDataList = new List<string>(customDataLines);
-                    customDataList.Add(cachedSpeed);
-                    customDataLines = customDataList.ToArray();
-                }
-
-                ParentProgram.Me.CustomData = string.Join("\n", customDataLines);
-                SystemManager.MarkCustomDataDirty();
             }
             private Vector2 center = new Vector2(25, 17);
             private bool isLocked = true;
@@ -271,16 +234,7 @@ namespace IngameScript
             }
             private void ActivateTVScreen()
             {
-                if (cockpit == null)
-                {
-                    return;
-                }
-                IMyTextSurface screen = cockpit.GetSurface(1);
-                if (screen == null)
-                {
-                    return;
-                }
-                screen.ContentType = ContentType.SCRIPT;
+
             }
             private void ToggleGPSLock()
             {
@@ -360,7 +314,7 @@ namespace IngameScript
             }
             public override string GetHotkeys()
             {
-                return "5: Perform Raycast\n8: Activate TV Screen\n9: Toggle GPS Lock\n";
+                return "5: \n";
             }
         }
     }

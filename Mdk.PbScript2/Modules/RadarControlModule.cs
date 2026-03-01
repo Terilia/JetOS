@@ -2,7 +2,6 @@ using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using VRageMath;
 
@@ -61,26 +60,21 @@ namespace IngameScript
             private List<RWRTrackingState> rwrStates = new List<RWRTrackingState>();
             private bool rwrEnabled = true;
             private int configuredRWRCount = 0;
-            private List<IMySoundBlock> warningSoundBlocks;
             private bool anyThreatDetected = false;
 
             public bool IsRWREnabled { get { return rwrEnabled; } }
             public bool IsThreat { get { return anyThreatDetected; } }
             public List<RWRWarning> activeThreats = new List<RWRWarning>();
 
-            private int soundState = 0;
-            private string lastPlayedSound = "";
-            private string pendingSound = "";
-            private int soundTickCounter = 0;
             private string lastConsoleOutput = "";
+
+            // Accumulated absolute time for radar tracking (in ticks)
+            private long accumulatedTimeTicks = 0;
 
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
                 myJet = jet;
                 name = "Radar & RWR Control";
-
-                // Fetch warning sound blocks (reuse altitude warning blocks)
-                warningSoundBlocks = jet._soundBlocks;
 
                 // Auto-detect all AI Flight/Combat pairs (1-99)
                 for (int i = 1; i <= 99; i++)
@@ -99,8 +93,8 @@ namespace IngameScript
                     }
                 }
 
-                // Load RWR config from CustomData
-                string savedCount = GetCustomDataValue("RWRCount");
+                // Load RWR config from CustomData (using centralized cache)
+                string savedCount = SystemManager.GetCustomDataValue("RWRCount");
                 int count;
                 if (!string.IsNullOrEmpty(savedCount) && int.TryParse(savedCount, out count))
                 {
@@ -169,7 +163,6 @@ namespace IngameScript
                         rwrEnabled = !rwrEnabled;
                         if (!rwrEnabled)
                         {
-                            StopWarningSound();
                             foreach (var state in rwrStates)
                             {
                                 state.ClearHistory();
@@ -184,7 +177,7 @@ namespace IngameScript
                         if (configuredRWRCount < allRadars.Count)
                         {
                             configuredRWRCount++;
-                            SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
                         }
                         break;
 
@@ -192,7 +185,7 @@ namespace IngameScript
                         if (configuredRWRCount > 0)
                         {
                             configuredRWRCount--;
-                            SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
                         }
                         break;
                 }
@@ -200,15 +193,15 @@ namespace IngameScript
 
             public override void Tick()
             {
-                // Update all radars
-                long ticket = ParentProgram.Runtime.TimeSinceLastRun.Ticks;
+                // Accumulate absolute time for radar tracking
+                accumulatedTimeTicks += ParentProgram.Runtime.TimeSinceLastRun.Ticks;
 
                 for (int i = 0; i < allRadars.Count; i++)
                 {
                     var radar = allRadars[i];
                     if (radar != null)
                     {
-                        radar.UpdateTracking(ticket);
+                        radar.UpdateTracking(accumulatedTimeTicks);
 
                         // Auto-update enemy list if tracking
                         if (radar.IsTracking)
@@ -281,41 +274,7 @@ namespace IngameScript
             }
 
             // ==== RWR Helper Methods ====
-            private string GetCustomDataValue(string key)
-            {
-                var lines = ParentProgram.Me.CustomData.Split('\n');
-                foreach (var line in lines)
-                {
-                    if (line.StartsWith(key + ":"))
-                    {
-                        return line.Substring(key.Length + 1);
-                    }
-                }
-                return null;
-            }
-
-            private void SetCustomDataValue(string key, string value)
-            {
-                var lines = ParentProgram.Me.CustomData.Split('\n').ToList();
-                bool found = false;
-
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    if (lines[i].StartsWith(key + ":"))
-                    {
-                        lines[i] = key + ":" + value;
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found)
-                {
-                    lines.Add(key + ":" + value);
-                }
-
-                ParentProgram.Me.CustomData = string.Join("\n", lines);
-            }
+            // Use centralized SystemManager for CustomData access
 
             private int GetActiveRWRCount()
             {
@@ -435,52 +394,10 @@ namespace IngameScript
 
             private void ManageWarningSounds()
             {
-                soundTickCounter++;
-
-                if (warningSoundBlocks == null || warningSoundBlocks.Count == 0)
-                    return;
-
-                string desiredSound = anyThreatDetected ? "Alert 2" : "";
-
-                if (anyThreatDetected && soundTickCounter >= 60)
+                if (anyThreatDetected)
                 {
-                    PlayWarningSound(desiredSound);
-                    soundTickCounter = 0;
+                    SoundManager.RequestWarning("Alert 2", SoundManager.PRIORITY_RWR, 60);
                 }
-                else if (!anyThreatDetected)
-                {
-                    StopWarningSound();
-                }
-            }
-
-            private void StopWarningSound()
-            {
-                if (warningSoundBlocks == null) return;
-
-                foreach (var soundBlock in warningSoundBlocks)
-                {
-                    if (soundBlock != null && soundBlock.IsFunctional)
-                    {
-                        soundBlock.Stop();
-                    }
-                }
-                lastPlayedSound = "";
-            }
-
-            private void PlayWarningSound(string soundName)
-            {
-                if (warningSoundBlocks == null || string.IsNullOrEmpty(soundName))
-                    return;
-
-                foreach (var soundBlock in warningSoundBlocks)
-                {
-                    if (soundBlock != null && soundBlock.IsFunctional)
-                    {
-                        soundBlock.SelectedSound = soundName;
-                        soundBlock.Play();
-                    }
-                }
-                lastPlayedSound = soundName;
             }
 
             private void UpdateConsoleOutput()
