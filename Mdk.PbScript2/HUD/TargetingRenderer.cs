@@ -12,15 +12,14 @@ namespace IngameScript
         {
             private void DrawLeadingPip(
         MySpriteDrawFrame frame,
-        IMyCockpit cockpit, // Pass cockpit for world matrix
-        IMyTextSurface hud,   // Pass HUD surface for size/center
+        IMyCockpit cockpit,
+        IMyTextSurface hud,
         Vector3D targetPosition,
         Vector3D targetVelocity,
         Vector3D shooterPosition,
         Vector3D shooterVelocity,
         double projectileSpeed,
-        Vector3D gravity,         // World gravity vector
-        Color pipColor,           // Customizable colors
+        Color pipColor,
         Color offScreenColor,
         Color behindColor,
         Color reticleColor,
@@ -38,13 +37,12 @@ namespace IngameScript
                 Vector3D aimPoint;
                 bool isAimingAtPip = false; // Initialize the output parameter to false
                                             // Use the iterative solver
-                if (!BallisticsCalculator.CalculateInterceptPointIterative(
+                if (!BallisticsCalculator.CalculateInterceptPoint(
                 shooterPosition,
                 shooterVelocity,
                 projectileSpeed,
                 targetPosition,
                 targetVelocity,
-                gravity,
                 INTERCEPT_ITERATIONS,
                 out interceptPoint,
                 out timeToIntercept,

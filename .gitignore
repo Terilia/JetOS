@@ -361,3 +361,17 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Claude Code
+.claude/
+
+# AI-generated analysis/session notes (not part of source)
+project.md
+HUD_ISSUES.md
+FIXES_SUMMARY.md
+Continue.md
+PERFORMANCE_ANALYSIS.md
+TARGETING_ANALYSIS.md
+
+# Windows NUL device artifact
+nul

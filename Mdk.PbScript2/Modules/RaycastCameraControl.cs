@@ -54,11 +54,13 @@ namespace IngameScript
             public override string[] GetOptions()
             {
                 string trackingStatus = trackingActive ? "[ON]" : "[OFF]";
+                string pinnedStatus = myJet.pinnedRaycastTarget.HasValue ? " [PINNED]" : "";
                 return new[]
                 {
                     "Perform Raycast",
                     "Activate TV",
                     $"Toggle GPS Lock {trackingStatus}",
+                    $"Clear Target{pinnedStatus}",
                     "Back to Main Menu"
                 };
             }
@@ -76,6 +78,9 @@ namespace IngameScript
                         ToggleGPSLock();
                         break;
                     case 3:
+                        ClearTarget();
+                        break;
+                    case 4:
                         SystemManager.ReturnToMainMenu();
                         break;
                 }
@@ -101,61 +106,19 @@ namespace IngameScript
                         Vector3D target = hitInfo.HitPosition ?? Vector3D.Zero;
                         Vector3D targetVelocity = hitInfo.Velocity;
 
-                        // Find first empty slot or overwrite oldest
-                        int slotIndex = Program.FindEmptyOrOldestSlot(myJet);
-
-                        // Store target in slot (don't auto-activate, user cycles manually)
-                        myJet.targetSlots[slotIndex] = new Jet.TargetSlot(target, targetVelocity, "Raycast");
-
                         // Add to enemy contact list (source index -1 indicates raycast)
                         myJet.UpdateOrAddEnemy(target, targetVelocity, "Raycast", -1);
 
-                        string gpsCoordinates =
-                            "Cached:GPS:Target:"
-                            + target.X
-                            + ":"
-                            + target.Y
-                            + ":"
-                            + target.Z
-                            + ":#FF75C9F1:";
+                        // Store as pinned raycast target (static, never decays)
+                        myJet.pinnedRaycastTarget = new Jet.EnemyContact(target, targetVelocity, "Raycast", -1);
 
-                        // Capture target velocity for motion compensation
-                        string cachedSpeed =
-                            "CachedSpeed:"
-                            + targetVelocity.X
-                            + ":"
-                            + targetVelocity.Y
-                            + ":"
-                            + targetVelocity.Z
-                            + ":#FF75C9F1:";
-
-                        UpdateCustomDataWithCache(gpsCoordinates, cachedSpeed);
+                        // Auto-select the pinned target and update GPS cache
+                        myJet.SelectPinned();
+                        SystemManager.UpdateActiveTargetGPS();
                     }
-                    else
-                    {
-                    }
-                }
-                else
-                {
                 }
             }
 
-            private void UpdateCustomDataWithCache(string gpsCoordinates, string cachedSpeed)
-            {
-                // gpsCoordinates format: "Cached:GPS:Target:X:Y:Z:#FF75C9F1:"
-                // cachedSpeed format: "CachedSpeed:X:Y:Z:#FF75C9F1:"
-                int cachedColonIdx = gpsCoordinates.IndexOf(':');
-                if (cachedColonIdx > 0)
-                {
-                    SystemManager.SetCustomDataValue("Cached", gpsCoordinates.Substring(cachedColonIdx + 1));
-                }
-
-                int speedColonIdx = cachedSpeed.IndexOf(':');
-                if (speedColonIdx > 0)
-                {
-                    SystemManager.SetCustomDataValue("CachedSpeed", cachedSpeed.Substring(speedColonIdx + 1));
-                }
-            }
             private Vector2 center = new Vector2(25, 17);
             private bool isLocked = true;
             private bool animationstarted = false;
@@ -232,6 +195,16 @@ namespace IngameScript
                     }
                 }
             }
+            private void ClearTarget()
+            {
+                myJet.pinnedRaycastTarget = null;
+                myJet.ClearSelection();
+                trackingActive = false;
+
+                SystemManager.RemoveCustomDataValue("Cached");
+                SystemManager.RemoveCustomDataValue("CachedSpeed");
+            }
+
             private void ActivateTVScreen()
             {
 
@@ -247,8 +220,7 @@ namespace IngameScript
                 }
                 else
                 {
-                    // Tracking uses active slot - no separate local variable needed
-                    trackingActive = myJet.targetSlots[myJet.activeSlotIndex].IsOccupied;
+                    trackingActive = myJet.HasSelectedEnemy();
                     if (trackingActive)
                     {
                         animationTicks = 0;
@@ -263,13 +235,13 @@ namespace IngameScript
                     return;
                 }
 
-                // Get active target position from Jet slot
-                if (!myJet.targetSlots[myJet.activeSlotIndex].IsOccupied)
+                var selected = myJet.GetSelectedEnemy();
+                if (!selected.HasValue)
                 {
                     return;  // No target to track
                 }
 
-                Vector3D targetPosition = myJet.targetSlots[myJet.activeSlotIndex].Position;
+                Vector3D targetPosition = selected.Value.Position;
 
                 Vector3D cameraPosition = camera.GetPosition();
                 Vector3D dirVector = targetPosition - cameraPosition;

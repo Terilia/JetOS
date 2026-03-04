@@ -39,12 +39,14 @@ namespace IngameScript
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
             private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)Math.PI / 180f;
-            private const float KP = 5.0f;
-            private const float MAX_VELOCITY_RPM = 30f;
-            private const float LOCK_THRESHOLD_DEG = 2f;
-            private const double MUZZLE_VELOCITY = 1100.0;
             private const int INTERCEPT_ITERATIONS = 10;
-            private const double MAX_ENGAGE_RANGE = 6000.0;
+
+            // --- Configurable (read from config) ---
+            private float KP => SystemManager.GetConfigValue("gun_kp");
+            private float MAX_VELOCITY_RPM => SystemManager.GetConfigValue("gun_max_rpm");
+            private float LOCK_THRESHOLD_DEG => SystemManager.GetConfigValue("gun_lock_threshold");
+            private double MUZZLE_VELOCITY => SystemManager.GetConfigValue("gun_muzzle_velocity");
+            private double MAX_ENGAGE_RANGE => SystemManager.GetConfigValue("gun_max_range");
 
             // --- Block Names ---
             private const string ROTOR_LEFT_NAME = "Gun Rotor Left";
@@ -364,9 +366,9 @@ namespace IngameScript
                 Vector3D interceptPoint;
                 double timeToIntercept;
 
-                bool hasIntercept = BallisticsCalculator.CalculateInterceptPointIterative(
+                bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(
                     gunPosition, shooterVelocity, MUZZLE_VELOCITY,
-                    bestTargetPos.Value, bestTargetVel, gravity,
+                    bestTargetPos.Value, bestTargetVel,
                     INTERCEPT_ITERATIONS,
                     out interceptPoint, out timeToIntercept, out aimPoint,
                     bestTargetAccel);

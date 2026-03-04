@@ -21,42 +21,13 @@ namespace IngameScript
             // Game tick counter for consistent timing (updated by SystemManager)
             public static long GameTicks = 0;
 
-            // Multi-target tracking system - unified slot structure
-            public struct TargetSlot
-            {
-                public bool IsOccupied;
-                public Vector3D Position;
-                public Vector3D Velocity;
-                public Vector3D Acceleration;
-                public string Name;
-                public long TimestampTicks; // Uses GameTicks for consistency across save/load
+            // Identity-based target selection
+            public string selectedEnemyName = "";
+            public long selectedEnemyEntityId = 0;
 
-                public TargetSlot(Vector3D pos, Vector3D vel, string name, Vector3D accel = default(Vector3D))
-                {
-                    IsOccupied = true;
-                    Position = pos;
-                    Velocity = vel;
-                    Acceleration = accel;
-                    Name = name;
-                    TimestampTicks = GameTicks;
-                }
-
-                public void Clear()
-                {
-                    IsOccupied = false;
-                    Position = Vector3D.Zero;
-                    Velocity = Vector3D.Zero;
-                    Acceleration = Vector3D.Zero;
-                    Name = "";
-                    TimestampTicks = 0;
-                }
-
-                public long AgeTicks => GameTicks - TimestampTicks;
-                public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
-            }
-
-            public TargetSlot[] targetSlots = new TargetSlot[5];  // 5 target slots (0-4)
-            public int activeSlotIndex = 0;                        // Currently selected slot
+            // Pinned raycast target (static, never decays, separate from enemyList)
+            public EnemyContact? pinnedRaycastTarget = null;
+            public bool isPinnedSelected = false; // true when the pinned target is the active selection
 
             // Enemy contact tracking with decay
             public struct EnemyContact
@@ -85,7 +56,7 @@ namespace IngameScript
             }
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
-            public const long CONTACT_DECAY_TICKS = 180 * 60; // 3 minutes at 60 ticks/second = 10800 ticks
+            public const long CONTACT_DECAY_TICKS = 25; // 25 iterations without update
             private int decayCheckCounter = 0;
             private const int DECAY_CHECK_INTERVAL = 60; // Check decay every 60 ticks (1 second)
 
@@ -304,15 +275,116 @@ namespace IngameScript
                 return _resultBuffer;
             }
 
-            /// <summary>
-            /// Request N radars from centralized radar control (convenience method)
-            /// </summary>
-            public List<RadarTrackingModule> RequestRadars(int count)
-            {
-                if (radarControl == null)
-                    return new List<RadarTrackingModule>();
+            // ------------------------------
+            // IDENTITY-BASED TARGET SELECTION
+            // ------------------------------
 
-                return radarControl.RequestRadars(count);
+            /// <summary>
+            /// Returns the selected contact from enemyList by EntityId/Name match,
+            /// or the pinned target if isPinnedSelected.
+            /// </summary>
+            public EnemyContact? GetSelectedEnemy()
+            {
+                if (isPinnedSelected && pinnedRaycastTarget.HasValue)
+                    return pinnedRaycastTarget.Value;
+
+                if (selectedEnemyEntityId != 0)
+                {
+                    for (int i = 0; i < enemyList.Count; i++)
+                    {
+                        if (enemyList[i].EntityId == selectedEnemyEntityId)
+                            return enemyList[i];
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(selectedEnemyName))
+                {
+                    for (int i = 0; i < enemyList.Count; i++)
+                    {
+                        if (enemyList[i].Name == selectedEnemyName)
+                            return enemyList[i];
+                    }
+                }
+
+                return null;
+            }
+
+            /// <summary>
+            /// Convenience null+staleness check for selected enemy.
+            /// </summary>
+            public bool HasSelectedEnemy()
+            {
+                return GetSelectedEnemy().HasValue;
+            }
+
+            /// <summary>
+            /// Sets identity fields to select an enemy from enemyList. Clears isPinnedSelected.
+            /// </summary>
+            public void SelectEnemy(EnemyContact contact)
+            {
+                selectedEnemyName = contact.Name;
+                selectedEnemyEntityId = contact.EntityId;
+                isPinnedSelected = false;
+            }
+
+            /// <summary>
+            /// Sets isPinnedSelected = true, keeping pinned raycast target as active selection.
+            /// </summary>
+            public void SelectPinned()
+            {
+                isPinnedSelected = true;
+                selectedEnemyName = "";
+                selectedEnemyEntityId = 0;
+            }
+
+            /// <summary>
+            /// Clears all selection state.
+            /// </summary>
+            public void ClearSelection()
+            {
+                selectedEnemyName = "";
+                selectedEnemyEntityId = 0;
+                isPinnedSelected = false;
+            }
+
+            // Reusable buffer for sorted-by-distance results
+            private List<EnemyContact> _distanceSortedBuffer = new List<EnemyContact>();
+            private List<KeyValuePair<double, EnemyContact>> _distanceSortBuffer = new List<KeyValuePair<double, EnemyContact>>();
+
+            /// <summary>
+            /// Returns enemies sorted by distance from cockpit. Includes pinned target at its correct position.
+            /// </summary>
+            public List<EnemyContact> GetEnemiesSortedByDistance()
+            {
+                _distanceSortedBuffer.Clear();
+
+                if (_cockpit == null)
+                    return _distanceSortedBuffer;
+
+                Vector3D cockpitPos = GetCockpitPosition();
+
+                _distanceSortBuffer.Clear();
+                for (int i = 0; i < enemyList.Count; i++)
+                {
+                    double distance = Vector3D.Distance(enemyList[i].Position, cockpitPos);
+                    _distanceSortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
+                }
+
+                // Include pinned target if it exists
+                if (pinnedRaycastTarget.HasValue)
+                {
+                    double pinDistance = Vector3D.Distance(pinnedRaycastTarget.Value.Position, cockpitPos);
+                    _distanceSortBuffer.Add(new KeyValuePair<double, EnemyContact>(pinDistance, pinnedRaycastTarget.Value));
+                }
+
+                _distanceSortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+                for (int i = 0; i < _distanceSortBuffer.Count; i++)
+                {
+                    _distanceSortedBuffer.Add(_distanceSortBuffer[i].Value);
+                }
+
+                return _distanceSortedBuffer;
             }
 
             /// <summary>

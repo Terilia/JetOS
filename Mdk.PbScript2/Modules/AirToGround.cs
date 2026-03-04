@@ -183,8 +183,8 @@ namespace IngameScript
 
             private void ExecuteBombardment()
             {
-                // Read target from active TargetSlot
-                if (!myJet.targetSlots[myJet.activeSlotIndex].IsOccupied)
+                var selected = myJet.GetSelectedEnemy();
+                if (!selected.HasValue)
                 {
                     // Fallback: try GPS from cache
                     string cachedValue = SystemManager.GetCustomDataValue("Cached");
@@ -209,7 +209,7 @@ namespace IngameScript
                     return;
                 }
 
-                ExecuteBombardmentAtTarget(myJet.targetSlots[myJet.activeSlotIndex].Position);
+                ExecuteBombardmentAtTarget(selected.Value.Position);
             }
 
             private void ExecuteBombardmentAtTarget(Vector3D centralTarget)
@@ -241,10 +241,11 @@ namespace IngameScript
                     }
                     if (targetPosition.Equals(default(Vector3D)))
                     {
-                        // Try TargetSlot first
-                        if (myJet.targetSlots[myJet.activeSlotIndex].IsOccupied)
+                        // Try selected enemy first
+                        var selected = myJet.GetSelectedEnemy();
+                        if (selected.HasValue)
                         {
-                            targetPosition = myJet.targetSlots[myJet.activeSlotIndex].Position;
+                            targetPosition = selected.Value.Position;
                         }
                         else
                         {

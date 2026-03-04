@@ -17,7 +17,6 @@ namespace IngameScript
             private bool isAirtoAirenabled = false;
             private RadarTrackingModule radarTracker;
             private Jet myJet;
-            private List<RadarTrackingModule> myRadars = new List<RadarTrackingModule>();
 
             private void UpdateCustomDataWithCache(string gpsCoordinates, string cachedSpeed)
             {
@@ -47,9 +46,6 @@ namespace IngameScript
                     radarTracker = new RadarTrackingModule(jet._aiFlightBlock, jet._aiCombatBlock);
                 }
 
-                // Request radars from centralized control
-                myRadars = myJet.RequestRadars(10);
-                program.Echo($"AirtoAir: Requested 10 radars, got {myRadars.Count}");
             }
 
             public override string[] GetOptions()
@@ -168,56 +164,34 @@ namespace IngameScript
 
             public override void Tick()
             {
-                // ===== PASSIVE MODE =====
+                // ===== ALWAYS: auto-select and GPS sync from RadarControlModule contacts =====
+                if (!myJet.HasSelectedEnemy() && myJet.enemyList.Count > 0)
+                {
+                    var closest = myJet.GetClosestNEnemies(1);
+                    if (closest.Count > 0)
+                    {
+                        myJet.SelectEnemy(closest[0]);
+                    }
+                }
+
+                if (myJet.HasSelectedEnemy())
+                {
+                    SystemManager.UpdateActiveTargetGPS();
+                }
+
+                // ===== SEEKER OFF: skip active tracking and sounds =====
                 if (!isAirtoAirenabled)
                 {
-                    for (int i = 0; i < myRadars.Count; i++)
-                    {
-                        var radarModule = myRadars[i];
-                        if (radarModule != null && radarModule.IsTracking)
-                        {
-                            Vector3D targetPos = radarModule.TargetPosition;
-                            Vector3D targetVel = radarModule.TargetVelocity;
-                            string targetName = radarModule.TrackedObjectName;
-                            Vector3D targetAccel = LookupEnemyAcceleration(targetName);
-
-                            int slotIndex = Program.FindSlotForTarget(myJet, targetName);
-                            myJet.targetSlots[slotIndex] = new Jet.TargetSlot(targetPos, targetVel, targetName, targetAccel);
-                        }
-                    }
+                    return;
                 }
-                // ===== ACTIVE MODE =====
-                else
+
+                // ===== SEEKER ON: active radar tracker + weapon tones =====
+                if (radarTracker != null)
                 {
-                    for (int i = 0; i < myRadars.Count; i++)
-                    {
-                        var radarModule = myRadars[i];
-                        if (radarModule != null && radarModule.IsTracking)
-                        {
-                            Vector3D targetPos = radarModule.TargetPosition;
-                            Vector3D targetVel = radarModule.TargetVelocity;
-                            string targetName = radarModule.TrackedObjectName;
-                            Vector3D targetAccel = LookupEnemyAcceleration(targetName);
-
-                            int slotIndex = Program.FindSlotForTarget(myJet, targetName);
-                            myJet.targetSlots[slotIndex] = new Jet.TargetSlot(targetPos, targetVel, targetName, targetAccel);
-
-                            if (i == 0)
-                            {
-                                myJet.activeSlotIndex = slotIndex;
-                                SystemManager.UpdateActiveTargetGPS();
-                            }
-                        }
-                    }
-
-                    if (radarTracker != null)
-                    {
-                        radarTracker.UpdateTracking(SystemManager.currentTick);
-                    }
+                    radarTracker.UpdateTracking(SystemManager.currentTick);
                 }
 
-                // Sound via unified SoundManager
-                if (isAirtoAirenabled && radarTracker != null)
+                if (radarTracker != null)
                 {
                     if (radarTracker.IsTracking)
                     {
@@ -376,17 +350,6 @@ namespace IngameScript
                     + ((int)Math.Round(g / BIT_SPACING) << 3)
                     + (int)Math.Round(b / BIT_SPACING)
                 );
-            }
-
-            private Vector3D LookupEnemyAcceleration(string targetName)
-            {
-                if (string.IsNullOrEmpty(targetName)) return Vector3D.Zero;
-                for (int i = 0; i < myJet.enemyList.Count; i++)
-                {
-                    if (myJet.enemyList[i].Name == targetName)
-                        return myJet.enemyList[i].Acceleration;
-                }
-                return Vector3D.Zero;
             }
 
             public override void HandleSpecialFunction(int key)

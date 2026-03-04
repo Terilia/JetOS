@@ -24,7 +24,9 @@ namespace IngameScript
                     Color headerColor = new Color(50, 180, 200);
                     Color borderColor = new Color(60, 120, 60);
                     Color panelBgColor = new Color(20, 20, 20, 180);
+                    Color dimColor = new Color(100, 100, 100);
 
+                    // Black background
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
@@ -35,6 +37,7 @@ namespace IngameScript
                         Alignment = TextAlignment.CENTER
                     });
 
+                    // --- Title bar ---
                     float titleHeight = 35f;
                     frame.Add(new MySprite()
                     {
@@ -49,7 +52,7 @@ namespace IngameScript
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXT,
-                        Data = "WEAPON SYSTEMS",
+                        Data = "TARGET LIST",
                         Position = new Vector2(screenWidth / 2f, panelY),
                         RotationOrScale = 0.75f,
                         Color = titleColor,
@@ -59,21 +62,41 @@ namespace IngameScript
 
                     panelY += 45f;
 
-                    float weaponPanelHeight = 100f;
+                    // --- Selected Target Detail Box ---
+                    float detailBoxHeight = 110f;
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
                         Data = "SquareSimple",
-                        Position = new Vector2(screenWidth / 2f, panelY + weaponPanelHeight / 2f),
-                        Size = new Vector2(screenWidth - margin * 2, weaponPanelHeight),
+                        Position = new Vector2(screenWidth / 2f, panelY + detailBoxHeight / 2f),
+                        Size = new Vector2(screenWidth - margin * 2, detailBoxHeight),
                         Color = panelBgColor,
                         Alignment = TextAlignment.CENTER
                     });
+                    SpriteHelpers.DrawRectangleOutline(frame, margin, panelY, screenWidth - margin * 2, detailBoxHeight, 1f, borderColor);
 
-                    DrawWeaponStatusPanelToScreen(frame, myjet, margin, panelY, screenWidth - margin * 2);
+                    var selected = myjet.GetSelectedEnemy();
+                    if (selected.HasValue)
+                    {
+                        DrawSelectedTargetDetail(frame, selected.Value, shooterPosition, currentVelocity, margin, panelY, screenWidth);
+                    }
+                    else
+                    {
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXT,
+                            Data = "NO TGT",
+                            Position = new Vector2(screenWidth / 2f, panelY + detailBoxHeight / 2f - 12f),
+                            RotationOrScale = 1.0f,
+                            Color = dimColor,
+                            Alignment = TextAlignment.CENTER,
+                            FontId = "Monospace"
+                        });
+                    }
 
-                    panelY += weaponPanelHeight + 15f;
+                    panelY += detailBoxHeight + 10f;
 
+                    // --- Separator ---
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
@@ -84,178 +107,112 @@ namespace IngameScript
                         Alignment = TextAlignment.CENTER
                     });
 
-                    panelY += 15f;
+                    panelY += 10f;
 
-                    if (activeMissiles.Count > 0)
+                    // --- Enemy List ---
+                    var enemies = myjet.GetEnemiesSortedByDistance();
+                    if (enemies.Count > 0)
+                    {
+                        DrawEnemyList(frame, enemies, selected, shooterPosition, margin, panelY, screenWidth, screenHeight);
+                    }
+                    else
                     {
                         frame.Add(new MySprite()
                         {
                             Type = SpriteType.TEXT,
-                            Data = "MISSILES IN FLIGHT",
-                            Position = new Vector2(screenWidth / 2f, panelY),
-                            RotationOrScale = 0.65f,
-                            Color = headerColor,
+                            Data = "NO CONTACTS",
+                            Position = new Vector2(screenWidth / 2f, panelY + 10f),
+                            RotationOrScale = 0.6f,
+                            Color = dimColor,
                             Alignment = TextAlignment.CENTER,
-                            FontId = "White"
+                            FontId = "Monospace"
                         });
-                        panelY += 30f;
-
-                        DrawMissileTOFToScreen(frame, screenWidth / 2f, panelY);
-                        panelY += activeMissiles.Count * 20f + 25f;
                     }
 
-                    int occupiedSlotCount = 0;
-                    for (int i = 0; i < myjet.targetSlots.Length; i++)
+                    // --- Missile TOF at bottom ---
+                    if (activeMissiles.Count > 0)
                     {
-                        if (myjet.targetSlots[i].IsOccupied) occupiedSlotCount++;
-                    }
-                    if (occupiedSlotCount > 1)
-                    {
+                        float tofY = screenHeight - (activeMissiles.Count * 20f + 35f);
+
                         frame.Add(new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = new Vector2(screenWidth / 2f, panelY),
+                            Position = new Vector2(screenWidth / 2f, tofY - 5f),
                             Size = new Vector2(screenWidth - margin * 4, 2f),
                             Color = borderColor,
                             Alignment = TextAlignment.CENTER
                         });
 
-                        panelY += 15f;
+                        tofY += 5f;
 
                         frame.Add(new MySprite()
                         {
                             Type = SpriteType.TEXT,
-                            Data = "TARGET TRACKING",
-                            Position = new Vector2(screenWidth / 2f, panelY),
-                            RotationOrScale = 0.65f,
+                            Data = "MSL IN FLIGHT",
+                            Position = new Vector2(screenWidth / 2f, tofY),
+                            RotationOrScale = 0.55f,
                             Color = headerColor,
                             Alignment = TextAlignment.CENTER,
                             FontId = "White"
                         });
-                        panelY += 30f;
+                        tofY += 20f;
 
-                        Vector3D[] occupiedPositions = new Vector3D[occupiedSlotCount];
-                        int posIndex = 0;
-                        for (int i = 0; i < myjet.targetSlots.Length; i++)
-                        {
-                            if (myjet.targetSlots[i].IsOccupied)
-                            {
-                                occupiedPositions[posIndex++] = myjet.targetSlots[i].Position;
-                            }
-                        }
-                        DrawMultiTargetPanelToScreen(frame, occupiedPositions, shooterPosition, margin, panelY, screenWidth - margin * 2);
+                        DrawMissileTOFToScreen(frame, screenWidth / 2f, tofY);
                     }
                 }
             }
 
-            private void DrawWeaponStatusPanelToScreen(MySpriteDrawFrame frame, Jet myjet, float panelX, float panelY, float panelWidth)
+            private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
-                const float PANEL_HEIGHT = 90f;
-                const float TEXT_SCALE = 0.7f;
+                const float TEXT_SCALE = 0.6f;
                 const float LINE_HEIGHT = 18f;
+                float textX = margin + 8f;
+                float textY = panelY + 6f;
+                float rightX = screenWidth - margin - 8f;
 
-                SpriteHelpers.DrawRectangleOutline(frame, panelX, panelY, panelWidth, PANEL_HEIGHT, 2f, HUD_PRIMARY);
+                // Row 1: Name + tags
+                string name = contact.Name;
+                if (string.IsNullOrEmpty(name)) name = "UNKNOWN";
+                if (name.Length > 16) name = name.Substring(0, 16);
 
-                float textX = panelX + 10f;
-                float textY = panelY + 10f;
+                // Build tag string
+                string tags = "";
+                if (myjet.isPinnedSelected) tags += "PIN ";
+                if (radarControl != null && radarControl.IsTrackLocked) tags += "STT";
+                else tags += "TWS";
 
-                // Gun status with ammo count
-                int gunCount = myjet.GetGunCount();
-                int ammoCount = myjet.GetTotalGunAmmo();
-
-                // Determine gun status text and color
-                string gunStatus;
-                Color gunColor;
-                if (gunCount == 0)
-                {
-                    gunStatus = "NO GUNS";
-                    gunColor = HUD_WARNING;
-                }
-                else if (ammoCount == 0)
-                {
-                    gunStatus = "GUN EMPTY";
-                    gunColor = HUD_WARNING;
-                }
-                else if (ammoCount < 100)
-                {
-                    gunStatus = "GUN LOW";
-                    gunColor = HUD_EMPHASIS;
-                }
-                else
-                {
-                    gunStatus = "GUN READY";
-                    gunColor = HUD_PRIMARY;
-                }
-
-                string weaponText = $"WPN: {gunStatus}";
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = weaponText,
+                    Data = name,
                     Position = new Vector2(textX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = gunColor,
+                    RotationOrScale = 0.7f,
+                    Color = HUD_WARNING,
                     Alignment = TextAlignment.LEFT,
                     FontId = "Monospace"
                 });
 
-                textY += LINE_HEIGHT;
-
-                // Show actual ammo count with visual bar
-                string ammoText = ammoCount > 0 ? $"RND: {ammoCount}" : "RND: ---";
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = ammoText,
-                    Position = new Vector2(textX, textY),
+                    Data = tags,
+                    Position = new Vector2(rightX, textY),
                     RotationOrScale = TEXT_SCALE,
-                    Color = gunColor,
-                    Alignment = TextAlignment.LEFT,
+                    Color = radarControl != null && radarControl.IsTrackLocked ? HUD_PRIMARY : HUD_EMPHASIS,
+                    Alignment = TextAlignment.RIGHT,
                     FontId = "Monospace"
                 });
 
-                // Draw ammo bar (visual indicator)
-                if (ammoCount > 0)
-                {
-                    float barX = textX + 65f;
-                    float barY = textY + 3f;
-                    float barMaxWidth = 60f;
-                    float barHeight = 10f;
-                    float ammoPercent = MathHelper.Clamp(ammoCount / 500f, 0f, 1f); // Assume 500 max
-                    float barWidth = barMaxWidth * ammoPercent;
+                textY += LINE_HEIGHT + 4f;
 
-                    // Background
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(barX + barMaxWidth / 2f, barY + barHeight / 2f),
-                        Size = new Vector2(barMaxWidth, barHeight),
-                        Color = new Color(40, 40, 40),
-                        Alignment = TextAlignment.CENTER
-                    });
-
-                    // Filled portion
-                    if (barWidth > 0)
-                    {
-                        frame.Add(new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(barX + barWidth / 2f, barY + barHeight / 2f),
-                            Size = new Vector2(barWidth, barHeight - 2f),
-                            Color = gunColor,
-                            Alignment = TextAlignment.CENTER
-                        });
-                    }
-                }
-
-                textY += LINE_HEIGHT;
+                // Row 2: Range
+                double range = Vector3D.Distance(shooterPosition, contact.Position);
+                string rangeText = range >= 1000 ? $"RNG: {range / 1000:F2} km" : $"RNG: {range:F0} m";
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = "MSL:",
+                    Data = rangeText,
                     Position = new Vector2(textX, textY),
                     RotationOrScale = TEXT_SCALE,
                     Color = HUD_PRIMARY,
@@ -263,114 +220,263 @@ namespace IngameScript
                     FontId = "Monospace"
                 });
 
-                float baySquareSize = 10f;
-                float bayStartX = textX + 35f;
-                float bayY = textY + 2f;
-
-                int maxBays = Math.Min(8, myjet._bays.Count);
-                for (int i = 0; i < maxBays; i++)
+                // Bearing
+                double bearing = CalculateBearingToTarget(contact.Position, shooterPosition);
+                string bearingText = $"BRG: {bearing:F0}\u00B0";
+                frame.Add(new MySprite()
                 {
-                    bool bayLoaded = myjet._bays[i].IsConnected;
-                    Color bayColor = bayLoaded ? HUD_PRIMARY : HUD_WARNING;
+                    Type = SpriteType.TEXT,
+                    Data = bearingText,
+                    Position = new Vector2(rightX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "Monospace"
+                });
 
-                    float bayX = bayStartX + (i % 4) * (baySquareSize + 3f);
-                    float currentBayY = bayY + (i / 4) * (baySquareSize + 3f);
+                textY += LINE_HEIGHT;
 
-                    if (bayLoaded)
+                // Row 3: Closure rate + contact age
+                Vector3D toTarget = contact.Position - shooterPosition;
+                double dist = toTarget.Length();
+                Vector3D relVel = currentVelocity - contact.Velocity;
+                double closureRate = 0;
+                if (dist > 0.1)
+                    closureRate = Vector3D.Dot(relVel, toTarget / dist);
+
+                string closureText = $"Vc: {closureRate:F0} m/s";
+                Color closureColor = closureRate > 0 ? HUD_PRIMARY : HUD_EMPHASIS;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = closureText,
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = closureColor,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+
+                double ageSec = contact.AgeSeconds;
+                string ageText = ageSec < 1 ? "AGE: <1s" : $"AGE: {ageSec:F0}s";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = ageText,
+                    Position = new Vector2(rightX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = myjet.GetEnemyContactColor(contact),
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "Monospace"
+                });
+
+                textY += LINE_HEIGHT;
+
+                // Row 4: Speed + source
+                double tgtSpeed = contact.Velocity.Length();
+                string speedText = $"SPD: {tgtSpeed:F0} m/s";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = speedText,
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_INFO,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+
+                string sourceText = contact.SourceIndex == 0 ? "SRC: RDR" : $"SRC: RWR{contact.SourceIndex}";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = sourceText,
+                    Position = new Vector2(rightX, textY),
+                    RotationOrScale = TEXT_SCALE,
+                    Color = HUD_INFO,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "Monospace"
+                });
+            }
+
+            private void DrawEnemyList(MySpriteDrawFrame frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float screenHeight)
+            {
+                const float LINE_HEIGHT = 20f;
+                const float TEXT_SCALE = 0.55f;
+                float textX = margin + 6f;
+                float textY = startY;
+
+                // Reserve space for missile TOF at bottom
+                float bottomReserve = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 45f) : 10f;
+                int maxRows = (int)((screenHeight - startY - bottomReserve) / LINE_HEIGHT);
+                maxRows = Math.Min(maxRows, 10);
+
+                for (int i = 0; i < Math.Min(maxRows, enemies.Count); i++)
+                {
+                    var contact = enemies[i];
+                    bool isSelected = IsContactSelected(contact, selected);
+
+                    // Highlight bar for selected entry
+                    if (isSelected)
                     {
                         frame.Add(new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
                             Data = "SquareSimple",
-                            Position = new Vector2(bayX + baySquareSize/2, currentBayY + baySquareSize/2),
-                            Size = new Vector2(baySquareSize, baySquareSize),
-                            Color = bayColor,
+                            Position = new Vector2(screenWidth / 2f, textY + LINE_HEIGHT / 2f - 1f),
+                            Size = new Vector2(screenWidth - margin * 2, LINE_HEIGHT),
+                            Color = new Color(30, 50, 30, 180),
                             Alignment = TextAlignment.CENTER
                         });
                     }
-                    else
-                    {
-                        SpriteHelpers.DrawRectangleOutline(frame, bayX, currentBayY, baySquareSize, baySquareSize, 1f, bayColor);
-                    }
-                }
 
-                textY += LINE_HEIGHT * 2;
-                bool radarTracking = myjet.targetSlots[myjet.activeSlotIndex].IsOccupied;
-                string podStatus = radarTracking ? "LOCK \u2713" : "----";
-                Color podColor = radarTracking ? HUD_PRIMARY : HUD_WARNING;
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"POD: {podStatus}",
-                    Position = new Vector2(textX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = podColor,
-                    Alignment = TextAlignment.LEFT,
-                    FontId = "Monospace"
-                });
-            }
+                    Color contactColor = isSelected ? HUD_PRIMARY : myjet.GetEnemyContactColor(contact);
 
-            // Cached target labels to avoid per-frame string allocation
-            private static readonly string[] _targetLabels = { "\u25C9 PRI", "\u25CB T1", "\u25CB T2", "\u25CB T3", "\u25CB T4" };
-
-            private void DrawMultiTargetPanelToScreen(MySpriteDrawFrame frame, Vector3D[] targetPositions, Vector3D shooterPosition, float panelX, float startY, float panelWidth)
-            {
-                if (targetPositions == null || targetPositions.Length < 1) return;
-
-                const float LINE_HEIGHT = 22f;
-                const float TEXT_SCALE = 0.7f;
-
-                float textX = panelX + 10f;
-                float textY = startY;
-
-                for (int i = 0; i < Math.Min(5, targetPositions.Length); i++)
-                {
-                    double range = Vector3D.Distance(shooterPosition, targetPositions[i]);
-                    bool isPrimary = (i == 0);
-
-                    Color targetColor = isPrimary ? HUD_WARNING : HUD_RADAR_FRIENDLY;
-
-                    string targetText = i < _targetLabels.Length ? _targetLabels[i] : "\u25CB T?";
+                    // Selection marker
+                    string marker = isSelected ? "\u25C9" : "\u25CB";
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXT,
-                        Data = targetText,
+                        Data = marker,
                         Position = new Vector2(textX, textY),
                         RotationOrScale = TEXT_SCALE,
-                        Color = targetColor,
+                        Color = contactColor,
                         Alignment = TextAlignment.LEFT,
                         FontId = "Monospace"
                     });
 
-                    float barMaxWidth = 80f;
-                    float barHeight = 8f;
-                    float barX = textX + 50f;
-                    float barWidth = MathHelper.Clamp((float)(range / 15000.0 * barMaxWidth), 2f, barMaxWidth);
+                    // Name (with P prefix for pinned)
+                    string name = contact.Name;
+                    if (string.IsNullOrEmpty(name)) name = "UNKNOWN";
+
+                    bool isPinned = myjet.pinnedRaycastTarget.HasValue &&
+                        ((contact.EntityId != 0 && contact.EntityId == myjet.pinnedRaycastTarget.Value.EntityId) ||
+                         (!string.IsNullOrEmpty(contact.Name) && contact.Name == myjet.pinnedRaycastTarget.Value.Name));
+
+                    if (isPinned) name = "P " + name;
+                    if (name.Length > 12) name = name.Substring(0, 12);
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(barX, textY + 5f),
-                        Size = new Vector2(barWidth, barHeight),
-                        Color = targetColor,
-                        Alignment = TextAlignment.LEFT
+                        Type = SpriteType.TEXT,
+                        Data = name,
+                        Position = new Vector2(textX + 14f, textY),
+                        RotationOrScale = TEXT_SCALE,
+                        Color = contactColor,
+                        Alignment = TextAlignment.LEFT,
+                        FontId = "Monospace"
                     });
 
-                    string rangeText = range >= 1000 ? $"{range/1000:F1}km" : $"{range:F0}m";
+                    // Range
+                    double range = Vector3D.Distance(shooterPosition, contact.Position);
+                    string rangeText = range >= 1000 ? $"{range / 1000:F1}km" : $"{range:F0}m";
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXT,
                         Data = rangeText,
-                        Position = new Vector2(barX + barMaxWidth + 10f, textY),
+                        Position = new Vector2(screenWidth - margin - 50f, textY),
                         RotationOrScale = TEXT_SCALE,
-                        Color = targetColor,
-                        Alignment = TextAlignment.LEFT,
+                        Color = contactColor,
+                        Alignment = TextAlignment.RIGHT,
                         FontId = "Monospace"
                     });
 
+                    // Age color bar
+                    float barX = screenWidth - margin - 45f;
+                    float barWidth = 35f;
+                    float barHeight = 6f;
+                    float ageFrac = MathHelper.Clamp(1f - (float)(contact.AgeSeconds / 180.0), 0f, 1f);
+                    Color ageColor = myjet.GetEnemyContactColor(contact);
+
+                    // Bar background
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXTURE,
+                        Data = "SquareSimple",
+                        Position = new Vector2(barX + barWidth / 2f, textY + LINE_HEIGHT / 2f - 1f),
+                        Size = new Vector2(barWidth, barHeight),
+                        Color = new Color(30, 30, 30),
+                        Alignment = TextAlignment.CENTER
+                    });
+
+                    // Bar fill
+                    float fillWidth = barWidth * ageFrac;
+                    if (fillWidth > 1f)
+                    {
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(barX + fillWidth / 2f, textY + LINE_HEIGHT / 2f - 1f),
+                            Size = new Vector2(fillWidth, barHeight - 1f),
+                            Color = ageColor,
+                            Alignment = TextAlignment.CENTER
+                        });
+                    }
+
                     textY += LINE_HEIGHT;
                 }
+
+                // Show count if there are more contacts
+                if (enemies.Count > maxRows)
+                {
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = $"+{enemies.Count - maxRows} more",
+                        Position = new Vector2(screenWidth / 2f, textY),
+                        RotationOrScale = 0.45f,
+                        Color = new Color(100, 100, 100),
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "Monospace"
+                    });
+                }
+            }
+
+            private bool IsContactSelected(Jet.EnemyContact contact, Jet.EnemyContact? selected)
+            {
+                if (!selected.HasValue) return false;
+                var sel = selected.Value;
+
+                if (contact.EntityId != 0 && sel.EntityId != 0)
+                    return contact.EntityId == sel.EntityId;
+
+                if (!string.IsNullOrEmpty(contact.Name) && !string.IsNullOrEmpty(sel.Name))
+                    return contact.Name == sel.Name;
+
+                return Vector3D.Distance(contact.Position, sel.Position) < 50.0;
+            }
+
+            private double CalculateBearingToTarget(Vector3D targetPos, Vector3D shooterPos)
+            {
+                if (cockpit == null) return 0;
+
+                Vector3D gravity = cockpit.GetNaturalGravity();
+                Vector3D worldUp;
+                if (gravity.LengthSquared() > 1e-6)
+                    worldUp = -Vector3D.Normalize(gravity);
+                else
+                    worldUp = Vector3D.Up;
+
+                Vector3D toTarget = targetPos - shooterPos;
+                Vector3D toTargetHorizontal = Vector3D.Reject(toTarget, worldUp);
+                if (toTargetHorizontal.LengthSquared() < 1e-8) return 0;
+                toTargetHorizontal.Normalize();
+
+                Vector3D forwardHorizontal = Vector3D.Reject(cockpit.WorldMatrix.Forward, worldUp);
+                if (forwardHorizontal.LengthSquared() < 1e-8) return 0;
+                forwardHorizontal.Normalize();
+
+                Vector3D rightHorizontal = Vector3D.Cross(forwardHorizontal, worldUp);
+
+                double fwdComponent = Vector3D.Dot(toTargetHorizontal, forwardHorizontal);
+                double rightComponent = Vector3D.Dot(toTargetHorizontal, rightHorizontal);
+
+                double bearingRad = Math.Atan2(rightComponent, fwdComponent);
+                double bearingDeg = MathHelper.ToDegrees(bearingRad);
+                if (bearingDeg < 0) bearingDeg += 360.0;
+
+                return bearingDeg;
             }
 
             private void DrawMissileTOFToScreen(MySpriteDrawFrame frame, float centerX, float startY)

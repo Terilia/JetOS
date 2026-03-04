@@ -1,517 +1,154 @@
-# JetOS - Advanced Fighter Jet Operating System
+# JetOS
 
-**JetOS** is a comprehensive, military-grade operating system for fighter jets in Space Engineers. Designed for combat pilots, it provides advanced flight instrumentation, weapon systems integration, target acquisition, and automated flight control capabilities that rival modern fighter aircraft.
+A fighter jet operating system for Space Engineers programmable blocks. Provides a full HUD, weapon systems, radar, targeting pod, gun turret auto-tracking, and flight control. Built with [MDK2](https://github.com/malware-dev/MDK2).
 
-## 🎯 Overview
+## Features
 
-JetOS transforms your Space Engineers fighter jet into a sophisticated combat platform with:
+- **HUD** — F/A-18 style heads-up display with artificial horizon, pitch ladder, flight path marker, speed/altitude tapes, compass, G-force, AoA, and throttle indicator
+- **Radar & RWR** — Multi-pair AI block radar with centralized tracking, threat analysis, and Radar Warning Receiver
+- **Targeting Pod** — Camera raycast acquisition (35 km range) with rotor/hinge servo tracking and LCD feed
+- **Air-to-Air** — Radar lock, passive scanning, AIM-9 lock/search tones, missile bay management
+- **Air-to-Ground** — Missile bay selection, bombardment patterns, top-down attack mode
+- **Gun Turrets** — Rotor+hinge auto-tracking with ballistic lead, mirror-mounted left/right configs
+- **Lead Pip** — Iterative intercept solver (Newton's method with gravity) for gun aiming
+- **Flight Control** — PID-based AoA stabilization with automatic engagement
+- **Configuration** — In-game settings module with category/parameter/value hierarchy
+- **Multi-Target Tracking** — 5-slot target array with enemy contact list, decay, and deduplication
 
-- **F/A-18 Style HUD**: Full-featured heads-up display with artificial horizon, flight path marker, and comprehensive flight data
-- **Advanced Targeting**: Integrated targeting pod with raycast acquisition and GPS coordinate caching
-- **Weapon Systems**: Complete air-to-ground and air-to-air missile management with smart bay selection
-- **Flight Control**: PID-based automatic stabilization system for angle of attack (AoA) management
-- **Leading Pip Calculation**: Automated gun targeting with ballistic trajectory compensation
-- **Combat Audio**: Situational awareness through lock-on tones and warning systems
-- **Modular Architecture**: Clean, extensible module system for future enhancements
+## Requirements
 
----
+- [MDK2](https://github.com/malware-dev/MDK2) (Malware's Development Kit 2)
+- .NET Framework 4.8 / C# 6.0
+- Space Engineers (PC)
 
-## ✨ Key Features
+## Build
 
-### 🎮 Advanced HUD System
-
-The HUD module provides a complete flight instrument suite:
-
-- **Artificial Horizon**: Pitch and roll indication with F/A-18 style pitch ladder
-- **Flight Path Marker**: Real-time velocity vector display with roll compensation
-- **Speed Indicators**: Displays in km/h, knots, and Mach number
-- **Altitude Display**: F/A-18 style altitude tape with vertical velocity indicator (VVI)
-- **Compass Tape**: 360-degree heading indicator
-- **G-Force Monitor**: Current and peak G-force tracking
-- **Angle of Attack (AoA)**: Real-time AoA measurement and display
-- **Throttle Indicator**: Visual throttle position bar
-- **Fuel Status**: Hydrogen tank level monitoring
-- **Radar Scope**: Target detection and tracking display
-
-### 🎯 Targeting Systems
-
-#### Targeting Pod (`RaycastCameraControl`)
-- Camera-based raycast targeting up to 35km range
-- GPS coordinate capture and caching system
-- Target tracking with automated rotor/hinge control
-- LCD display integration for targeting information
-- Multiple GPS slot management for rapid target switching
-
-#### Leading Pip System
-- Iterative ballistic trajectory calculation
-- Compensates for:
-  - Shooter velocity
-  - Target velocity
-  - Gravity effects
-  - Projectile speed
-- Automatic gatling gun fire control when on target
-- Off-screen target direction indicators
-
-### 🚀 Weapon Systems
-
-#### Air-to-Ground (`AirToGround`)
-- Multi-bay missile management system
-- Individual bay selection and firing
-- Bombardment mode: Distributes missiles across area targets
-- Top-down attack mode for vertical strikes
-- GPS coordinate transfer to missile guidance systems
-- Custom data integration for target handoff
-
-#### Air-to-Air (`AirtoAir`)
-- Radar integration with "JetNoseRad" turret
-- Automatic target lock acquisition
-- Real-time target position and velocity caching
-- Audio cues:
-  - "AIM9Lock" tone when target is locked
-  - "AIM9Search" tone when scanning
-- Missile bay management with sequential or simultaneous firing
-
-### 🛫 Flight Control Systems
-
-#### PID Stabilizer Control
-- Automatic angle of attack maintenance
-- Proportional-Integral-Derivative (PID) controller
-- Adjustable AoA offset for different flight regimes
-- Automatic engagement when pilot input ceases
-- Anti-windup protection
-- Separate control surfaces: "normalstab" and "invertedstab"
-
-#### Automated Systems
-- Hydrogen thrust management with switchover control
-- Airbrake integration (any `IMyDoor` blocks)
-- Thruster override for precise throttle control
-- Automatic radar cycling for ammunition loading
-
-### 🎨 User Interface
-
-- **Multi-Screen Support**: Cockpit surfaces for OS and secondary displays
-- **Menu Navigation**: Intuitive menu system with hotkey support
-- **Module Selection**: Quick access to all system modules
-- **Real-time Status**: Live display of system states and selections
-- **Grid Visualization**: Top-down ship schematic display
-- **Mini-Game**: Frogger game for downtime entertainment
-
-### 🔊 Audio Warning System
-
-- Low altitude warnings ("Tief" callout when low and fast)
-- Missile lock tones
-- Target acquisition sounds
-- Adjustable volume controls
-- Multiple sound block support for spatial audio
-
----
-
-## 📋 Requirements
-
-### Development Environment
-- **MDK2 (Malware's Development Kit)**: Required for compilation
-  - Mal.Mdk2.PbAnalyzers 2.1.11+
-  - Mal.Mdk2.PbPackager 2.1.4+
-  - Mal.Mdk2.References 2.2.4+
-- **.NET Framework 4.8**: Target framework
-- **C# 6.0**: Language version
-
-### In-Game Requirements
-- Space Engineers game
-- A fighter jet grid with appropriate blocks (see Block Setup)
-- Programmable Block on the jet's grid
-
----
-
-## 🔧 Installation & Setup
-
-### Step 1: Compile the Script
-
-Using MDK2:
 ```bash
-# Build the project
-dotnet build Mdk.PbScript2.csproj
+# Release build — auto-deploys to %APPDATA%/SpaceEngineers/IngameScripts/local/Mdk.PbScript2
+dotnet build Mdk.PbScript2.sln --configuration Release
+
+# Debug build
+dotnet build Mdk.PbScript2.sln --configuration Debug
 ```
 
-The compiled script will be in your `%appdata%\SpaceEngineers\IngameScripts\local` folder.
+There are no automated tests — verification is done in-game. Minification level is configured in `Mdk.PbScript2/Mdk.PbScript2.mdk.ini`.
 
-### Step 2: Block Naming Convention
-
-**Critical**: All blocks must be on the **same grid** as the Programmable Block. Name your blocks exactly as specified:
-
-#### Required Blocks
-
-| Block Type | Name | Purpose | Notes |
-|------------|------|---------|-------|
-| **Cockpit** | `Jet Pilot Seat` | Primary cockpit | Must implement `IMyCockpit` |
-| **Cockpit (UI)** | `JetOS` | Operating system display | Used for menus (Surface 0 & 1) |
-| **LCD/Surface** | `Fighter HUD` | Heads-up display | Main HUD surface |
-| **Turret** | `JetNoseRad` | Primary radar/targeting | `IMyLargeGatlingTurret` |
-| **Sound Block** | `Sound Block Warning` | Altitude warnings | Can have multiple |
-| **Merge Blocks** | `Bay 1`, `Bay 2`, etc. | Missile bays | Numbered sequentially |
-| **Terminal Block** | `normalstab` | Normal stabilizers | For AoA control |
-| **Terminal Block** | `invertedstab` | Inverted stabilizers | For AoA control |
-
-#### Optional Blocks
-
-| Block Type | Name | Purpose |
-|------------|------|---------|
-| **Camera** | `Camera Targeting Turret` | Targeting pod raycast |
-| **LCD** | `LCD Targeting Pod` | Targeting pod display |
-| **Remote Control** | `Remote Control` | Targeting pod reference |
-| **Rotor** | `Targeting Rotor` | Targeting pod azimuth |
-| **Hinge** | `Targeting Hinge` | Targeting pod elevation |
-| **Turret** | Contains "Radar" | Additional radar turrets |
-| **Sound Block** | `Canopy Side Plate Sound Block` | Air-to-air audio cues |
-| **Gas Tank** | Contains "Jet" | Hydrogen fuel tanks |
-| **Door** | Any | Airbrakes (any `IMyDoor`) |
-
-#### Automatic Detection
-
-These blocks are auto-detected on the same grid:
-- **Thrusters**: All non-"Industrial" thrusters (backward thrusters for braking detected via `GridThrustDirection.Backward`)
-- **Gatling Guns**: All `IMySmallGatlingGun` blocks
-
-### Step 3: Programmable Block Configuration
-
-Add the following lines to your Programmable Block's **Custom Data**:
+## Project Structure
 
 ```
-Cached:GPS:
-CachedSpeed:
-Topdown:false
-AntiAir:false
-CacheGPS0:
-CacheGPS1:
-CacheGPS2:
-CacheGPS3:
-DataSlot0:
-DataSlot1:
-DataSlot2:
-DataSlot3:
+Mdk.PbScript2/
+├── Program.cs                  Entry point (constructor, Main, slot helpers)
+├── SystemManager.cs            Static orchestrator (module init, tick loop, input routing)
+├── Jet.cs                      Hardware abstraction (block refs, target slots, enemy list)
+├── Modules/
+│   ├── ProgramModule.cs        Abstract base class for all modules
+│   ├── HUDModule.cs            Flight instruments, stabilizer PID, lead pip
+│   ├── RadarControlModule.cs   Centralized radar + RWR
+│   ├── AirtoAir.cs             Air-to-air missiles and radar lock
+│   ├── AirToGround.cs          Ground attack missile bay management
+│   ├── RaycastCameraControl.cs Targeting pod (camera raycast + servo tracking)
+│   ├── GunControlModule.cs     Gun turret auto-tracking (rotor+hinge)
+│   └── ConfigurationModule.cs  Runtime config with settings menu
+├── HUD/
+│   ├── HorizonRenderer.cs      Artificial horizon, pitch ladder, flight path marker
+│   ├── InstrumentRenderer.cs   Speed/altitude tapes, compass, G-force, throttle
+│   ├── RadarRenderer.cs        Radar display overlay
+│   ├── TargetingRenderer.cs    Lead pip, target boxes, lock indicators
+│   └── WeaponScreenRenderer.cs Weapon status LCD
+├── UI/
+│   ├── UIController.cs         LCD rendering (main screen, extra screen, custom frames)
+│   ├── UIElements.cs           UI primitives (UIElement, UIContainer, UILabel)
+│   └── GridVisualization.cs    Ship grid outline display
+├── Utilities/
+│   ├── BallisticsCalculator.cs  Iterative intercept solver
+│   ├── CircularBuffer.cs        Fixed-size circular buffer
+│   ├── CommonTypes.cs           Shared types (RWRWarning, EnemyContact, etc.)
+│   ├── CustomDataManager.cs     Dictionary-cached CustomData read/write
+│   ├── NavigationHelper.cs      Vector math and heading calculation
+│   ├── RadarTrackingModule.cs   AI block-based target tracking
+│   ├── SoundManager.cs          Priority-based dual-channel audio
+│   └── SpriteHelpers.cs         Sprite creation helpers
+├── Extensions/
+│   └── RandomExtensions.cs      Extension methods (NextFloat)
+└── Diagnostics/
+    └── TurretDiagnostic.cs      Standalone turret debug script (excluded from build)
 ```
 
-#### Custom Data Explanation
+All `.cs` files use `partial class Program` inside the `IngameScript` namespace — MDK2 merges them into a single compilation unit for Space Engineers.
 
-- `Cached:GPS:` - Stores current target GPS coordinates
-- `CachedSpeed:` - Stores target velocity vector for intercept calculations
-- `Topdown:false` - Enable/disable top-down attack mode for AGM
-- `AntiAir:false` - Air-to-air mode toggle
-- `CacheGPS0-3:` - GPS coordinate slots for multiple targets
-- `DataSlot0-3:` - Data transfer slots for missile guidance
+## In-Game Setup
 
-**Note**: Add more `DataSlot` entries if you have more than 4 missile bays.
+### Required Blocks
 
-### Step 4: Load and Run
+| Block | Name | Purpose |
+|-------|------|---------|
+| Cockpit | `Jet Pilot Seat` | Primary pilot seat (script won't init without it) |
+| Text Panel / Cockpit | `JetOS` | OS display — surfaces 0, 1, 2 for main UI, extra info, weapons |
+| Text Surface | `Fighter HUD` | Heads-up display |
 
-1. Copy the compiled script into a Programmable Block on your jet
-2. Verify block naming is correct
-3. Check that Custom Data is configured
-4. Run the Programmable Block
-5. The script automatically runs at `UpdateFrequency.Update1` (every tick)
+### Optional Blocks
 
----
+| Block | Name | Purpose |
+|-------|------|---------|
+| AI Flight + AI Combat | `AI Flight` / `AI Combat` | Primary radar pair |
+| AI Flight + AI Combat | `AI Flight N` / `AI Combat N` | Additional radar/RWR pairs (2-99, auto-detected) |
+| Merge Block | `Bay 1`, `Bay 2`, ... | Missile bays (sorted numerically) |
+| Rotor + Hinge | `Gun Rotor Left/Right`, `Gun Hinge Left/Right` | Gun turret assemblies |
+| Camera | `Camera Targeting Turret` | Targeting pod raycast |
+| LCD | `LCD Targeting Pod` | Targeting pod display |
+| Rotor + Hinge | `Targeting Rotor`, `Targeting Hinge` | Targeting pod servo |
+| Remote Control | `Remote Control` | Targeting pod reference |
+| Sound Block | `Sound Block Warning` | Altitude/speed warnings |
+| Sound Block | `Canopy Side Plate Sound Block` | Weapon lock/search tones |
+| Group | `invertedstab` / `normalstab` | Right/left stabilizer groups |
 
-## 🕹️ Controls & Usage
+Thrusters with `"Industrial"` in the name are excluded. Gas tanks with `"Jet"` in the name are treated as hydrogen tanks.
 
-### Command Arguments
+### Controls
 
-Assign these arguments to toolbar actions on the Programmable Block:
+Toolbar arguments on the Programmable Block (numpad 1-9):
 
-| Argument | Function | Description |
-|----------|----------|-------------|
-| `1` | **Navigate Up** | Move selection up in menus |
-| `2` | **Navigate Down** | Move selection down in menus |
-| `3` | **Select/Execute** | Confirm selection or execute action |
-| `4` | **Back/Cancel** | Return to previous menu / deselect module |
-| `5-8` | **Module Hotkeys** | Context-sensitive functions (varies by module) |
-| `9` | **Main Menu** | Return to main menu from anywhere |
+| Key | Function |
+|-----|----------|
+| 1 / 2 | Navigate up / down |
+| 3 | Select / execute |
+| 4 | Back |
+| 5-8 | Module-specific hotkeys |
+| 6 / 7 | Global AoA trim (decrease / increase) |
+| 8 | Cycle target slots |
+| 9 | Return to main menu |
 
-### Main Menu Modules
+## Documentation
 
-1. **Air To Ground**: Ground attack missile management
-2. **Air To Air**: Air combat missile management
-3. **HUD Control**: Flight instrumentation settings
-4. **TargetingPod Control**: Targeting system controls
-5. **Logo Display**: Ship schematic visualization
-6. **Frogger Game**: Mini-game
+Detailed system documentation with diagrams lives in [`docs/`](docs/):
 
-### Module-Specific Hotkeys
+| Document | Contents |
+|----------|----------|
+| [Architecture](docs/architecture.md) | Tick loop, initialization order, input routing, module system |
+| [Target Tracking](docs/target-tracking.md) | Sensor → enemyList → selection → GPS sync → missiles |
+| [HUD Rendering](docs/hud-rendering.md) | Render pipeline, each renderer's role, lead pip calculation |
+| [Weapons & Radar](docs/weapons.md) | Radar pairs, RWR threat assessment, missile fire, gun turrets |
+| [Sound System](docs/sound-system.md) | Dual-channel audio, priority system, 3-tick state machine |
 
-#### HUD Control
-- **5**: Toggle manual gatling fire override
-- **6**: Increase AoA offset (+1 degree)
-- **7**: Decrease AoA offset (-1 degree)
-- **8**: Toggle hydrogen thrust system
+## Architecture
 
-#### Targeting Pod
-- **5**: Execute raycast to acquire target
-- **6**: Activate tracking camera view
-- **7**: Toggle GPS lock / target tracking
+**SystemManager** orchestrates all modules — initializes them (order matters: RadarControlModule first), runs the tick loop, and background-ticks HUD, radar, air-to-air, and gun control even when they're not the active module.
 
-#### Air-to-Ground
-- **5**: Fire next available bay
-- **6**: Fire all selected bays
-- **7**: Toggle bay selection mode
-- **8**: Execute bombardment pattern
+**Jet** is the hardware abstraction layer holding all block references, a 5-slot `TargetSlot[]` array for multi-target tracking, and a decaying `EnemyContact` list with proximity-based deduplication.
 
-#### Air-to-Air
-- **5**: Fire next available bay
-- **6**: Fire selected bays
-- **7**: Toggle bay selection
+**Modules** inherit from `ProgramModule` and implement `GetOptions()`, `ExecuteOption()`, and optionally `Tick()`, `HandleSpecialFunction()`, `HandleNavigation()`, `HandleBack()`, and `GetHotkeys()`.
 
----
+**Target data flow**: sensors (raycast camera, AI block radar) write to target slots and the enemy list. The HUD reads the active slot for lead pip rendering. Weapon modules read it for missile GPS programming. Gun turrets independently track the closest enemy from the enemy list.
 
-## 🎓 How It Works
-
-### HUD Rendering Pipeline
-
-#### Artificial Horizon
-1. Calculates pitch line positions based on current pitch angle
-2. Scales by `pixelsPerDegree` for consistent FOV
-3. Draws pitch ladder with degree labels (e.g., -80°, -70°, ... +70°, +80°)
-4. Distinguishes positive/negative pitch with different styling
-5. Rotates all elements around screen center based on roll angle
-6. Draws central aiming reticle
-
-#### Flight Path Marker
-1. Transforms velocity vector to cockpit local coordinates
-2. Calculates yaw and pitch angles relative to cockpit forward vector
-3. Determines screen offset based on velocity angles
-4. Rotates offset by aircraft roll
-5. Draws velocity vector symbol (circle with wings)
-6. Updates every frame to track velocity changes
-
-#### Leading Pip Calculation
-Uses iterative ballistic trajectory solver:
-
-1. **Initial Setup**:
-   - Gets shooter position and velocity
-   - Gets target position and velocity
-   - Applies projectile speed (gatling gun muzzle velocity)
-   - Factors in gravity vector
-
-2. **Iterative Refinement** (10 iterations):
-   - Predicts target position at time T
-   - Calculates required launch velocity accounting for gravity
-   - Solves quadratic equation for intercept time
-   - Refines time estimate based on actual ballistics
-   - Converges on optimal intercept point
-
-3. **Screen Projection**:
-   - Transforms intercept point to cockpit local space
-   - Applies perspective division (3D → 2D)
-   - Rotates by aircraft roll
-   - Draws pip or off-screen indicator
-
-4. **Fire Control**:
-   - Measures distance from reticle to pip
-   - Enables gatling guns when pip is within threshold
-   - Disables when off-target (unless manual fire enabled)
-
-### PID Stabilizer Control
-
-The stabilizer system maintains desired angle of attack:
-
-```
-Error = Current_AoA + User_Offset
-```
-
-**Control Loop**:
-1. **Pilot Input Detection**: Monitors `cockpit.RotationIndicator.X` for pitch input
-2. **PID Pause**: When pilot is pitching, PID disengages and resets integral
-3. **Delay**: After pilot input ceases, waits for stabilization
-4. **PID Engagement**: 
-   - Proportional term: `Kp × Error`
-   - Integral term: `Ki × ∫Error dt` (with anti-windup clamping)
-   - Derivative term: `Kd × dError/dt`
-5. **Output Application**: Trim values applied to left/right stabilizer groups with opposite signs
-
-**Default PID Gains**:
-- Kp = 1.2 (Proportional)
-- Ki = 0.0024 (Integral)
-- Kd = 0.5 (Derivative)
-- Max Output = ±60°
-
-### GPS Targeting & Data Flow
-
-#### Acquisition Phase
-1. **Raycast Targeting**:
-   - `RaycastCameraControl` fires raycast from targeting camera
-   - Hit position stored in `Cached:GPS:Target2:X:Y:Z:#FF75C9F1:`
-
-2. **Air-to-Air Lock**:
-   - `AirtoAir` module reads turret target via `GetTargetedEntity()`
-   - Position and velocity cached in `Cached:GPS:Target2:...` and `CachedSpeed:...`
-
-#### Transfer Phase
-1. Module reads coordinates from `Cached:GPS:...`
-2. Parses X, Y, Z coordinates
-3. For bombardment mode, calculates spread pattern
-
-#### Launch Phase
-1. Selected bay GPS data written to bay-specific cache: `Cache<N>:GPS:Target:...`
-2. Merge block triggered via `ApplyAction("Fire")`
-3. GPS data transferred to missile-readable format: `<BayNumber>:GPS:Target:...`
-4. Cache cleared after successful transfer
-5. Missile script on detached missile reads targeting data
-
----
-
-## ⚙️ Advanced Configuration
-
-### Adjusting PID Parameters
-
-Located in `HUDModule` class (around line 2260):
+## Debugging
 
 ```csharp
-private float Kp = 1.2f;      // Proportional gain
-private float Ki = 0.0024f;   // Integral gain  
-private float Kd = 0.5f;      // Derivative gain
+ParentProgram.Echo($"Debug: {value}");
+ParentProgram.Echo($"Instructions: {ParentProgram.Runtime.CurrentInstructionCount}");
 ```
 
-**Tuning Guide**:
-- **Increase Kp**: Faster response, but may oscillate
-- **Increase Ki**: Eliminates steady-state error, but can cause windup
-- **Increase Kd**: Reduces overshoot, but sensitive to noise
+The script runs at `UpdateFrequency.Update1` (every tick). Space Engineers enforces ~50,000 instructions per tick.
 
-### Manual Fire Override
+## License
 
-Set in `Jet` class (line 65):
-```csharp
-public bool manualfire = true;  // false for automatic fire control
-```
-
-When `false`, gatling guns fire automatically when leading pip is aligned.
-
-### AoA Offset
-
-Adjust in-flight using hotkeys 6 and 7, or set default in `Jet` class:
-```csharp
-public int offset = 0;  // Degrees of AoA offset
-```
-
-Positive values pitch up, negative pitch down.
-
-### Sound Thresholds
-
-Located in `SystemManager.Main()` (around line 348):
-```csharp
-if (velocityKnots > 350 && altitude < 400)
-{
-    selectedsound = "Tief";  // German for "low"
-}
-```
-
-Customize velocity and altitude thresholds as needed.
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-#### "No HUD Display"
-- **Check**: Block named `Fighter HUD` exists and is functional
-- **Check**: Block implements `IMyTextSurface` or `IMyTextSurfaceProvider`
-- **Check**: Block is on the same grid as the Programmable Block
-- **Solution**: Verify `hudBlock` is found during initialization
-
-#### "No Targeting"
-- **Check**: Camera named `Camera Targeting Turret` exists
-- **Check**: Camera has clear line of sight
-- **Check**: Camera is powered and functional
-- **Check**: Camera scan range ≥35km
-- **Solution**: Try manual raycast via hotkey 5 in Targeting Pod module
-
-#### "Missiles Don't Get Target Data"
-- **Check**: Custom Data contains `Cached:GPS:` entry
-- **Check**: Target has been acquired via raycast or radar lock
-- **Check**: Bay-specific `DataSlot` entries exist in Custom Data
-- **Check**: Merge block is named correctly (e.g., `Bay 1`)
-- **Solution**: Verify GPS coordinates appear in Custom Data after target acquisition
-
-#### "Stabilizers Not Working"
-- **Check**: Blocks named `normalstab` and `invertedstab` exist
-- **Check**: Blocks support `Trim` property (control surfaces)
-- **Check**: AoA offset is reasonable (-10° to +10°)
-- **Solution**: Test manual trim control in terminal to verify block functionality
-
-#### "Audio Not Playing"
-- **Check**: Sound blocks named `Sound Block Warning` exist
-- **Check**: Sound blocks have the required sound files ("Tief", "AIM9Lock", "AIM9Search")
-- **Check**: Sound blocks are powered and functional
-- **Solution**: Check in-game sound block settings
-
-#### "Script Crashes on Start"
-- **Check**: Cockpit named `Jet Pilot Seat` exists
-- **Check**: Cockpit named `JetOS` exists (for UI)
-- **Check**: All required blocks are on the same grid
-- **Solution**: Review initialization in `SystemManager.Initialize()`
-
-### Performance Optimization
-
-If experiencing slowdowns:
-
-1. **Reduce HUD Complexity**: Comment out expensive draw calls
-2. **Increase Update Interval**: Change from `Update1` to `Update3` or `Update10`
-3. **Disable Unused Modules**: Comment out module additions in `SystemManager.Initialize()`
-4. **Optimize Raycast Frequency**: Add tick counter to limit raycast rate
-
----
-
-## 🏗️ Architecture
-
-### Module System
-
-All modules extend `ProgramModule` abstract class:
-
-```csharp
-abstract class ProgramModule
-{
-    public string name;
-    public abstract string[] GetOptions();
-    public abstract void ExecuteOption(int index);
-    public virtual void HandleSpecialFunction(int key) { }
-    public virtual void Tick() { }
-    public virtual string GetHotkeys() { return ""; }
-}
-```
-
-**Current Modules**:
-- `AirToGround`: Ground attack weapons
-- `AirtoAir`: Air-to-air weapons
-- `HUDModule`: Flight instruments
-- `RaycastCameraControl`: Targeting pod
-- `LogoDisplay`: Ship visualization
-- `FroggerGameControl`: Mini-game
-
-### Class Structure
-
-- **`Program`**: Main entry point, extends `MyGridProgram`
-- **`SystemManager`**: Orchestrates modules, handles input, manages UI
-- **`Jet`**: Encapsulates all jet blocks and utilities
-- **`UIController`**: Renders menus and information panels
-- **`PIDController`**: Generic PID controller implementation
-- **`VectorMath`**: Vector mathematics utilities
-
-### Data Flow
-
-```
-User Input (Toolbar)
-    ↓
-SystemManager.Main()
-    ↓
-Module Selection / Execution
-    ↓
-Module.Tick() / Module.ExecuteOption()
-    ↓
-Jet Block Control
-    ↓
-Game State Update
-```
-
----
-
-## 🤝 Contributing
-?
+Private repository.

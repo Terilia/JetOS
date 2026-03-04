@@ -66,6 +66,9 @@ namespace IngameScript
             public bool IsThreat { get { return anyThreatDetected; } }
             public List<RWRWarning> activeThreats = new List<RWRWarning>();
 
+            // Track radar correlation: true when radar 1 (track) is following the selected enemy
+            public bool IsTrackLocked { get; private set; }
+
             private string lastConsoleOutput = "";
 
             // Accumulated absolute time for radar tracking (in ticks)
@@ -196,22 +199,70 @@ namespace IngameScript
                 // Accumulate absolute time for radar tracking
                 accumulatedTimeTicks += ParentProgram.Runtime.TimeSinceLastRun.Ticks;
 
-                for (int i = 0; i < allRadars.Count; i++)
+                IsTrackLocked = false;
+
+                // Determine how many radars serve scan/track roles
+                int scanTrackCount = Math.Min(2, allRadars.Count); // 0=scan, 1=track
+
+                // --- Scan & Track radars (indices 0 and 1) ---
+                for (int i = 0; i < scanTrackCount; i++)
+                {
+                    var radar = allRadars[i];
+                    if (radar == null) continue;
+
+                    radar.UpdateTracking(accumulatedTimeTicks);
+
+                    if (radar.IsTracking && radar.HasReceivedPosition)
+                    {
+                        Vector3D targetPos = radar.TargetPosition;
+                        Vector3D targetVel = radar.TargetVelocity;
+                        string targetName = radar.TrackedObjectName;
+
+                        // Guard: skip zero/origin positions (stale default data)
+                        if (targetPos.LengthSquared() < 1.0)
+                            continue;
+
+                        // Both scan (0) and track (1) feed enemyList
+                        myJet.UpdateOrAddEnemy(targetPos, targetVel, targetName, i);
+
+                        // Radar 1 = track: correlate with selected enemy
+                        if (i == 1)
+                        {
+                            var selected = myJet.GetSelectedEnemy();
+                            if (selected.HasValue)
+                            {
+                                // Match by EntityId or Name
+                                if ((selected.Value.EntityId != 0 && selected.Value.EntityId == radar.TrackedEntityId) ||
+                                    (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == targetName))
+                                {
+                                    IsTrackLocked = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- RWR radars (indices 2+) — update tracking but don't feed enemyList ---
+                for (int i = scanTrackCount; i < allRadars.Count; i++)
                 {
                     var radar = allRadars[i];
                     if (radar != null)
                     {
                         radar.UpdateTracking(accumulatedTimeTicks);
+                    }
+                }
 
-                        // Auto-update enemy list if tracking
-                        if (radar.IsTracking)
+                // If only 1 radar, it does implicit track too
+                if (allRadars.Count == 1 && allRadars[0] != null && allRadars[0].IsTracking && allRadars[0].HasReceivedPosition)
+                {
+                    var selected = myJet.GetSelectedEnemy();
+                    if (selected.HasValue)
+                    {
+                        string trackName = allRadars[0].TrackedObjectName;
+                        if ((selected.Value.EntityId != 0 && selected.Value.EntityId == allRadars[0].TrackedEntityId) ||
+                            (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == trackName))
                         {
-                            Vector3D targetPos = radar.TargetPosition;
-                            Vector3D targetVel = radar.TargetVelocity;
-                            string targetName = radar.TrackedObjectName;
-
-                            // Update centralized enemy list
-                            myJet.UpdateOrAddEnemy(targetPos, targetVel, targetName, i);
+                            IsTrackLocked = true;
                         }
                     }
                 }
@@ -278,26 +329,50 @@ namespace IngameScript
 
             private int GetActiveRWRCount()
             {
+                // RWR radars are index 2+ (after scan and track)
+                int rwrRadarCount = Math.Max(0, allRadars.Count - 2);
+                if (rwrRadarCount == 0)
+                {
+                    // If fewer than 3 radars, piggyback RWR on all radars
+                    rwrRadarCount = allRadars.Count;
+                }
                 if (configuredRWRCount == 0)
-                    return allRadars.Count;
-                return Math.Min(configuredRWRCount, allRadars.Count);
+                    return rwrRadarCount;
+                return Math.Min(configuredRWRCount, rwrRadarCount);
             }
 
             private void ProcessRWR(int rwrIndex, Vector3D playerPos, Vector3D playerVel, Vector3D gravity)
             {
-                if (rwrIndex >= allRadars.Count || rwrIndex >= rwrStates.Count)
+                // Map RWR index to actual radar index
+                // If 3+ radars: RWR uses index 2+ (offset by scan+track)
+                // If fewer than 3: RWR piggybacks on all radars (no offset)
+                int radarIndex = allRadars.Count >= 3 ? rwrIndex + 2 : rwrIndex;
+
+                if (radarIndex >= allRadars.Count || rwrIndex >= rwrStates.Count)
                     return;
 
-                var radar = allRadars[rwrIndex];
+                var radar = allRadars[radarIndex];
                 var state = rwrStates[rwrIndex];
 
                 state.TickCounter++;
 
-                if (radar.IsTracking)
+                if (radar.IsTracking && radar.HasReceivedPosition)
                 {
                     string enemyName = radar.TrackedObjectName;
                     Vector3D enemyPos = radar.TargetPosition;
                     Vector3D enemyVel = radar.TargetVelocity;
+
+                    // Skip zero/origin positions (stale default data)
+                    if (enemyPos.LengthSquared() < 1.0)
+                    {
+                        if (state.CurrentEnemyName != "")
+                        {
+                            state.CurrentEnemyName = "";
+                            state.TicksSinceEnemyChange = 0;
+                            state.ClearHistory();
+                        }
+                        return;
+                    }
 
                     if (enemyName != state.CurrentEnemyName)
                     {

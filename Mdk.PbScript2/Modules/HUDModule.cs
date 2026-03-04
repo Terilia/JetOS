@@ -12,14 +12,62 @@ namespace IngameScript
     {
         partial class HUDModule : ProgramModule
         {
-            // --- HUD Color Palette ---
-            internal static readonly Color HUD_PRIMARY = Color.Lime;
-            internal static readonly Color HUD_SECONDARY = Color.Green;
-            internal static readonly Color HUD_HORIZON = Color.LimeGreen;
+            // --- HUD Color Palette (themed) ---
+            internal static Color HUD_PRIMARY
+            {
+                get
+                {
+                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
+                    {
+                        case 1: return Color.Cyan;
+                        case 2: return Color.Orange;
+                        case 3: return Color.White;
+                        default: return Color.Lime;
+                    }
+                }
+            }
+            internal static Color HUD_SECONDARY
+            {
+                get
+                {
+                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
+                    {
+                        case 1: return Color.DodgerBlue;
+                        case 2: return Color.DarkGoldenrod;
+                        case 3: return Color.Gray;
+                        default: return Color.Green;
+                    }
+                }
+            }
+            internal static Color HUD_HORIZON
+            {
+                get
+                {
+                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
+                    {
+                        case 1: return Color.DeepSkyBlue;
+                        case 2: return Color.Goldenrod;
+                        case 3: return Color.LightGray;
+                        default: return Color.LimeGreen;
+                    }
+                }
+            }
             internal static readonly Color HUD_EMPHASIS = Color.Yellow;
             internal static readonly Color HUD_WARNING = Color.Red;
             internal static readonly Color HUD_INFO = Color.White;
-            internal static readonly Color HUD_RADAR_FRIENDLY = Color.DarkGreen;
+            internal static Color HUD_RADAR_FRIENDLY
+            {
+                get
+                {
+                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
+                    {
+                        case 1: return Color.DarkBlue;
+                        case 2: return Color.DarkGoldenrod;
+                        case 3: return Color.DarkGray;
+                        default: return Color.DarkGreen;
+                    }
+                }
+            }
 
             // --- Layout Constants ---
             private const float SPEED_TAPE_CENTER_Y_FACTOR = 2.25f;
@@ -111,14 +159,10 @@ namespace IngameScript
             // Radar sweep animation
             internal int radarSweepTick = 0;
 
-            // Fuel state tracking
-            internal const double BINGO_FUEL_PERCENT = 0.20;
-            internal const double LOW_FUEL_PERCENT = 0.35;
+            // Fuel state tracking (read from config)
+            internal double BINGO_FUEL_PERCENT => SystemManager.GetConfigValue("bingo_fuel");
+            internal double LOW_FUEL_PERCENT => SystemManager.GetConfigValue("low_fuel");
 
-            // Pre-allocated radar target array
-            private const int MAX_RADAR_TARGETS = 10;
-            private Vector3D[] radarTargetBuffer = new Vector3D[MAX_RADAR_TARGETS];
-            private int radarTargetCount = 0;
 
             // --- Shared Constants for renderers ---
             internal const int INTERCEPT_ITERATIONS = 10;
@@ -126,7 +170,7 @@ namespace IngameScript
             internal const string TEXTURE_SQUARE = "SquareSimple";
             internal const string TEXTURE_CIRCLE = "CircleHollow";
             internal const string TEXTURE_TRIANGLE = "Triangle";
-            internal const float RADAR_RANGE_METERS = 15000f;
+
             internal const float RADAR_BOX_SIZE_PX = 100f;
             internal const float RADAR_BORDER_MARGIN = 10f;
 
@@ -304,54 +348,45 @@ namespace IngameScript
                     // Horizon & attitude
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
                     DrawBankAngleMarkers(frame, centerX, centerY, (float)roll, pixelsPerDegree);
-                    DrawFlightPathMarker(frame, currentVelocity, worldMatrix, roll, centerX, centerY, pixelsPerDegree);
+                    if (SystemManager.GetConfigValue("hud_fpm") > 0.5f)
+                        DrawFlightPathMarker(frame, currentVelocity, worldMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
                     DrawLeftInfoBox(frame, smoothedVelocity, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, pixelsPerDegree, new LabelValue("T", myjet.offset));
                     DrawFlightInfo(frame, smoothedVelocity, smoothedGForces, heading, smoothedAltitude, smoothedAoA, smoothedThrottle, mach);
                     DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
-                    DrawCompass(frame, heading);
+                    if (SystemManager.GetConfigValue("hud_compass") > 0.5f)
+                        DrawCompass(frame, heading);
                     DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
-                    DrawGForceIndicator(frame, smoothedGForces, peakGForce);
+                    if (SystemManager.GetConfigValue("hud_gforce") > 0.5f)
+                        DrawGForceIndicator(frame, smoothedGForces, peakGForce);
 
-                    if (velocity > 1.0)
+                    if (velocity > 1.0 && SystemManager.GetConfigValue("hud_aoa") > 0.5f)
                     {
                         Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
                         DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
                     }
 
-                    // Radar display
+                    // Radar minimap
+                    if (SystemManager.GetConfigValue("hud_radar") > 0.5f)
+                        DrawRadarMinimap(frame, cockpit, hud);
+
                     Vector2 surfaceSize = hud.SurfaceSize;
-                    Vector2 radarOrigin = new Vector2(hud.SurfaceSize.X * 0.8f - RADAR_BORDER_MARGIN, surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN);
-                    Vector2 radarCenter = radarOrigin + new Vector2(RADAR_BOX_SIZE_PX / 2f, RADAR_BOX_SIZE_PX / 2f);
-
-                    radarTargetCount = 0;
-                    if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied && radarTargetCount < MAX_RADAR_TARGETS)
-                        radarTargetBuffer[radarTargetCount++] = myjet.targetSlots[myjet.activeSlotIndex].Position;
-                    for (int i = 0; i < myjet.targetSlots.Length && radarTargetCount < MAX_RADAR_TARGETS; i++)
-                    {
-                        if (i != myjet.activeSlotIndex && myjet.targetSlots[i].IsOccupied)
-                            radarTargetBuffer[radarTargetCount++] = myjet.targetSlots[i].Position;
-                    }
-
-                    DrawTopDownRadarOptimized(frame, cockpit, hud, radarTargetBuffer, radarTargetCount, Color.White, HUD_PRIMARY, HUD_EMPHASIS, HUD_WARNING);
-                    DrawRadarSweepLine(frame, radarCenter, RADAR_BOX_SIZE_PX / 2f);
-                    DrawEnhancedThreatDisplay(frame, cockpit, radarCenter, RADAR_BOX_SIZE_PX / 2f);
-                    DrawRWRThreatCones(frame, cockpit, radarCenter, RADAR_BOX_SIZE_PX / 2f);
+                    var selectedEnemy = myjet.GetSelectedEnemy();
 
                     // Targeting
-                    if (myjet.targetSlots[myjet.activeSlotIndex].IsOccupied)
+                    if (selectedEnemy.HasValue)
                     {
-                        Vector3D activeTargetPos = myjet.targetSlots[myjet.activeSlotIndex].Position;
-                        Vector3D activeTargetVel = myjet.targetSlots[myjet.activeSlotIndex].Velocity;
-                        Vector3D activeTargetAccel = myjet.targetSlots[myjet.activeSlotIndex].Acceleration;
+                        Vector3D activeTargetPos = selectedEnemy.Value.Position;
+                        Vector3D activeTargetVel = selectedEnemy.Value.Velocity;
+                        Vector3D activeTargetAccel = selectedEnemy.Value.Acceleration;
                         double muzzleVelocity = 910;
                         double range = Vector3D.Distance(shooterPosition, activeTargetPos);
 
                         Vector3D interceptPoint;
                         double timeToIntercept;
                         Vector3D aimPoint;
-                        bool hasIntercept = BallisticsCalculator.CalculateInterceptPointIterative(shooterPosition, currentVelocity, muzzleVelocity, activeTargetPos, activeTargetVel, gravity, INTERCEPT_ITERATIONS, out interceptPoint, out timeToIntercept, out aimPoint, activeTargetAccel);
+                        bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(shooterPosition, currentVelocity, muzzleVelocity, activeTargetPos, activeTargetVel, INTERCEPT_ITERATIONS, out interceptPoint, out timeToIntercept, out aimPoint, activeTargetAccel);
 
                         if (hasIntercept)
                         {
@@ -373,11 +408,14 @@ namespace IngameScript
                                 isAimingAtPip = distanceToPip <= pipRadius;
                             }
 
-                            DrawGunFunnel(frame, cockpit, hud, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity, muzzleVelocity, gravity, HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO, activeTargetAccel);
-                            DrawTargetBrackets(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
+                            if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
+                                DrawGunFunnel(frame, cockpit, hud, interceptPoint, shooterPosition, range, isAimingAtPip);
+                            DrawLeadingPip(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity, muzzleVelocity, HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO, activeTargetAccel);
+                            if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
+                                DrawTargetBrackets(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
-                        DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition);
+                        if (SystemManager.GetConfigValue("hud_breakaway") > 0.5f)
+                            DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition);
                     }
                     DrawFormationGhosts(frame, cockpit, hud);
 

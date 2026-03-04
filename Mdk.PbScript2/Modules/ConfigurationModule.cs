@@ -16,14 +16,11 @@ namespace IngameScript
 
             private string[] categories = new string[]
             {
-                "Flight Control",
-                "Weapons",
-                "HUD ",
-                "Radar ",
-                "Warnings ",
-                "Physics",
-                "Advanced Settings",
-                "Import/Export/Reset"
+                "Warnings",
+                "Gun Control",
+                "HUD Toggles",
+                "HUD Theme",
+                "Reset All"
             };
 
             // Configuration storage
@@ -76,58 +73,31 @@ namespace IngameScript
 
             private void InitializeConfigs()
             {
-                // FLIGHT CONTROL CATEGORY (Critical - top priority)
-                AddConfig("Flight Control", "stabilizer_kp", "Stabilizer Kp", 1.2f, 0.1f, 5.0f, 0.1f);
-                AddConfig("Flight Control", "stabilizer_ki", "Stabilizer Ki", 0.0024f, 0.0f, 0.1f, 0.0001f);
-                AddConfig("Flight Control", "stabilizer_kd", "Stabilizer Kd", 0.5f, 0.0f, 2.0f, 0.1f);
-                AddConfig("Flight Control", "max_pid_output", "Max PID Output", 60f, 10f, 90f, 5f, "deg");
-                AddConfig("Flight Control", "max_aoa", "Max AoA Limit", 36f, 10f, 60f, 1f, "deg");
-                AddConfig("Flight Control", "integral_clamp", "Integral Clamp", 200f, 50f, 500f, 10f);
-                AddConfig("Flight Control", "optimal_aoa_min", "Optimal AoA Min", 8f, 0f, 20f, 1f, "deg");
-                AddConfig("Flight Control", "optimal_aoa_max", "Optimal AoA Max", 15f, 10f, 30f, 1f, "deg");
+                // WARNINGS
+                AddConfig("Warnings", "altitude_warning", "Altitude Warning", 380f, 100f, 1000f, 10f, "m");
+                AddConfig("Warnings", "speed_warning", "Speed Warning", 360f, 100f, 600f, 10f, "kts");
+                AddConfig("Warnings", "bingo_fuel", "Bingo Fuel", 0.20f, 0.05f, 0.50f, 0.05f, "%");
+                AddConfig("Warnings", "low_fuel", "Low Fuel", 0.35f, 0.10f, 0.60f, 0.05f, "%");
 
-                // WEAPONS CATEGORY
-                AddConfig("Weapons", "bombardment_spacing", "Bombardment Spacing", 4.0f, 1.0f, 20.0f, 0.5f, "m");
-                AddConfig("Weapons", "circular_pattern_radius", "Circular Pattern Radius", 4.0f, 2.0f, 20.0f, 1.0f, "m");
-                AddConfig("Weapons", "shoot_range_inner", "Shoot Cue Range", 1500f, 500f, 5000f, 100f, "m");
-                AddConfig("Weapons", "shoot_range_outer", "In Range Cue", 2500f, 1000f, 8000f, 100f, "m");
-                AddConfig("Weapons", "proximity_warning", "Proximity Warning", 500f, 100f, 1000f, 50f, "m");
-                AddConfig("Weapons", "min_closure_rate", "Min Closure Rate", 100f, 10f, 500f, 10f, "m/s");
+                // GUN CONTROL
+                AddConfig("Gun Control", "gun_kp", "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
+                AddConfig("Gun Control", "gun_max_rpm", "Max RPM", 30f, 5f, 60f, 5f, "RPM");
+                AddConfig("Gun Control", "gun_lock_threshold", "Lock Threshold", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
+                AddConfig("Gun Control", "gun_max_range", "Max Range", 6000f, 1000f, 15000f, 500f, "m");
+                AddConfig("Gun Control", "gun_muzzle_velocity", "Muzzle Velocity", 1100f, 200f, 2000f, 50f, "m/s");
 
-                // HUD & DISPLAY CATEGORY
-                AddConfig("HUD & Display", "fov_scale_x", "FOV  X", 0.3434f, 0.1f, 1.0f, 0.01f);
-                AddConfig("HUD & Display", "fov_scale_y", "FOV  Y", 0.31f, 0.1f, 1.0f, 0.01f);
-                AddConfig("HUD & Display", "velocity_indicator_scale", "Velocity Indicator ", 20f, 5f, 50f, 1f);
-                AddConfig("HUD & Display", "min_pip_distance", "Min Pip ", 50f, 10f, 200f, 10f, "m");
-                AddConfig("HUD & Display", "max_pip_distance", "Max Pip ", 3000f, 1000f, 10000f, 100f, "m");
-                AddConfig("HUD & Display", "max_pip_size", "Max Pip Size ", 0.1f, 0.01f, 0.5f, 0.01f);
-                AddConfig("HUD & Display", "min_pip_size", "Min Pip Size ", 0.01f, 0.001f, 0.1f, 0.001f);
-                AddConfig("HUD & Display", "intercept_iterations", "Intercept ", 10f, 1f, 20f, 1f);
+                // HUD TOGGLES (1=on, 0=off)
+                AddConfig("HUD Toggles", "hud_radar", "Radar Minimap", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_gun_funnel", "Gun Funnel", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_target_brackets", "Target Brackets", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_gforce", "G-Force", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_aoa", "AOA Indexer", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_fpm", "Flight Path Marker", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_compass", "Compass", 1f, 0f, 1f, 1f);
+                AddConfig("HUD Toggles", "hud_breakaway", "Breakaway Warning", 1f, 0f, 1f, 1f);
 
-                // RADAR & SENSORS CATEGORY
-                AddConfig("Radar & Sensors", "radar_range", "Radar Range", 15000f, 1000f, 30000f, 1000f, "m");
-                AddConfig("Radar & Sensors", "radar_box_size", "Radar Box Size", 100f, 50f, 200f, 10f, "px");
-                AddConfig("Radar & Sensors", "targeting_kp_rotor", "Targeting (Rotor)", 0.05f, 0.01f, 0.5f, 0.01f);
-                AddConfig("Radar & Sensors", "targeting_kp_hinge", "Targeting (Hinge)", 0.05f, 0.01f, 0.5f, 0.01f);
-                AddConfig("Radar & Sensors", "targeting_max_velocity", "Targeting Max Velocity", 5.0f, 1.0f, 10.0f, 0.5f, "RPM");
-
-                // WARNINGS & ALERTS CATEGORY
-                AddConfig("Warnings & Alerts", "bingo_fuel_percent", "Bingo Fuel %", 0.20f, 0.05f, 0.50f, 0.05f, "%");
-                AddConfig("Warnings & Alerts", "low_fuel_percent", "Low Fuel %", 0.35f, 0.10f, 0.60f, 0.05f, "%");
-                AddConfig("Warnings & Alerts", "altitude_warning_threshold", "Altitude Warning", 380f, 100f, 1000f, 10f, "m");
-                AddConfig("Warnings & Alerts", "speed_warning_threshold", "Speed Warning", 360f, 100f, 600f, 10f, "kph");
-                AddConfig("Warnings & Alerts", "low_altitude_threshold", "Low Altitude Limit", 100f, 50f, 300f, 10f, "m");
-                AddConfig("Warnings & Alerts", "descent_rate_warning", "Descent Rate Warning", -5f, -20f, -1f, 1f, "m/s");
-
-                // PHYSICS & ENVIRONMENT CATEGORY
-                AddConfig("Physics & Environment", "speed_of_sound", "Speed of Sound", 343.0f, 300f, 400f, 1f, "m/s");
-                AddConfig("Physics & Environment", "gravity", "Gravity", 9.81f, 0.5f, 20f, 0.1f, "m/s²");
-                AddConfig("Physics & Environment", "smoothing_window", "Smoothing Window Size", 10f, 1f, 30f, 1f);
-
-                // ADVANCED SETTINGS CATEGORY
-                AddConfig("Advanced", "throttle_h2_threshold", "Throttle H2 ", 0.8f, 0.5f, 1.0f, 0.05f);
-                AddConfig("Advanced", "gps_cache_slots", "GPS", 4f, 1f, 10f, 1f);
-                AddConfig("Advanced", "targeting_angle_threshold", "Targeting Angle ", 2.0f, 0.1f, 10.0f, 0.1f, "deg");
+                // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
+                AddConfig("HUD Theme", "hud_theme", "Color Theme", 0f, 0f, 3f, 1f);
             }
 
             private void AddConfig(string category, string name, string displayName, float defaultValue,
@@ -196,6 +166,8 @@ namespace IngameScript
                 return 0f;
             }
 
+            private static readonly string[] themeNames = { "Green", "Blue", "Amber", "White" };
+
             public override string[] GetOptions()
             {
                 switch (currentLevel)
@@ -205,29 +177,36 @@ namespace IngameScript
 
                     case MenuLevel.ParameterList:
                         string selectedCategory = categories[categoryIndex];
+                        if (selectedCategory == "Reset All")
+                        {
+                            return new string[] { "Reset All to Defaults", "Back" };
+                        }
                         List<string> options = new List<string>();
                         foreach (var kvp in allConfigs)
                         {
                             if (kvp.Value.Category == selectedCategory)
                             {
                                 string modified = kvp.Value.IsModified ? " *" : "";
-                                string valueStr = kvp.Value.Value.ToString("F4").TrimEnd('0').TrimEnd('.');
-                                options.Add($"{kvp.Value.DisplayName}: {valueStr}{kvp.Value.Unit}{modified}");
+                                if (kvp.Key == "hud_theme")
+                                {
+                                    int idx = (int)kvp.Value.Value;
+                                    string themeName = idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
+                                    options.Add($"{kvp.Value.DisplayName}: {themeName}{modified}");
+                                }
+                                else if (kvp.Value.MaxValue == 1f && kvp.Value.MinValue == 0f && kvp.Value.StepSize == 1f)
+                                {
+                                    string toggle = kvp.Value.Value > 0.5f ? "ON" : "OFF";
+                                    options.Add($"{kvp.Value.DisplayName}: {toggle}{modified}");
+                                }
+                                else
+                                {
+                                    string valueStr = kvp.Value.Value.ToString("F2").TrimEnd('0').TrimEnd('.');
+                                    options.Add($"{kvp.Value.DisplayName}: {valueStr}{kvp.Value.Unit}{modified}");
+                                }
                             }
                         }
-                        if (selectedCategory == "Import/Export/Reset")
-                        {
-                            options.Clear();
-                            options.Add("Export Antenna");
-                            options.Add("Import Argument");
-                            options.Add("Reset ");
-                            options.Add("Back");
-                        }
-                        else
-                        {
-                            options.Add("Reset Category to Defaults");
-                            options.Add("Back");
-                        }
+                        options.Add("Reset Category");
+                        options.Add("Back");
                         return options.ToArray();
 
                     case MenuLevel.ValueAdjust:
@@ -235,19 +214,50 @@ namespace IngameScript
                         if (parameterIndex < currentParams.Count)
                         {
                             var param = currentParams[parameterIndex];
+                            if (param.Name == "hud_theme")
+                            {
+                                int idx = (int)param.Value;
+                                string themeName = idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
+                                return new string[]
+                                {
+                                    $"Adjusting: {param.DisplayName}",
+                                    "",
+                                    "^ / V  Cycle Theme",
+                                    $"  Current: {themeName}",
+                                    "",
+                                    "0-Green 1-Blue 2-Amber 3-White",
+                                    "",
+                                    "SELECT to save",
+                                    "BACK to cancel"
+                                };
+                            }
+                            if (param.MaxValue == 1f && param.MinValue == 0f && param.StepSize == 1f)
+                            {
+                                string toggle = param.Value > 0.5f ? "ON" : "OFF";
+                                return new string[]
+                                {
+                                    $"Adjusting: {param.DisplayName}",
+                                    "",
+                                    "^ / V  Toggle",
+                                    $"  Current: {toggle}",
+                                    "",
+                                    "SELECT to save",
+                                    "BACK to cancel"
+                                };
+                            }
                             return new string[]
                             {
                                 $"Adjusting: {param.DisplayName}",
                                 "",
                                 "^ Increase (Navigate Up)",
-                                $"  Current: {param.Value:F4}{param.Unit}",
+                                $"  Current: {param.Value:F2}{param.Unit}",
                                 "V Decrease (Navigate Down)",
                                 "",
-                                $"Default: {param.DefaultValue:F4}{param.Unit}",
+                                $"Default: {param.DefaultValue:F2}{param.Unit}",
                                 $"Range: {param.MinValue:F2} - {param.MaxValue:F2}{param.Unit}",
                                 "",
-                                "SELECT to save changes",
-                                "BACK to cancel (no save)"
+                                "SELECT to save",
+                                "BACK to cancel"
                             };
                         }
                         break;
@@ -274,136 +284,56 @@ namespace IngameScript
                 switch (currentLevel)
                 {
                     case MenuLevel.Category:
-                        categoryIndex = index;
-                        currentLevel = MenuLevel.ParameterList;
-                        parameterIndex = 0;
-                        SystemManager.currentMenuIndex = 0; // Reset selector to first option
-                        break;
-
-                    case MenuLevel.ParameterList:
-                        string selectedCategory = categories[categoryIndex];
-                        if (selectedCategory == "Import/Export/Reset")
+                        if (categories[index] == "Reset All")
                         {
-                            HandleImportExportReset(index);
+                            foreach (var kvp in allConfigs)
+                                kvp.Value.Reset();
+                            SaveToCustomData();
                         }
                         else
                         {
-                            var params_list = GetCurrentCategoryParams();
-                            if (index < params_list.Count)
-                            {
-                                parameterIndex = index;
-                                currentLevel = MenuLevel.ValueAdjust;
-                                SystemManager.currentMenuIndex = 0; // Reset selector to first line
-                            }
-                            else if (index == params_list.Count)
-                            {
-                                // Reset category
-                                foreach (var param in params_list)
-                                {
-                                    param.Reset();
-                                }
-                                SaveToCustomData();
-                            }
-                            else
-                            {
-                                // Back to categories
-                                currentLevel = MenuLevel.Category;
-                                SystemManager.currentMenuIndex = 0; // Reset selector to first category
-                            }
+                            categoryIndex = index;
+                            currentLevel = MenuLevel.ParameterList;
+                            parameterIndex = 0;
+                            SystemManager.currentMenuIndex = 0;
+                        }
+                        break;
+
+                    case MenuLevel.ParameterList:
+                        var params_list = GetCurrentCategoryParams();
+                        if (index < params_list.Count)
+                        {
+                            parameterIndex = index;
+                            currentLevel = MenuLevel.ValueAdjust;
+                            SystemManager.currentMenuIndex = 0;
+                        }
+                        else if (index == params_list.Count)
+                        {
+                            // Reset category
+                            foreach (var param in params_list)
+                                param.Reset();
+                            SaveToCustomData();
+                        }
+                        else
+                        {
+                            // Back
+                            currentLevel = MenuLevel.Category;
+                            SystemManager.currentMenuIndex = categoryIndex;
                         }
                         break;
 
                     case MenuLevel.ValueAdjust:
-                        // Save and go back to parameter list
                         SaveToCustomData();
                         currentLevel = MenuLevel.ParameterList;
-                        SystemManager.currentMenuIndex = parameterIndex; // Return to the parameter we were editing
+                        SystemManager.currentMenuIndex = parameterIndex;
                         break;
                 }
             }
 
-            private void HandleImportExportReset(int index)
-            {
-                switch (index)
-                {
-                    case 0: // Export
-                        ExportConfig();
-                        break;
-                    case 1: // Import
-                        break;
-                    case 2: // Reset All
-                        foreach (var kvp in allConfigs)
-                        {
-                            kvp.Value.Reset();
-                        }
-                        SaveToCustomData();
-                        break;
-                    case 3: // Back
-                        currentLevel = MenuLevel.Category;
-                        break;
-                }
-            }
-
-            private void ExportConfig()
-            {
-                StringBuilder export = new StringBuilder("JetOSConfig:");
-                foreach (var kvp in allConfigs)
-                {
-                    if (kvp.Value.IsModified)
-                    {
-                        export.Append($"{kvp.Key}={kvp.Value.Value},");
-                    }
-                }
-                string exportString = export.ToString().TrimEnd(',');
-
-                // Try to broadcast via antenna
-                List<IMyRadioAntenna> antennas = new List<IMyRadioAntenna>();
-                ParentProgram.GridTerminalSystem.GetBlocksOfType(antennas);
-                if (antennas.Count > 0)
-                {
-                    antennas[0].HudText = exportString;
-                }
-                ParentProgram.Echo(exportString);
-            }
-
-            public void ImportConfig(string configString)
-            {
-                if (!configString.StartsWith("JetOSConfig:")) return;
-
-                string data = configString.Substring(12);
-                string[] pairs = data.Split(',');
-                foreach (string pair in pairs)
-                {
-                    string[] parts = pair.Split('=');
-                    if (parts.Length == 2)
-                    {
-                        string key = parts[0];
-                        float value;
-                        if (allConfigs.ContainsKey(key) && float.TryParse(parts[1], out value))
-                        {
-                            allConfigs[key].Value = value;
-                        }
-                    }
-                }
-                SaveToCustomData();
-                ParentProgram.Echo("Configuration imported");
-            }
-
-            public override void HandleSpecialFunction(int key)
-            {
-                // No special function keys needed - using navigation instead
-            }
+            public override void HandleSpecialFunction(int key) { }
 
             public override string GetHotkeys()
             {
-                if (currentLevel == MenuLevel.ValueAdjust)
-                {
-                    return "";
-                }
-                else if (currentLevel == MenuLevel.ParameterList)
-                {
-                    return "";
-                }
                 return "";
             }
 
@@ -411,49 +341,47 @@ namespace IngameScript
             {
                 if (currentLevel == MenuLevel.ValueAdjust)
                 {
-                    // In value adjust mode, up/down changes the value
                     var params_list = GetCurrentCategoryParams();
                     if (parameterIndex < params_list.Count)
                     {
                         var param = params_list[parameterIndex];
-                        if (isUp)
+                        if (param.Name == "hud_theme")
                         {
-                            param.Adjust(1); // Increase value
+                            // Cycle forward only, wrap around
+                            param.Value = (int)(param.Value + 1) % 4;
+                        }
+                        else if (isUp)
+                        {
+                            param.Adjust(1);
                         }
                         else
                         {
-                            param.Adjust(-1); // Decrease value
+                            param.Adjust(-1);
                         }
-                        return true; // We handled navigation
+                        return true;
                     }
                 }
-                return false; // Use default navigation
+                return false;
             }
 
             public override bool HandleBack()
             {
                 if (currentLevel == MenuLevel.ValueAdjust)
                 {
-                    // Cancel editing and go back without saving
                     currentLevel = MenuLevel.ParameterList;
-                    SystemManager.currentMenuIndex = parameterIndex; // Return to the parameter we were editing
-                    return true; // We handled the back button
+                    SystemManager.currentMenuIndex = parameterIndex;
+                    return true;
                 }
                 else if (currentLevel == MenuLevel.ParameterList)
                 {
-                    // Go back to category selection
                     currentLevel = MenuLevel.Category;
-                    SystemManager.currentMenuIndex = categoryIndex; // Return to the category we were in
-                    return true; // We handled the back button
+                    SystemManager.currentMenuIndex = categoryIndex;
+                    return true;
                 }
-                // At category level, let default behavior exit the module
                 return false;
             }
 
-            public override void Tick()
-            {
-                // Configuration module doesn't need per-frame updates
-            }
+            public override void Tick() { }
         }
     }
 }

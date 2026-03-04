@@ -36,6 +36,9 @@ namespace IngameScript
             TrackingPoint p1;
             TrackingPoint p0;
 
+            // True once we have received at least one valid waypoint position
+            public bool HasReceivedPosition { get; private set; }
+
             //Counting Positions
             public long CurrentTime;
             public int CurrentTick;
@@ -96,6 +99,7 @@ namespace IngameScript
                         // Shift historical data
                         p1 = p0;
                         p0 = new TrackingPoint(TargetPosition, CurrentTime);
+                        HasReceivedPosition = true;
 
                         //Resets Counter
                         CurrentTick = 0;
@@ -172,6 +176,18 @@ namespace IngameScript
                 get
                 {
                     return L_CombatBLock.SearchEnemyComponent.FoundEnemyId == null ? false : true;
+                }
+            }
+
+            /// <summary>
+            /// Gets the EntityId of the tracked target (0 if not tracking).
+            /// </summary>
+            public long TrackedEntityId
+            {
+                get
+                {
+                    var foundId = L_CombatBLock.SearchEnemyComponent.FoundEnemyId;
+                    return foundId ?? 0;
                 }
             }
 

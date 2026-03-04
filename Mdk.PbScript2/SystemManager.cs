@@ -153,9 +153,11 @@ namespace IngameScript
                 _myJet._cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
 
                 // Altitude warning with hysteresis
+                float altWarn = GetConfigValue("altitude_warning");
+                float spdWarn = GetConfigValue("speed_warning");
                 if (altitudeWarningActive)
                 {
-                    if (velocityKnots < 340 || altitude > 420)
+                    if (velocityKnots < spdWarn - 20 || altitude > altWarn + 40)
                     {
                         altitudeWarningActive = false;
                     }
@@ -166,7 +168,7 @@ namespace IngameScript
                 }
                 else
                 {
-                    if (velocityKnots > 360 && altitude < 380)
+                    if (velocityKnots > spdWarn && altitude < altWarn)
                     {
                         altitudeWarningActive = true;
                         SoundManager.RequestWarning("Tief", SoundManager.PRIORITY_ALTITUDE);
@@ -186,14 +188,7 @@ namespace IngameScript
                 }
                 else
                 {
-                    if (argument.StartsWith("ConfigImport:") && configModule != null)
-                    {
-                        configModule.ImportConfig(argument.Substring(13));
-                    }
-                    else
-                    {
-                        HandleInput(argument);
-                    }
+                    HandleInput(argument);
                 }
 
                 if (currentModule != null)
@@ -313,43 +308,64 @@ namespace IngameScript
 
             private static void FlipGPS()
             {
-                int startIndex = _myJet.activeSlotIndex;
-                int nextIndex = (startIndex + 1) % _myJet.targetSlots.Length;
-
-                int searchCount = 0;
-                const long STALE_THRESHOLD_TICKS = 60 * TimeSpan.TicksPerSecond;
-
-                while (searchCount < _myJet.targetSlots.Length)
+                var sorted = _myJet.GetEnemiesSortedByDistance();
+                if (sorted.Count == 0)
                 {
-                    if (_myJet.targetSlots[nextIndex].IsOccupied)
-                    {
-                        long age = DateTime.Now.Ticks - _myJet.targetSlots[nextIndex].TimestampTicks;
+                    _myJet.ClearSelection();
+                    return;
+                }
 
-                        if (age < STALE_THRESHOLD_TICKS)
+                // Find current selection in sorted list by identity match
+                int currentIndex = -1;
+                var selected = _myJet.GetSelectedEnemy();
+                if (selected.HasValue)
+                {
+                    for (int i = 0; i < sorted.Count; i++)
+                    {
+                        // Match by EntityId first, then Name
+                        if (selected.Value.EntityId != 0 && sorted[i].EntityId == selected.Value.EntityId)
                         {
-                            _myJet.activeSlotIndex = nextIndex;
-                            UpdateActiveTargetGPS();
-                            return;
+                            currentIndex = i;
+                            break;
                         }
-                        else
+                        if (sorted[i].Name == selected.Value.Name && sorted[i].SourceIndex == selected.Value.SourceIndex)
                         {
-                            _myJet.targetSlots[nextIndex].Clear();
+                            currentIndex = i;
+                            break;
                         }
                     }
-                    nextIndex = (nextIndex + 1) % _myJet.targetSlots.Length;
-                    searchCount++;
                 }
+
+                // Advance to next entry (wrapping)
+                int nextIndex = (currentIndex + 1) % sorted.Count;
+                var nextContact = sorted[nextIndex];
+
+                // Check if this is the pinned target
+                if (_myJet.pinnedRaycastTarget.HasValue &&
+                    nextContact.SourceIndex == _myJet.pinnedRaycastTarget.Value.SourceIndex &&
+                    nextContact.Name == _myJet.pinnedRaycastTarget.Value.Name &&
+                    Vector3D.Distance(nextContact.Position, _myJet.pinnedRaycastTarget.Value.Position) < 1.0)
+                {
+                    _myJet.SelectPinned();
+                }
+                else
+                {
+                    _myJet.SelectEnemy(nextContact);
+                }
+
+                UpdateActiveTargetGPS();
             }
 
             public static void UpdateActiveTargetGPS()
             {
-                if (!_myJet.targetSlots[_myJet.activeSlotIndex].IsOccupied)
+                var selected = _myJet.GetSelectedEnemy();
+                if (!selected.HasValue)
                 {
                     return;
                 }
 
-                Vector3D targetPos = _myJet.targetSlots[_myJet.activeSlotIndex].Position;
-                Vector3D targetVel = _myJet.targetSlots[_myJet.activeSlotIndex].Velocity;
+                Vector3D targetPos = selected.Value.Position;
+                Vector3D targetVel = selected.Value.Velocity;
 
                 // Write through cache — no direct Me.CustomData access
                 string gpsValue = $"GPS:Target:{targetPos.X}:{targetPos.Y}:{targetPos.Z}:#FF75C9F1:";

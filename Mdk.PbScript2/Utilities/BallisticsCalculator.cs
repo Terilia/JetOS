@@ -7,13 +7,12 @@ namespace IngameScript
     {
         static class BallisticsCalculator
         {
-            public static bool CalculateInterceptPointIterative(
+            public static bool CalculateInterceptPoint(
                 Vector3D shooterPosition,
                 Vector3D shooterVelocity,
                 double muzzleSpeed,
                 Vector3D targetPosition,
                 Vector3D targetVelocity,
-                Vector3D gravity,
                 int maxIterations,
                 out Vector3D interceptPoint,
                 out double timeToIntercept,
@@ -29,7 +28,8 @@ namespace IngameScript
                 double S = muzzleSpeed;
                 double S2 = S * S;
 
-                Vector3D A_net = targetAcceleration - gravity;
+                // No gravity on bullet — SE projectiles travel in straight lines
+                Vector3D A_net = targetAcceleration;
                 double a4 = 0.25 * A_net.LengthSquared();
                 double a3 = Vector3D.Dot(V_rel, A_net);
                 double a2 = V_rel.LengthSquared() + Vector3D.Dot(D, A_net) - S2;
