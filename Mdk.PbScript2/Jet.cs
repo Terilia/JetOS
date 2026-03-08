@@ -40,6 +40,11 @@ namespace IngameScript
                 public long LastSeenTicks; // Uses GameTicks
                 public int SourceIndex;    // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
 
+                // 30-second tracking timeline: each bit = 1 second, bit 0 = most recent
+                // 1 = radar update received, 0 = no update (stale)
+                public uint TrackHistory;
+                public long LastHistoryShiftTick; // GameTick when history was last shifted
+
                 public EnemyContact(Vector3D pos, Vector3D vel, string name, int source, long entityId = 0, Vector3D accel = default(Vector3D))
                 {
                     Position = pos;
@@ -49,10 +54,26 @@ namespace IngameScript
                     EntityId = entityId;
                     LastSeenTicks = GameTicks;
                     SourceIndex = source;
+                    TrackHistory = 1; // first update = current second tracked
+                    LastHistoryShiftTick = GameTicks;
                 }
 
                 public long AgeTicks => GameTicks - LastSeenTicks;
                 public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
+
+                /// <summary>
+                /// Returns the 30-bit tracking history adjusted for current staleness.
+                /// Bit 0 = most recent second, bit 29 = 30 seconds ago.
+                /// </summary>
+                public uint GetDisplayHistory()
+                {
+                    long elapsedTicks = GameTicks - LastHistoryShiftTick;
+                    int elapsedSeconds = (int)(elapsedTicks / 60);
+                    if (elapsedSeconds <= 0) return TrackHistory;
+                    if (elapsedSeconds >= 30) return 0;
+                    // Shift left to insert stale gap for seconds since last shift
+                    return TrackHistory << elapsedSeconds;
+                }
             }
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
@@ -206,8 +227,22 @@ namespace IngameScript
 
                 EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, entityId, accel);
 
+                // Carry over and advance tracking history
                 if (existingIndex >= 0)
                 {
+                    var old = enemyList[existingIndex];
+                    int elapsedSeconds = (int)((GameTicks - old.LastHistoryShiftTick) / 60);
+                    if (elapsedSeconds > 0 && elapsedSeconds < 30)
+                    {
+                        contact.TrackHistory = (old.TrackHistory << elapsedSeconds) | 1;
+                        contact.LastHistoryShiftTick = GameTicks;
+                    }
+                    else if (elapsedSeconds == 0)
+                    {
+                        contact.TrackHistory = old.TrackHistory | 1;
+                        contact.LastHistoryShiftTick = old.LastHistoryShiftTick; // keep old reference
+                    }
+                    // else elapsedSeconds >= 30: history is all stale, new contact starts fresh with 1
                     enemyList[existingIndex] = contact;
                 }
                 else

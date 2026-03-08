@@ -63,7 +63,7 @@ namespace IngameScript
                     panelY += 45f;
 
                     // --- Selected Target Detail Box ---
-                    float detailBoxHeight = 110f;
+                    float detailBoxHeight = 95f;
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
@@ -165,22 +165,14 @@ namespace IngameScript
 
             private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
-                const float TEXT_SCALE = 0.6f;
-                const float LINE_HEIGHT = 18f;
                 float textX = margin + 8f;
                 float textY = panelY + 6f;
                 float rightX = screenWidth - margin - 8f;
 
-                // Row 1: Name + tags
+                // --- Row 1: Name + track mode badge ---
                 string name = contact.Name;
                 if (string.IsNullOrEmpty(name)) name = "UNKNOWN";
-                if (name.Length > 16) name = name.Substring(0, 16);
-
-                // Build tag string
-                string tags = "";
-                if (myjet.isPinnedSelected) tags += "PIN ";
-                if (radarControl != null && radarControl.IsTrackLocked) tags += "STT";
-                else tags += "TWS";
+                if (name.Length > 14) name = name.Substring(0, 14);
 
                 frame.Add(new MySprite()
                 {
@@ -193,50 +185,44 @@ namespace IngameScript
                     FontId = "Monospace"
                 });
 
+                bool isSTT = radarControl != null && radarControl.IsTrackLocked;
+                string badgeText = myjet.isPinnedSelected ? "PIN" : isSTT ? "STT" : "TWS";
+                Color badgeColor = isSTT ? HUD_PRIMARY : HUD_EMPHASIS;
+
+                // Badge outline box
+                float badgeWidth = 30f;
+                float badgeHeight = 14f;
+                float badgeX = rightX - badgeWidth / 2f;
+                float badgeY = textY + 4f;
+                SpriteHelpers.DrawRectangleOutline(frame, badgeX - badgeWidth / 2f, badgeY - badgeHeight / 2f, badgeWidth, badgeHeight, 1f, badgeColor);
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = tags,
-                    Position = new Vector2(rightX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = radarControl != null && radarControl.IsTrackLocked ? HUD_PRIMARY : HUD_EMPHASIS,
-                    Alignment = TextAlignment.RIGHT,
+                    Data = badgeText,
+                    Position = new Vector2(badgeX, badgeY - 7f),
+                    RotationOrScale = 0.45f,
+                    Color = badgeColor,
+                    Alignment = TextAlignment.CENTER,
                     FontId = "Monospace"
                 });
 
-                textY += LINE_HEIGHT + 4f;
+                // Divider line under name
+                textY += 20f;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(screenWidth / 2f, textY),
+                    Size = new Vector2(screenWidth - margin * 2 - 12f, 1f),
+                    Color = new Color(42, 90, 42),
+                    Alignment = TextAlignment.CENTER
+                });
+                textY += 5f;
 
-                // Row 2: Range
+                // --- Row 2: Range (large) + Closure rate (large) ---
                 double range = Vector3D.Distance(shooterPosition, contact.Position);
-                string rangeText = range >= 1000 ? $"RNG: {range / 1000:F2} km" : $"RNG: {range:F0} m";
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = rangeText,
-                    Position = new Vector2(textX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.LEFT,
-                    FontId = "Monospace"
-                });
+                string rangeText = range >= 1000 ? $"{range / 1000:F2} km" : $"{range:F0} m";
 
-                // Bearing
-                double bearing = CalculateBearingToTarget(contact.Position, shooterPosition);
-                string bearingText = $"BRG: {bearing:F0}\u00B0";
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = bearingText,
-                    Position = new Vector2(rightX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.RIGHT,
-                    FontId = "Monospace"
-                });
-
-                textY += LINE_HEIGHT;
-
-                // Row 3: Closure rate + contact age
                 Vector3D toTarget = contact.Position - shooterPosition;
                 double dist = toTarget.Length();
                 Vector3D relVel = currentVelocity - contact.Velocity;
@@ -244,59 +230,162 @@ namespace IngameScript
                 if (dist > 0.1)
                     closureRate = Vector3D.Dot(relVel, toTarget / dist);
 
-                string closureText = $"Vc: {closureRate:F0} m/s";
-                Color closureColor = closureRate > 0 ? HUD_PRIMARY : HUD_EMPHASIS;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = rangeText,
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = 0.8f,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+
+                string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
+                string closureText = $"{Math.Abs(closureRate):F0} {closureLabel}";
+                Color closureColor = closureRate > 10 ? HUD_WARNING : closureRate < -10 ? new Color(100, 130, 255) : new Color(136, 136, 136);
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
                     Data = closureText,
-                    Position = new Vector2(textX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = closureColor,
-                    Alignment = TextAlignment.LEFT,
-                    FontId = "Monospace"
-                });
-
-                double ageSec = contact.AgeSeconds;
-                string ageText = ageSec < 1 ? "AGE: <1s" : $"AGE: {ageSec:F0}s";
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = ageText,
                     Position = new Vector2(rightX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = myjet.GetEnemyContactColor(contact),
+                    RotationOrScale = 0.65f,
+                    Color = closureColor,
                     Alignment = TextAlignment.RIGHT,
                     FontId = "Monospace"
                 });
 
-                textY += LINE_HEIGHT;
+                textY += 20f;
 
-                // Row 4: Speed + source
+                // --- Row 3: Secondary data (BRG + SPD) ---
+                double bearing = CalculateBearingToTarget(contact.Position, shooterPosition);
                 double tgtSpeed = contact.Velocity.Length();
-                string speedText = $"SPD: {tgtSpeed:F0} m/s";
+                Color dimColor = new Color(102, 102, 102);
+                Color valColor = new Color(170, 170, 170);
+
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
-                    Data = speedText,
+                    Data = "BRG",
                     Position = new Vector2(textX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_INFO,
+                    RotationOrScale = 0.5f,
+                    Color = dimColor,
                     Alignment = TextAlignment.LEFT,
                     FontId = "Monospace"
                 });
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"{bearing:F0}\u00B0",
+                    Position = new Vector2(screenWidth / 2f - 8f, textY),
+                    RotationOrScale = 0.5f,
+                    Color = valColor,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "Monospace"
+                });
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = "SPD",
+                    Position = new Vector2(screenWidth / 2f + 8f, textY),
+                    RotationOrScale = 0.5f,
+                    Color = dimColor,
+                    Alignment = TextAlignment.LEFT,
+                    FontId = "Monospace"
+                });
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"{tgtSpeed:F0} m/s",
+                    Position = new Vector2(rightX, textY),
+                    RotationOrScale = 0.5f,
+                    Color = valColor,
+                    Alignment = TextAlignment.RIGHT,
+                    FontId = "Monospace"
+                });
 
-                string sourceText = contact.SourceIndex == 0 ? "SRC: RDR" : $"SRC: RWR{contact.SourceIndex}";
+                textY += 16f;
+
+                // --- Row 4: Source + tracking timeline ---
+                string sourceText = contact.SourceIndex == 0 ? "RDR" : $"RWR{contact.SourceIndex}";
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
                     Data = sourceText,
-                    Position = new Vector2(rightX, textY),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_INFO,
-                    Alignment = TextAlignment.RIGHT,
+                    Position = new Vector2(textX, textY),
+                    RotationOrScale = 0.45f,
+                    Color = dimColor,
+                    Alignment = TextAlignment.LEFT,
                     FontId = "Monospace"
                 });
+
+                // Draw 30-second tracking timeline
+                float timelineX = screenWidth / 2f - 10f;
+                float timelineY = textY + 4f;
+                float timelineWidth = rightX - timelineX;
+                DrawTrackingTimeline(frame, contact, timelineX, timelineY, timelineWidth, 8f, 30);
+            }
+
+            /// <summary>
+            /// Draws a tracking timeline bar. Each column = 1 second.
+            /// Green (full height) = update received. Red (half height) = stale.
+            /// Batches consecutive same-state columns into single sprites for performance.
+            /// </summary>
+            private void DrawTrackingTimeline(MySpriteDrawFrame frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
+            {
+                uint history = contact.GetDisplayHistory();
+                float colWidth = width / columns;
+                Color okColor = new Color(68, 255, 68);
+                Color staleColor = new Color(255, 50, 50);
+                Color bgColor = new Color(10, 10, 10);
+
+                // Background
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = "SquareSimple",
+                    Position = new Vector2(x + width / 2f, y + height / 2f),
+                    Size = new Vector2(width, height),
+                    Color = bgColor,
+                    Alignment = TextAlignment.CENTER
+                });
+
+                // Batch consecutive same-state columns
+                int runStart = 0;
+                // Bit (columns-1) = oldest, bit 0 = newest; draw left to right = oldest to newest
+                bool runIsOk = ((history >> (columns - 1)) & 1) == 1;
+
+                for (int i = 1; i <= columns; i++)
+                {
+                    bool currentIsOk = false;
+                    if (i < columns)
+                        currentIsOk = ((history >> (columns - 1 - i)) & 1) == 1;
+
+                    if (i == columns || currentIsOk != runIsOk)
+                    {
+                        int runLen = i - runStart;
+                        float segX = x + runStart * colWidth;
+                        float segW = runLen * colWidth - 1f;
+                        if (segW < 1f) segW = 1f;
+
+                        float segH = runIsOk ? height - 2f : (height - 2f) * 0.5f;
+                        float segY = runIsOk ? y + 1f + segH / 2f : y + height - 1f - segH / 2f;
+
+                        frame.Add(new MySprite()
+                        {
+                            Type = SpriteType.TEXTURE,
+                            Data = "SquareSimple",
+                            Position = new Vector2(segX + segW / 2f, segY),
+                            Size = new Vector2(segW, segH),
+                            Color = runIsOk ? okColor : staleColor,
+                            Alignment = TextAlignment.CENTER
+                        });
+
+                        runStart = i;
+                        if (i < columns)
+                            runIsOk = currentIsOk;
+                    }
+                }
             }
 
             private void DrawEnemyList(MySpriteDrawFrame frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float screenHeight)
@@ -381,38 +470,10 @@ namespace IngameScript
                         FontId = "Monospace"
                     });
 
-                    // Age color bar
-                    float barX = screenWidth - margin - 45f;
-                    float barWidth = 35f;
-                    float barHeight = 6f;
-                    float ageFrac = MathHelper.Clamp(1f - (float)(contact.AgeSeconds / 180.0), 0f, 1f);
-                    Color ageColor = myjet.GetEnemyContactColor(contact);
-
-                    // Bar background
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(barX + barWidth / 2f, textY + LINE_HEIGHT / 2f - 1f),
-                        Size = new Vector2(barWidth, barHeight),
-                        Color = new Color(30, 30, 30),
-                        Alignment = TextAlignment.CENTER
-                    });
-
-                    // Bar fill
-                    float fillWidth = barWidth * ageFrac;
-                    if (fillWidth > 1f)
-                    {
-                        frame.Add(new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = new Vector2(barX + fillWidth / 2f, textY + LINE_HEIGHT / 2f - 1f),
-                            Size = new Vector2(fillWidth, barHeight - 1f),
-                            Color = ageColor,
-                            Alignment = TextAlignment.CENTER
-                        });
-                    }
+                    // Compact tracking timeline (15 columns)
+                    float timelineX = screenWidth - margin - 45f;
+                    float timelineW = 40f;
+                    DrawTrackingTimeline(frame, contact, timelineX, textY + LINE_HEIGHT / 2f - 3f, timelineW, 6f, 15);
 
                     textY += LINE_HEIGHT;
                 }

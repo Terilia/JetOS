@@ -21,7 +21,9 @@ namespace IngameScript
                 internal float volume = 1.0f;
 
                 // State machine: 0=idle, 1=stopping, 2=selecting, 3=playing
+                // Each state waits FRAME_DELAY calls before advancing to survive double Main() calls.
                 internal int state = 0;
+                internal int delay = 0;
                 internal string pendingSound = "";
                 internal string activeSound = "";
                 internal int playStartTick = 0;
@@ -51,6 +53,24 @@ namespace IngameScript
                     b => b.CustomName.Contains("Canopy Side Plate Sound Block")
                 );
                 weaponChannel.volume = 0.3f;
+
+                // Prep all blocks to a known clean state so the first
+                // Play() call works reliably. Without this, blocks may
+                // be disabled or mid-play from a previous script run.
+                PrepChannel(warningChannel);
+                PrepChannel(weaponChannel);
+            }
+
+            private static void PrepChannel(SoundChannel ch)
+            {
+                foreach (var b in ch.blocks)
+                {
+                    if (b == null || !b.IsFunctional) continue;
+                    b.Stop();
+                    b.Enabled = true;
+                    b.SelectedSound = "";
+                    b.Volume = ch.volume;
+                }
             }
 
             /// <summary>
@@ -99,8 +119,19 @@ namespace IngameScript
                 }
             }
 
+            const int FRAME_DELAY = 3;
+
             private static void TickChannel(SoundChannel ch, int currentTick)
             {
+                // 3-frame delay between each state ensures double Main() calls
+                // (Trigger + Update1 on same sim tick) never put two block
+                // operations in the same sim tick.
+                if (ch.delay > 0)
+                {
+                    ch.delay--;
+                    return;
+                }
+
                 // Execute current state machine step
                 switch (ch.state)
                 {
@@ -111,6 +142,7 @@ namespace IngameScript
                                 b.Stop();
                         }
                         ch.state = 2;
+                        ch.delay = FRAME_DELAY;
                         break;
 
                     case 2: // Selecting
@@ -126,6 +158,7 @@ namespace IngameScript
                         if (!string.IsNullOrEmpty(ch.pendingSound))
                         {
                             ch.state = 3;
+                            ch.delay = FRAME_DELAY;
                         }
                         else
                         {
@@ -175,15 +208,10 @@ namespace IngameScript
                         }
                     }
 
-                    // Execute Stop() immediately on the same tick to avoid 1-tick delay
                     if (needsChange)
                     {
-                        foreach (var b in ch.blocks)
-                        {
-                            if (b != null && b.IsFunctional)
-                                b.Stop();
-                        }
-                        ch.state = 2; // Next tick goes straight to Select
+                        ch.state = 1;
+                        ch.delay = FRAME_DELAY;
                     }
                 }
             }

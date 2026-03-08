@@ -1,4 +1,5 @@
 using Sandbox.ModAPI.Ingame;
+using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
@@ -10,342 +11,237 @@ namespace IngameScript
     {
         static class GridVisualization
         {
-            private static int blockcount = 0;
-            private static int originalBlockCount = 0;
-            private static List<IMyTerminalBlock> gridBlocks = new List<IMyTerminalBlock>();
-            private static List<MySprite> cachedSprites = new List<MySprite>();
-            private static int blockCacheRefreshTick = 0;
-            private const int BLOCK_CACHE_REFRESH_INTERVAL = 60;
+            static int originalBlockCount;
+            static List<IMyTerminalBlock> gridBlocks = new List<IMyTerminalBlock>();
+            static List<MySprite> cachedSprites = new List<MySprite>();
+            static int refreshTick;
 
-            // Fuel thresholds (read from config)
-            private static double BINGO_FUEL_PERCENT => SystemManager.GetConfigValue("bingo_fuel");
-            private static double LOW_FUEL_PERCENT => SystemManager.GetConfigValue("low_fuel");
+            static double BINGO_FUEL => SystemManager.GetConfigValue("bingo_fuel");
+            static double LOW_FUEL => SystemManager.GetConfigValue("low_fuel");
 
-            // Damage color thresholds
-            private const float HEALTHY_THRESHOLD = 0.80f;
-            private const float DAMAGED_THRESHOLD = 0.30f;
+            static readonly Color C_OK = new Color(50, 255, 50);
+            static readonly Color C_DMG = Color.Yellow;
+            static readonly Color C_CRIT = Color.Red;
+            static readonly Color C_DEAD = new Color(139, 0, 0);
+            static readonly Color C_DIM = new Color(85, 85, 85);
+            static readonly Color C_VAL = new Color(170, 170, 170);
+            static readonly Color C_BG = new Color(20, 20, 20);
 
-            // Colors
-            private static readonly Color COLOR_HEALTHY = new Color(50, 255, 50);
-            private static readonly Color COLOR_DAMAGED = Color.Yellow;
-            private static readonly Color COLOR_CRITICAL = Color.Red;
-            private static readonly Color COLOR_NONFUNCTIONAL = new Color(139, 0, 0);
-
-            public static void Render(MySpriteDrawFrame frame, RectangleF renderArea,
-                Program program, Jet jet, RadarControlModule radarModule)
+            // Sprite helpers to eliminate boilerplate
+            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = TextAlignment.CENTER)
             {
-                // Periodically refresh block cache
-                if (blockCacheRefreshTick <= 0 || gridBlocks.Count == 0)
+                f.Add(new MySprite { Type = SpriteType.TEXT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = "Monospace" });
+            }
+
+            static void Box(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
+            {
+                f.Add(new MySprite { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x, y), Size = new Vector2(w, h), Color = c, Alignment = TextAlignment.CENTER });
+            }
+
+            public static void Render(MySpriteDrawFrame frame, RectangleF area,
+                Program program, Jet jet, RadarControlModule radarModule, HUDModule hud = null)
+            {
+                if (refreshTick <= 0 || gridBlocks.Count == 0)
                 {
                     gridBlocks.Clear();
                     program.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(gridBlocks);
-                    blockCacheRefreshTick = BLOCK_CACHE_REFRESH_INTERVAL;
-
-                    // Track original block count on first build
-                    if (originalBlockCount == 0)
-                        originalBlockCount = gridBlocks.Count;
-
-                    // Always rebuild sprite cache on refresh (damage can change without block count changing)
-                    RebuildSpriteCache(renderArea, program);
-                    blockcount = gridBlocks.Count;
+                    refreshTick = 60;
+                    if (originalBlockCount == 0) originalBlockCount = gridBlocks.Count;
+                    RebuildSpriteCache(area);
                 }
-                else
-                {
-                    blockCacheRefreshTick--;
-                }
+                else refreshTick--;
 
-                // Draw cached grid sprites
                 for (int i = 0; i < cachedSprites.Count; i++)
-                {
                     frame.Add(cachedSprites[i]);
-                }
 
-                // Draw fuel bar (dynamic, not cached)
-                DrawFuelBar(frame, renderArea, jet.tanks);
-
-                // Draw block health summary (dynamic)
-                DrawBlockSummary(frame, renderArea);
+                DrawMslPips(frame, jet._bays);
+                DrawBlockCount(frame, area);
+                DrawFlightData(frame, area, hud, jet);
+                DrawFuelBar(frame, area, jet.tanks);
+                DrawGMeter(frame, area, hud);
             }
 
-            private static void RebuildSpriteCache(RectangleF renderArea, Program program)
+            static void RebuildSpriteCache(RectangleF area)
             {
                 var blocks = gridBlocks;
                 if (blocks.Count == 0) return;
-
                 cachedSprites.Clear();
 
                 int minX = int.MaxValue, maxX = int.MinValue;
                 int minZ = int.MaxValue, maxZ = int.MinValue;
-
-                foreach (var block in blocks)
+                foreach (var b in blocks)
                 {
-                    var pos = block.Position;
-                    if (pos.X < minX) minX = pos.X;
-                    if (pos.X > maxX) maxX = pos.X;
-                    if (pos.Z < minZ) minZ = pos.Z;
-                    if (pos.Z > maxZ) maxZ = pos.Z;
+                    var p = b.Position;
+                    if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                    if (p.Z < minZ) minZ = p.Z; if (p.Z > maxZ) maxZ = p.Z;
                 }
 
-                int width = maxX - minX + 1;
-                int height = maxZ - minZ + 1;
+                int w = maxX - minX + 1, h = maxZ - minZ + 1;
+                bool[,] occ = new bool[w, h];
+                float[,] integrity = new float[w, h];
+                bool[,] functional = new bool[w, h];
 
-                bool[,] occupancyGrid = new bool[width, height];
-                float[,] integrityGrid = new float[width, height];
-                bool[,] functionalGrid = new bool[width, height];
+                for (int x = 0; x < w; x++)
+                    for (int z = 0; z < h; z++) { integrity[x, z] = 1f; functional[x, z] = true; }
 
-                // Initialize integrity to 1.0 (healthy)
-                for (int x = 0; x < width; x++)
-                    for (int z = 0; z < height; z++)
-                    {
-                        integrityGrid[x, z] = 1.0f;
-                        functionalGrid[x, z] = true;
-                    }
-
-                // Build occupancy, integrity, and functional grids
-                foreach (var block in blocks)
+                foreach (var b in blocks)
                 {
-                    int x = block.Position.X - minX;
-                    int z = block.Position.Z - minZ;
-                    occupancyGrid[x, z] = true;
-
-                    // Get slim block for integrity data
-                    var slimBlock = block.CubeGrid.GetCubeBlock(block.Position);
-                    if (slimBlock != null)
+                    int x = b.Position.X - minX, z = b.Position.Z - minZ;
+                    occ[x, z] = true;
+                    var slim = b.CubeGrid.GetCubeBlock(b.Position);
+                    if (slim != null)
                     {
-                        float maxIntegrity = slimBlock.MaxIntegrity;
-                        float ratio = maxIntegrity > 0
-                            ? (maxIntegrity - slimBlock.CurrentDamage) / maxIntegrity
-                            : 0f;
-                        // Store worst integrity at this X,Z column
-                        if (ratio < integrityGrid[x, z])
-                            integrityGrid[x, z] = ratio;
+                        float mi = slim.MaxIntegrity;
+                        float r = mi > 0 ? (mi - slim.CurrentDamage) / mi : 0f;
+                        if (r < integrity[x, z]) integrity[x, z] = r;
                     }
-
-                    if (!block.IsFunctional)
-                        functionalGrid[x, z] = false;
+                    if (!b.IsFunctional) functional[x, z] = false;
                 }
 
-                float padding = 10f;
-                float cellSizeX = (renderArea.X - padding * 2) / width;
-                float cellSizeY = (renderArea.Y - padding * 2) / height;
-                float cellSize = Math.Min(cellSizeX, cellSizeY) * 15;
+                // Grid fits inside margins: left 55 (fuel), right 40 (g-meter), top 55 (header), bottom 105 (20% clear)
+                float gL = 55f, gR = area.Width - 40f, gT = 55f, gB = area.Height - 105f;
+                float cs = Math.Min((gR - gL) / w, (gB - gT) / h);
+                cs = Math.Min(cs, 16f); // cap cell size
+                Vector2 center = new Vector2((gL + gR) / 2f, (gT + gB) / 2f);
+                Vector2 topLeft = center - new Vector2(w * cs, h * cs) / 2f;
 
-                Vector2 boxSize = new Vector2(width * cellSize, height * cellSize);
-                // Shift slightly left and up from center, with room for fuel bar
-                Vector2 renderCenter =
-                    renderArea.Position
-                    + new Vector2(renderArea.Size.X * 0.05f, renderArea.Size.Y * 0.02f)
-                    + renderArea.Size / 2f;
-                Vector2 boxTopLeft = renderCenter - (boxSize / 2f);
-
-                Vector2I[] directions = new Vector2I[]
+                for (int x = 0; x < w; x++)
                 {
-                    new Vector2I(1, 0),
-                    new Vector2I(-1, 0),
-                    new Vector2I(0, 1),
-                    new Vector2I(0, -1)
-                };
-
-                // Draw only outline blocks with damage-based coloring
-                for (int x = 0; x < width; x++)
-                {
-                    for (int z = 0; z < height; z++)
+                    for (int z = 0; z < h; z++)
                     {
-                        if (!occupancyGrid[x, z])
-                            continue;
+                        if (!occ[x, z]) continue;
+                        bool outline = false;
+                        if (x == 0 || !occ[x - 1, z]) outline = true;
+                        else if (x == w - 1 || !occ[x + 1, z]) outline = true;
+                        else if (z == 0 || !occ[x, z - 1]) outline = true;
+                        else if (z == h - 1 || !occ[x, z + 1]) outline = true;
+                        if (!outline) continue;
 
-                        bool isOutline = false;
-                        foreach (var dir in directions)
+                        Color c;
+                        if (!functional[x, z]) c = C_DEAD;
+                        else if (integrity[x, z] < 0.30f) c = C_CRIT;
+                        else if (integrity[x, z] < 0.80f) c = C_DMG;
+                        else c = C_OK;
+
+                        Vector2 dp = topLeft + new Vector2(x * cs + cs / 2f, (h - 1 - z) * cs + cs / 2f);
+                        cachedSprites.Add(new MySprite
                         {
-                            int nx = x + dir.X;
-                            int nz = z + dir.Y;
-
-                            if (nx < 0 || nx >= width || nz < 0 || nz >= height || !occupancyGrid[nx, nz])
-                            {
-                                isOutline = true;
-                                break;
-                            }
-                        }
-
-                        if (!isOutline)
-                            continue;
-
-                        // Nose-up rotation: grid X -> screen X, grid Z -> screen Y
-                        // Forward in SE is -Z, so minZ is nose -> top of screen
-                        int localX = x;
-                        int localZ = z;
-
-                        // Pick color based on damage state
-                        Color blockColor;
-                        if (!functionalGrid[x, z])
-                            blockColor = COLOR_NONFUNCTIONAL;
-                        else if (integrityGrid[x, z] < DAMAGED_THRESHOLD)
-                            blockColor = COLOR_CRITICAL;
-                        else if (integrityGrid[x, z] < HEALTHY_THRESHOLD)
-                            blockColor = COLOR_DAMAGED;
-                        else
-                            blockColor = COLOR_HEALTHY;
-
-                        Vector2 drawPos = boxTopLeft + new Vector2(localX * cellSize, localZ * cellSize);
-
-                        cachedSprites.Add(new MySprite()
-                        {
-                            Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
-                            Position = drawPos + new Vector2(cellSize / 2f, cellSize / 2f),
-                            Size = new Vector2(cellSize * 5f, cellSize * 2f),
-                            Color = blockColor,
-                            Alignment = TextAlignment.CENTER
+                            Type = SpriteType.TEXTURE, Data = "SquareSimple",
+                            Position = dp, Size = new Vector2(cs * 5f, cs * 2f),
+                            Color = c, Alignment = TextAlignment.CENTER
                         });
                     }
                 }
             }
 
-            private static void DrawFuelBar(MySpriteDrawFrame frame, RectangleF renderArea, List<IMyGasTank> tanks)
+            static void DrawMslPips(MySpriteDrawFrame f, List<IMyShipMergeBlock> bays)
             {
-                if (tanks == null || tanks.Count == 0) return;
-
-                double totalCapacity = 0;
-                double totalFilled = 0;
-                foreach (var tank in tanks)
+                if (bays == null || bays.Count == 0) return;
+                Txt(f, "MSL", 12f, 8f, 0.35f, C_DIM, TextAlignment.LEFT);
+                for (int i = 0; i < bays.Count; i++)
                 {
-                    if (tank.BlockDefinition.SubtypeId.Contains("Hydrogen"))
-                    {
-                        totalCapacity += tank.Capacity;
-                        totalFilled += tank.Capacity * tank.FilledRatio;
-                    }
-                }
-
-                if (totalCapacity <= 0) return;
-
-                double fuelPercent = totalFilled / totalCapacity;
-
-                // Fuel bar layout - left edge, vertically centered but shorter to stay visible
-                float barWidth = 14f;
-                float barHeight = renderArea.Height * 0.50f;
-                float barX = 20f;
-                float barTopY = (renderArea.Height - barHeight) / 2f - 10f;
-
-                // Pick color based on fuel level
-                Color fuelColor;
-                if (fuelPercent < BINGO_FUEL_PERCENT)
-                    fuelColor = Color.Red;
-                else if (fuelPercent < LOW_FUEL_PERCENT)
-                    fuelColor = Color.Yellow;
-                else
-                    fuelColor = Color.Lime;
-
-                // Border outline
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(barX + barWidth / 2f, barTopY + barHeight / 2f),
-                    Size = new Vector2(barWidth + 2f, barHeight + 2f),
-                    Color = new Color(50, 80, 50),
-                    Alignment = TextAlignment.CENTER
-                });
-
-                // Background (empty portion)
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
-                    Position = new Vector2(barX + barWidth / 2f, barTopY + barHeight / 2f),
-                    Size = new Vector2(barWidth, barHeight),
-                    Color = new Color(20, 20, 20),
-                    Alignment = TextAlignment.CENTER
-                });
-
-                // Filled portion (from bottom up)
-                float fillHeight = barHeight * (float)fuelPercent;
-                if (fillHeight > 1f)
-                {
-                    float fillTopY = barTopY + barHeight - fillHeight;
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
-                        Position = new Vector2(barX + barWidth / 2f, fillTopY + fillHeight / 2f),
-                        Size = new Vector2(barWidth, fillHeight),
-                        Color = fuelColor,
-                        Alignment = TextAlignment.CENTER
-                    });
-                }
-
-                // Percentage text above bar
-                string pctText = $"{fuelPercent * 100:F0}%";
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = pctText,
-                    Position = new Vector2(barX + barWidth / 2f, barTopY - 18f),
-                    RotationOrScale = 0.5f,
-                    Color = fuelColor,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                });
-
-                // FUEL / BINGO label below bar
-                string statusText = fuelPercent < BINGO_FUEL_PERCENT ? "BINGO" : "FUEL";
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = statusText,
-                    Position = new Vector2(barX + barWidth / 2f, barTopY + barHeight + 4f),
-                    RotationOrScale = 0.4f,
-                    Color = fuelColor,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                });
-
-                // Time remaining estimate
-                if (fuelPercent > 0.01)
-                {
-                    double timeRemaining = (totalFilled / totalCapacity) * 600;
-                    int minutes = (int)(timeRemaining / 60);
-                    int seconds = (int)(timeRemaining % 60);
-                    string timeText = $"{minutes:D2}:{seconds:D2}";
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = timeText,
-                        Position = new Vector2(barX + barWidth / 2f, barTopY + barHeight + 22f),
-                        RotationOrScale = 0.35f,
-                        Color = new Color(150, 150, 150),
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
-                    });
+                    float px = 12f + i * 18f, py = 26f;
+                    bool rdy = bays[i] != null && bays[i].IsConnected;
+                    Box(f, px + 7f, py + 7f, 14f, 14f, rdy ? Color.Lime : new Color(51, 51, 51));
+                    if (rdy) Box(f, px + 7f, py + 7f, 10f, 10f, new Color(20, 100, 20));
                 }
             }
 
-            private static void DrawBlockSummary(MySpriteDrawFrame frame, RectangleF renderArea)
+            static void DrawBlockCount(MySpriteDrawFrame f, RectangleF area)
             {
-                if (gridBlocks.Count == 0 && originalBlockCount == 0) return;
+                int cur = gridBlocks.Count, orig = originalBlockCount > 0 ? originalBlockCount : cur;
+                Color c = cur >= orig ? new Color(100, 100, 100) : cur > orig * 0.7 ? C_DMG : C_CRIT;
+                Txt(f, $"{cur}/{orig}", area.Width / 2f, 6f, 0.45f, c);
+            }
 
-                int current = gridBlocks.Count;
-                int original = originalBlockCount > 0 ? originalBlockCount : current;
-                string summaryText = $"BLK: {current}/{original}";
-
-                Color summaryColor;
-                if (current >= original)
-                    summaryColor = new Color(150, 150, 150);
-                else if (current > original * 0.7)
-                    summaryColor = Color.Yellow;
-                else
-                    summaryColor = Color.Red;
-
-                frame.Add(new MySprite()
+            static void DrawFlightData(MySpriteDrawFrame f, RectangleF area, HUDModule hud, Jet jet)
+            {
+                float rx = area.Width - 6f, y = 8f, lh = 18f;
+                if (hud != null)
                 {
-                    Type = SpriteType.TEXT,
-                    Data = summaryText,
-                    Position = new Vector2(renderArea.Width / 2f + renderArea.Width * 0.08f, renderArea.Height - 25f),
-                    RotationOrScale = 0.45f,
-                    Color = summaryColor,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
-                });
+                    FVal(f, rx, y, "SPD", $"{hud.smoothedVelocity:F0} kph", C_VAL);
+                    FVal(f, rx, y + lh, "ALT", $"{hud.smoothedAltitude:F0} m", hud.smoothedAltitude < 200 ? C_CRIT : C_VAL);
+                    double aoa = hud.smoothedAoA;
+                    FVal(f, rx, y + lh * 2, "AoA", $"{aoa:F1}\u00B0", Math.Abs(aoa) > 15 ? C_CRIT : Math.Abs(aoa) > 10 ? C_DMG : C_VAL);
+                    FVal(f, rx, y + lh * 3, "MCH", $"{hud.mach:F2}", C_VAL);
+                    FVal(f, rx, y + lh * 4, "THR", $"{hud.smoothedThrottle:F0}%", hud.smoothedThrottle < 20 ? C_CRIT : Color.Lime);
+                }
+
+                // GUN
+                float gy = y + lh * 5 + 4f;
+                int ammo = jet.GetTotalGunAmmo();
+                Color gc = ammo <= 0 ? C_CRIT : ammo < 500 ? C_DMG : Color.Lime;
+                Txt(f, "GUN", rx - 100f, gy, 0.35f, C_DIM, TextAlignment.LEFT);
+                float bx = rx - 60f;
+                Box(f, bx + 20f, gy + 6f, 40f, 8f, new Color(26, 26, 26));
+                float pct = Math.Min(ammo / 2400f, 1f);
+                if (pct > 0.01f) Box(f, bx + 20f * pct, gy + 6f, 40f * pct, 8f, gc);
+                Txt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, TextAlignment.RIGHT);
+            }
+
+            static void FVal(MySpriteDrawFrame f, float rx, float y, string lbl, string val, Color vc)
+            {
+                Txt(f, $"{lbl} {val}", rx, y, 0.45f, vc, TextAlignment.RIGHT);
+            }
+
+            static void DrawFuelBar(MySpriteDrawFrame f, RectangleF area, List<IMyGasTank> tanks)
+            {
+                if (tanks == null || tanks.Count == 0) return;
+                double cap = 0, filled = 0;
+                foreach (var t in tanks)
+                    if (t.BlockDefinition.SubtypeId.Contains("Hydrogen"))
+                    { cap += t.Capacity; filled += t.Capacity * t.FilledRatio; }
+                if (cap <= 0) return;
+
+                double pct = filled / cap;
+                float bx = 27f, top = 60f, bot = area.Height - 70f, bh = bot - top;
+                Color fc = pct < BINGO_FUEL ? C_CRIT : pct < LOW_FUEL ? C_DMG : Color.Lime;
+
+                Txt(f, $"{pct * 100:F0}%", bx, top - 18f, 0.5f, fc);
+                Box(f, bx, top + bh / 2f, 16f, bh + 2f, new Color(50, 128, 50));
+                Box(f, bx, top + bh / 2f, 14f, bh, C_BG);
+
+                float fh = bh * (float)pct;
+                if (fh > 1f) Box(f, bx, top + bh - fh / 2f, 14f, fh, fc);
+
+                if (pct > 0.01)
+                {
+                    double tr = pct * 600;
+                    Txt(f, $"{(int)(tr / 60):D2}:{(int)(tr % 60):D2}", bx + 11f, top + bh / 2f - 8f, 0.35f, new Color(150, 150, 150), TextAlignment.LEFT);
+                }
+                Txt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, fc);
+            }
+
+            static void DrawGMeter(MySpriteDrawFrame f, RectangleF area, HUDModule hud)
+            {
+                if (hud == null) return;
+                float mx = area.Width - 20f, top = 145f, bh = 100f, cy = top + bh / 2f;
+                double g = hud.smoothedGForces, pk = hud.peakGForce;
+
+                Txt(f, "+9", mx, top - 16f, 0.35f, C_DIM);
+                Box(f, mx, cy, 14f, bh + 2f, new Color(51, 51, 51));
+                Box(f, mx, cy, 12f, bh, new Color(10, 10, 10));
+                Box(f, mx, cy, 12f, 1f, new Color(68, 68, 68));
+
+                float half = bh / 2f;
+                float gc = (float)MathHelper.Clamp(g, -3, 9);
+                Color fc = g > 7 ? C_CRIT : g > 5 ? C_DMG : g < -1 ? new Color(102, 136, 255) : Color.Lime;
+
+                if (gc >= 0)
+                {
+                    float fh = half * gc / 9f;
+                    if (fh > 1f) Box(f, mx, cy - fh / 2f, 10f, fh, fc);
+                }
+                else
+                {
+                    float fh = half * Math.Abs(gc) / 3f;
+                    if (fh > 1f) Box(f, mx, cy + fh / 2f, 10f, fh, fc);
+                }
+
+                Txt(f, "-3", mx, top + bh + 2f, 0.35f, C_DIM);
+                Color gvc = Math.Abs(g) > 7 ? C_CRIT : Math.Abs(g) > 5 ? C_DMG : C_VAL;
+                Txt(f, $"{g:F1}G", mx, top + bh + 18f, 0.45f, gvc);
+                Txt(f, $"pk {pk:F1}", mx, top + bh + 36f, 0.3f, C_DIM);
             }
         }
     }

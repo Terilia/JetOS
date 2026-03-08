@@ -191,16 +191,18 @@ namespace IngameScript
                     radarTracker.UpdateTracking(SystemManager.currentTick);
                 }
 
-                if (radarTracker != null)
+                // Always request weapon sound when seeker is on — not gated on radarTracker.
+                // Lock detection uses both local tracker and centralized radar control.
+                bool hasLock = (radarTracker != null && radarTracker.IsTracking) ||
+                               (myJet.radarControl != null && myJet.radarControl.IsTrackLocked);
+
+                if (hasLock)
                 {
-                    if (radarTracker.IsTracking)
-                    {
-                        SoundManager.RequestWeapon("AIM9Lock", SoundManager.PRIORITY_LOCK, 300);
-                    }
-                    else
-                    {
-                        SoundManager.RequestWeapon("AIM9Search", SoundManager.PRIORITY_SEARCH, 300);
-                    }
+                    SoundManager.RequestWeapon("AIM9Lock", SoundManager.PRIORITY_LOCK, 300);
+                }
+                else
+                {
+                    SoundManager.RequestWeapon("AIM9Search", SoundManager.PRIORITY_SEARCH, 300);
                 }
             }
 

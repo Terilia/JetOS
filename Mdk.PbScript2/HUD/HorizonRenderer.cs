@@ -225,8 +225,8 @@ namespace IngameScript
                 float rollRad = (float)(roll * DegToRad);
 
                 Vector2 markerOffset = new Vector2(
-                    (float)(-velocityYaw * pixelsPerDegree),
-                    (float)(velocityPitch * pixelsPerDegree)
+                    (float)(velocityYaw * pixelsPerDegree),
+                    (float)(-velocityPitch * pixelsPerDegree)
                 );
 
                 Vector2 rotatedOffset = SpriteHelpers.RotatePoint(markerOffset, Vector2.Zero, -rollRad);

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; padding: 20px; gap: 24px; }
+
+  .screen {
+    width: 260px;
+    background: #000;
+    font-family: 'Courier New', monospace;
+    padding: 8px;
+    border: 1px solid #333;
+  }
+
+  /* === TITLE === */
+  .title {
+    text-align: center;
+    background: #1e1e1e;
+    color: #c8b432;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 6px 0;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+
+  /* === SELECTED TARGET DETAIL BOX === */
+  .detail-box {
+    border: 1px solid #3c783c;
+    background: #141414b8;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+  }
+
+  /* Row 1: Name bar with track mode badge */
+  .name-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #2a5a2a;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+  }
+  .tgt-name {
+    color: #ff4444;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .track-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid;
+  }
+  .track-badge.stt { color: #44ff44; border-color: #44ff44; }
+  .track-badge.tws { color: #ffff44; border-color: #ffff44; }
+
+  /* Row 2: Big range + closure */
+  .primary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .range-value {
+    color: #44ff44;
+    font-size: 16px;
+    font-weight: bold;
+  }
+  .closure-value {
+    font-size: 13px;
+    font-weight: bold;
+  }
+  .closure-value.hot { color: #ff4444; }
+  .closure-value.cold { color: #6688ff; }
+  .closure-value.neutral { color: #888; }
+
+  /* Row 3: Secondary data grid (2x2) */
+  .data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .data-grid .label { color: #666; }
+  .data-grid .value { color: #aaa; text-align: right; }
+
+  /* Row 4: Source + tracking timeline */
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10px;
+    color: #666;
+    border-top: 1px solid #1e3e1e;
+    padding-top: 4px;
+    margin-top: 4px;
+  }
+
+  /* === TRACKING TIMELINE === */
+  /* 30-second rolling history: each column = 1 second.
+     Green bar (full height) = radar update received that second.
+     Red bar (half height, bottom-aligned) = no update (stale). */
+  .timeline {
+    display: flex;
+    align-items: flex-end;
+    height: 10px;
+    gap: 1px;
+    background: #0a0a0a;
+    padding: 1px;
+    border: 1px solid #1a1a1a;
+  }
+  .timeline .tick {
+    width: 3px;
+    min-width: 2px;
+    flex-shrink: 0;
+  }
+  .timeline .tick.ok {
+    height: 100%;
+    background: #44ff44;
+  }
+  .timeline .tick.stale {
+    height: 50%;
+    background: #ff3333;
+  }
+
+  /* === SEPARATOR === */
+  .separator {
+    height: 1px;
+    background: #3c783c;
+    margin: 6px 16px;
+  }
+
+  /* === ENEMY LIST === */
+  .list-entry {
+    display: flex;
+    align-items: center;
+    padding: 3px 4px;
+    font-size: 11px;
+    gap: 6px;
+  }
+  .list-entry.selected {
+    background: #1e321e;
+  }
+  .list-entry .marker { width: 12px; text-align: center; }
+  .list-entry .marker.sel { color: #44ff44; }
+  .list-entry .marker.unsel { color: #666; }
+  .list-entry .name { flex: 1; color: #aaa; overflow: hidden; white-space: nowrap; }
+  .list-entry.selected .name { color: #44ff44; }
+  .list-entry .range { color: #aaa; font-size: 10px; min-width: 45px; text-align: right; }
+  .list-entry.selected .range { color: #44ff44; }
+
+  /* Timeline in list entries (compact version) */
+  .list-entry .timeline-sm {
+    display: flex;
+    align-items: flex-end;
+    height: 6px;
+    gap: 1px;
+    background: #0a0a0a;
+    padding: 1px;
+  }
+  .list-entry .timeline-sm .tick {
+    width: 2px;
+    min-width: 1px;
+    flex-shrink: 0;
+  }
+  .list-entry .timeline-sm .tick.ok {
+    height: 100%;
+    background: #44ff44;
+  }
+  .list-entry .timeline-sm .tick.stale {
+    height: 50%;
+    background: #ff3333;
+  }
+
+  /* === NO TARGET STATE === */
+  .no-tgt {
+    text-align: center;
+    color: #444;
+    font-size: 18px;
+    padding: 30px 0;
+    letter-spacing: 4px;
+  }
+
+  .screen-label {
+    text-align: center;
+    color: #555;
+    font-family: sans-serif;
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- GOOD TRACK: solid green timeline -->
+<div>
+<div class="screen-label">Solid track</div>
+<div class="screen">
+  <div class="title">TARGET LIST</div>
+
+  <div class="detail-box">
+    <div class="name-row">
+      <span class="tgt-name">NPC-ACS</span>
+      <span class="track-badge stt">STT</span>
+    </div>
+
+    <div class="primary-row">
+      <span class="range-value">5.17 km</span>
+      <span class="closure-value hot">142 HOT</span>
+    </div>
+
+    <div class="data-grid">
+      <span class="label">BRG</span>  <span class="value">111&deg;</span>
+      <span class="label">SPD</span>  <span class="value">98 m/s</span>
+    </div>
+
+    <div class="meta-row">
+      <span>RDR</span>
+      <!-- 30 ticks, all green = solid track for 30 seconds -->
+      <div class="timeline">
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Contact list with compact timelines -->
+  <div class="list-entry selected">
+    <span class="marker sel">&#x25C9;</span>
+    <span class="name">NPC-ACS</span>
+    <span class="range">5.2km</span>
+    <div class="timeline-sm">
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+    </div>
+  </div>
+  <div class="list-entry">
+    <span class="marker unsel">&#x25CB;</span>
+    <span class="name">P BANDIT-02</span>
+    <span class="range">12.4km</span>
+    <div class="timeline-sm">
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick stale"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+    </div>
+  </div>
+  <div class="list-entry">
+    <span class="marker unsel">&#x25CB;</span>
+    <span class="name">UNKNOWN</span>
+    <span class="range">890m</span>
+    <div class="timeline-sm">
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- INTERMITTENT TRACK: mixed green/red timeline -->
+<div>
+<div class="screen-label">Intermittent track</div>
+<div class="screen">
+  <div class="title">TARGET LIST</div>
+
+  <div class="detail-box">
+    <div class="name-row">
+      <span class="tgt-name">NPC-ACS</span>
+      <span class="track-badge tws">TWS</span>
+    </div>
+
+    <div class="primary-row">
+      <span class="range-value">5.17 km</span>
+      <span class="closure-value cold">85 COLD</span>
+    </div>
+
+    <div class="data-grid">
+      <span class="label">BRG</span>  <span class="value">244&deg;</span>
+      <span class="label">SPD</span>  <span class="value">62 m/s</span>
+    </div>
+
+    <div class="meta-row">
+      <span>RWR</span>
+      <!-- Intermittent: mostly green with some red gaps -->
+      <div class="timeline">
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick stale"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="list-entry selected">
+    <span class="marker sel">&#x25C9;</span>
+    <span class="name">NPC-ACS</span>
+    <span class="range">5.2km</span>
+    <div class="timeline-sm">
+      <div class="tick ok"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick stale"></div><div class="tick ok"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick stale"></div>
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- LOST TRACK: mostly red -->
+<div>
+<div class="screen-label">Lost track (stale)</div>
+<div class="screen">
+  <div class="title">TARGET LIST</div>
+
+  <div class="detail-box">
+    <div class="name-row">
+      <span class="tgt-name">BANDIT-02</span>
+      <span class="track-badge tws">TWS</span>
+    </div>
+
+    <div class="primary-row">
+      <span class="range-value" style="color:#886;">~8.3 km</span>
+      <span class="closure-value neutral">-- ---</span>
+    </div>
+
+    <div class="data-grid">
+      <span class="label">BRG</span>  <span class="value" style="color:#664;">~030&deg;</span>
+      <span class="label">SPD</span>  <span class="value" style="color:#664;">-- m/s</span>
+    </div>
+
+    <div class="meta-row">
+      <span>RDR</span>
+      <!-- Lost: was green, then all red -->
+      <div class="timeline">
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+        <div class="tick ok"></div><div class="tick ok"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+        <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="list-entry selected">
+    <span class="marker sel">&#x25C9;</span>
+    <span class="name">BANDIT-02</span>
+    <span class="range">~8.3km</span>
+    <div class="timeline-sm">
+      <div class="tick ok"></div><div class="tick ok"></div><div class="tick ok"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+      <div class="tick stale"></div><div class="tick stale"></div><div class="tick stale"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+</body>
+</html>

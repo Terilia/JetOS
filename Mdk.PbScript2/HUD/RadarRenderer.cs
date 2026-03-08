@@ -70,7 +70,9 @@ namespace IngameScript
                 yawForward = Vector3D.Normalize(yawForward);
 
                 // Yaw-right perpendicular to yaw-forward on the horizontal plane
-                Vector3D yawRight = Vector3D.Cross(worldUp, yawForward);
+                // Cross(forward, up) = right in SE's coordinate system.
+                // Cross(up, forward) would give LEFT (inverted radar).
+                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp);
                 if (yawRight.LengthSquared() < 0.01)
                     yawRight = cockpit.WorldMatrix.Right;
                 else

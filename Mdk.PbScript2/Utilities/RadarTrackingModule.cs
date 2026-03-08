@@ -113,7 +113,7 @@ namespace IngameScript
             }
 
             /// <summary>
-            /// Gets the most recent velocity vector.
+            /// Gets the most recent velocity vector in m/s.
             /// </summary>
             public Vector3D TargetVelocity
             {
@@ -130,8 +130,11 @@ namespace IngameScript
                     double dt = time0 - time1;
                     if (dt <= 0) return Vector3D.Zero;
 
-                    //Returns
-                    return (pos0 - pos1) / (double)dt;
+                    // Timestamps are in TimeSpan ticks (10,000,000 per second), convert to seconds
+                    double dtSeconds = dt / 10000000.0;
+
+                    //Returns velocity in m/s
+                    return (pos0 - pos1) / dtSeconds;
                 }
             }
 
@@ -157,14 +160,14 @@ namespace IngameScript
                     Vector3D lastPosition = p0.Position;
                     double lastTime = p0.Timestamp;
 
-                    //Gets V and A
+                    //Gets V in m/s
                     Vector3D velocity = TargetVelocity;
 
-                    //Timestep
-                    double dt = (double)(CurrentTime - lastTime);
+                    //Timestep — convert TimeSpan ticks to seconds
+                    double dtSeconds = (double)(CurrentTime - lastTime) / 10000000.0;
 
-                    //S1 = S0 + UT + 0.5AT^2 (simple suvat equation)
-                    return lastPosition + velocity * dt; //found is more stable withoput acceleration term, as its 1.6s of error
+                    //S1 = S0 + UT (simple suvat equation)
+                    return lastPosition + velocity * dtSeconds;
                 }
             }
 
@@ -198,13 +201,21 @@ namespace IngameScript
             {
                 get
                 {
-                    //this is
                     string detailedInfo = L_CombatBLock.DetailedInfo;
-
-                    // Split by new lines
                     var lines = detailedInfo.Split('\n');
+                    string firstLine = lines[0];
 
-                    return lines[0];
+                    // SE format: "Status: Attacking (TargetName)" — extract name from parentheses
+                    int openParen = firstLine.IndexOf('(');
+                    if (openParen >= 0)
+                    {
+                        int closeParen = firstLine.IndexOf(')', openParen);
+                        if (closeParen > openParen)
+                            return firstLine.Substring(openParen + 1, closeParen - openParen - 1);
+                        return firstLine.Substring(openParen + 1).Trim();
+                    }
+
+                    return firstLine;
                 }
             }
 

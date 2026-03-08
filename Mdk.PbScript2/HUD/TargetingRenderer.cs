@@ -363,7 +363,8 @@ namespace IngameScript
                 };
                 frame.Add(rangeSprite);
 
-                string closureText = $"Vc:{closureRate:+0;-0}";
+                string closureLabel = closureRate < -10 ? "HOT" : closureRate > 10 ? "COLD" : "---";
+                string closureText = $"Vc:{Math.Abs(closureRate):F0} {closureLabel}";
                 var closureSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,

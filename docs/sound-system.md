@@ -53,19 +53,21 @@ Each tick, modules call `RequestWarning()` or `RequestWeapon()`. Only the highes
 
 ---
 
-## 3-Tick State Machine
+## State Machine with Frame Delay
 
-Space Engineers allows only 1 sound API action per tick. Changing a sound requires 3 sequential ticks:
+Space Engineers allows only 1 sound API action per tick. Additionally, SE calls `Main()` twice per simulation tick on toolbar button presses (Trigger + Update1). Both calls increment `currentTick` and process fully, which can put two block operations in the same sim tick — causing SE to discard one.
+
+The state machine uses a **3-frame delay** between each state transition. This guarantees every block operation lands in a different simulation tick regardless of double-call behavior.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
 
-    Idle --> Stopping: Sound change needed
-    Stopping --> Selecting: Next tick
-    Selecting --> Playing: Next tick (sound pending)
-    Selecting --> Idle: Next tick (no sound)
-    Playing --> Idle: Next tick
+    Idle --> Stopping: Sound change needed\n(+ 3 frame delay)
+    Stopping --> Selecting: After delay\n(+ 3 frame delay)
+    Selecting --> Playing: After delay\n(+ 3 frame delay)
+    Selecting --> Idle: No sound pending
+    Playing --> Idle: Done
 
     state Idle {
         [*]: Check if requested sound != active sound
@@ -81,9 +83,13 @@ stateDiagram-v2
     }
 ```
 
-### Optimization
+### Why 3 frames?
 
-When in Idle and a change is detected, `Stop()` executes immediately on the same tick (not deferred to next tick). This saves 1 tick compared to a pure 4-state machine — total change time is 3 ticks (~50ms).
+With double `Main()` calls per sim tick, 3 frames = minimum 2 sim ticks between operations. This ensures SE has fully applied each block change before the next one arrives. Total time from detection to playback is ~12 `Main()` calls (~6 sim ticks worst case), which is under 0.1 seconds at 60fps.
+
+### PrepChannel at init
+
+`SoundManager.Initialize()` calls `PrepChannel()` on both channels, which stops all blocks, enables them, clears `SelectedSound`, and sets volume. This puts blocks in a known clean state so the first `Play()` works reliably after script compilation.
 
 ---
 

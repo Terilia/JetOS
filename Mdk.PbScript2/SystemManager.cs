@@ -175,9 +175,6 @@ namespace IngameScript
                     }
                 }
 
-                // Run unified sound system
-                SoundManager.Tick(currentTick);
-
                 if (currentTick == lastHandledSpecialTick)
                     return;
                 lastHandledSpecialTick = currentTick;
@@ -218,6 +215,12 @@ namespace IngameScript
                 }
 
                 HandleSpecialFunctionInputs(argument);
+
+                // Process sound AFTER all modules have made their requests.
+                // Previously this ran before module Tick() calls, which meant
+                // RadarControlModule and AirtoAir sound requests were delayed
+                // by one tick (they'd be processed next tick instead of this one).
+                SoundManager.Tick(currentTick);
 
                 // FPS tracking
                 if (lastTimeTicks == 0)
@@ -265,7 +268,7 @@ namespace IngameScript
                 uiController.RenderCustomExtraFrame(
                     (frame, renderArea) =>
                     {
-                        GridVisualization.Render(frame, renderArea, parentProgram, _myJet, radarControlModule);
+                        GridVisualization.Render(frame, renderArea, parentProgram, _myJet, radarControlModule, hudProgram);
                     },
                     area
                 );
