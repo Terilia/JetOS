@@ -509,25 +509,52 @@ function DrawResourceCard(x, y, w, h, title, pct, timeStr) {
 
 // ═══════════════════════════════════════════════════════════════
 // Main render + throttle simulation
+// 20-second choreography at 60fps = 1200 ticks total
+//   0-3s   (0-180):   Idle, slowly ramp up to MIL
+//   3-5s   (180-300):  Hold MIL
+//   5-8s   (300-480):  MIL maneuver: sway left then right
+//   8-9s   (480-540):  Ramp MIL to AB
+//   9-11s  (540-660):  Hold AB
+//   11-14s (660-840):  AB maneuver: sway left then right
+//   14-17s (840-1020): Ramp down AB to normal
+//   17-20s (1020-1200): Coast down to idle
 // ═══════════════════════════════════════════════════════════════
-const PHASE_DURATIONS = [240, 120, 60, 180, 120, 180]; // ticks per phase
-let phaseTick = 0;
+const TOTAL_TICKS = 1200; // 20s * 60fps
+
+function easeInOut(t) { return t * t * (3 - 2 * t); }
 
 function updateThrottle() {
-  phaseTick++;
-  if (phaseTick > PHASE_DURATIONS[phase]) {
-    phaseTick = 0;
-    phase = (phase + 1) % 6;
-  }
-  const t = phaseTick / PHASE_DURATIONS[phase];
+  const frame = tick % TOTAL_TICKS;
+  let targetYaw = 0;
 
-  switch (phase) {
-    case 0: thrControl = lerp(0, 0.8, t); break;          // idle → MIL
-    case 1: thrControl = 0.8; break;                       // hold MIL
-    case 2: thrControl = lerp(0.8, 1.0, t); break;        // MIL → AB
-    case 3: thrControl = 1.0; break;                       // hold AB
-    case 4: thrControl = lerp(1.0, 0, t); break;           // AB → idle
-    case 5: thrControl = 0; break;                          // hold idle
+  if (frame < 180) {
+    // 0-3s: ramp idle to MIL
+    thrControl = lerp(0, 0.8, easeInOut(frame / 180));
+  } else if (frame < 300) {
+    // 3-5s: hold MIL
+    thrControl = 0.8;
+  } else if (frame < 480) {
+    // 5-8s: MIL maneuver — sway left, center, right, center
+    thrControl = 0.8;
+    const mt = (frame - 300) / 180; // 0..1
+    targetYaw = Math.sin(mt * Math.PI * 2) * 10; // full left-right-left cycle
+  } else if (frame < 540) {
+    // 8-9s: ramp MIL to AB
+    thrControl = lerp(0.8, 1.0, easeInOut((frame - 480) / 60));
+  } else if (frame < 660) {
+    // 9-11s: hold AB
+    thrControl = 1.0;
+  } else if (frame < 840) {
+    // 11-14s: AB maneuver — sway left, center, right, center
+    thrControl = 1.0;
+    const mt = (frame - 660) / 180;
+    targetYaw = Math.sin(mt * Math.PI * 2) * 12; // wider sway at AB
+  } else if (frame < 1020) {
+    // 14-17s: ramp down AB to normal
+    thrControl = lerp(1.0, 0.3, easeInOut((frame - 840) / 180));
+  } else {
+    // 17-20s: coast down to idle
+    thrControl = lerp(0.3, 0, easeInOut((frame - 1020) / 180));
   }
 
   abActive = thrControl > 0.8;
@@ -541,9 +568,11 @@ function updateThrottle() {
   }
   lastAbState = abActive;
 
-  // Smoothed velocity correlates with thrust
+  // Smoothed velocity and drift (EMA matching C#)
   const targetVel = thrControl * 100;
   smoothedVel = smoothedVel * 0.95 + targetVel * 0.05;
+  smoothedYawDrift = smoothedYawDrift * 0.85 + targetYaw * 0.15;
+  smoothedYawDrift = Math.max(-12, Math.min(12, smoothedYawDrift));
 }
 
 function draw() {
@@ -583,9 +612,12 @@ function draw() {
   // Battery (simulated)
   DrawResourceCard(x, y, w, resH, "BATTERY", 0.85, "02:34");
 
-  requestAnimationFrame(draw);
+  if (!window.__captureMode) requestAnimationFrame(draw);
 }
 
-requestAnimationFrame(draw);
+// Normal mode: run via rAF. Capture mode: call window.stepFrame() from puppeteer.
+if (!window.__captureMode) requestAnimationFrame(draw);
+window.stepFrame = function() { draw(); };
+window.setCaptureMode = function() { window.__captureMode = true; };
 </script>
 </body></html>

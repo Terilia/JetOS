@@ -427,24 +427,28 @@ function DrawResourceCard(x, y, w, h, title, pct, timeStr) {
 // ═══════════════════════════════════════════════════════════════
 // Throttle simulation + main loop
 // ═══════════════════════════════════════════════════════════════
-var PHASE_DURATIONS = [240, 120, 60, 180, 120, 180];
+var TOTAL_TICKS = 1200;
+function easeInOut(t) { return t * t * (3 - 2 * t); }
 
 function updateThrottle() {
-  phaseTick++;
-  if (phaseTick > PHASE_DURATIONS[phase]) { phaseTick = 0; phase = (phase + 1) % 6; }
-  var t = phaseTick / PHASE_DURATIONS[phase];
-  switch (phase) {
-    case 0: thrControl = lerp(0, 0.8, t); break;
-    case 1: thrControl = 0.8; break;
-    case 2: thrControl = lerp(0.8, 1.0, t); break;
-    case 3: thrControl = 1.0; break;
-    case 4: thrControl = lerp(1.0, 0, t); break;
-    case 5: thrControl = 0; break;
-  }
+  var frame = tick % TOTAL_TICKS;
+  var targetYaw = 0;
+
+  if (frame < 180) { thrControl = lerp(0, 0.8, easeInOut(frame / 180)); }
+  else if (frame < 300) { thrControl = 0.8; }
+  else if (frame < 480) { thrControl = 0.8; targetYaw = Math.sin((frame - 300) / 180 * Math.PI * 2) * 10; }
+  else if (frame < 540) { thrControl = lerp(0.8, 1.0, easeInOut((frame - 480) / 60)); }
+  else if (frame < 660) { thrControl = 1.0; }
+  else if (frame < 840) { thrControl = 1.0; targetYaw = Math.sin((frame - 660) / 180 * Math.PI * 2) * 12; }
+  else if (frame < 1020) { thrControl = lerp(1.0, 0.3, easeInOut((frame - 840) / 180)); }
+  else { thrControl = lerp(0.3, 0, easeInOut((frame - 1020) / 180)); }
+
   abActive = thrControl > 0.8;
   if (abActive) { if (!lastAbState) abActiveTicks = 0; abActiveTicks++; } else { abActiveTicks = 0; }
   lastAbState = abActive;
   smoothedVel = smoothedVel * 0.95 + thrControl * 100 * 0.05;
+  smoothedYawDrift = smoothedYawDrift * 0.85 + targetYaw * 0.15;
+  smoothedYawDrift = Math.max(-12, Math.min(12, smoothedYawDrift));
 }
 
 function draw() {
