@@ -6,7 +6,7 @@
 
 JetOS manages a twin-engine configuration with atmospheric thrusters for normal flight and hydrogen thrusters for afterburner boost. Engines are dynamically grouped by grid position relative to the cockpit, enabling per-side thrust balancing and asymmetric damage handling.
 
-**[Open the animated engine schematic](propulsion-animation.svg)** to see the system in action.
+**[Open the animated engine schematic](propulsion-animation.html)** to see the system in action — this is a 1:1 canvas recreation of the in-game `StatusPanelRenderer`, running every drawing call identically to the C# source. The throttle cycles automatically through IDLE → MIL → AB stages.
 
 ---
 
