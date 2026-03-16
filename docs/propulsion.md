@@ -6,9 +6,11 @@
 
 JetOS manages a twin-engine configuration with atmospheric thrusters for normal flight and hydrogen thrusters for afterburner boost. Engines are dynamically grouped by grid position relative to the cockpit, enabling per-side thrust balancing and asymmetric damage handling.
 
-**[Open the animated engine schematic](propulsion-animation.svg)** to see the system in action — a 1:1 recreation of the in-game `StatusPanelRenderer`, running every drawing call identically to the C# source. The throttle cycles automatically through IDLE, MIL, and AB stages. The [HTML version](propulsion-animation.html) also works standalone.
+The animation below is a 1:1 recreation of the in-game `StatusPanelRenderer`, with the throttle cycling through IDLE, MIL, and AB stages.
 
-To embed: `<object data="propulsion-animation.svg" type="image/svg+xml" width="600" height="1200"></object>`
+![Engine Animation](propulsion-animation.webp)
+
+> Interactive versions: [SVG](propulsion-animation.svg) and [HTML](propulsion-animation.html) — open locally in any browser for the live JavaScript-driven animation.
 
 ---
 
@@ -192,9 +194,7 @@ Only tanks whose `Enabled` state actually differs from the target value are touc
 
 The engine animation below is a 1:1 JavaScript port of `StatusPanelRenderer.cs` — every drawing call, color, and formula is identical to the in-game MFD. The throttle cycles automatically through IDLE, NORMAL, MIL, and AB stages.
 
-<object data="propulsion-animation.svg" type="image/svg+xml" width="600" height="1200">
-  <a href="propulsion-animation.svg">Open engine animation</a>
-</object>
+![Engine Animation](propulsion-animation.webp)
 
 > The animation shows: 3D-projected compressor blade discs with depth-sorted rendering, 48 golden-ratio-spaced air particles per engine with hermite smoothstep phasing, multi-tongue exhaust plume with per-stage coloring (blue/MIL white-blue/AB orange-yellow), combustion chamber glow proportional to thrust, and resource cards.
 
