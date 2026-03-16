@@ -1,4 +1,5 @@
 using System;
+using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -20,7 +21,7 @@ namespace IngameScript
                 var line = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
+                    Data = MFDTheme.SQ,
                     Position = position,
                     Size = new Vector2(thickness, length),
                     Color = color,
@@ -32,10 +33,10 @@ namespace IngameScript
 
             public static void DrawRectangleOutline(MySpriteDrawFrame frame, float x, float y, float width, float height, float lineWidth, Color color)
             {
-                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width / 2f, y), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
-                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width / 2f, y + height), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
-                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
-                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = "SquareSimple", Position = new Vector2(x + width, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ, Position = new Vector2(x + width / 2f, y), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ, Position = new Vector2(x + width / 2f, y + height), Size = new Vector2(width, lineWidth), Color = color, Alignment = TextAlignment.CENTER });
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ, Position = new Vector2(x, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
+                frame.Add(new MySprite() { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ, Position = new Vector2(x + width, y + height / 2f), Size = new Vector2(lineWidth, height), Color = color, Alignment = TextAlignment.CENTER });
             }
 
             public static void DrawCircleOutline(MySpriteDrawFrame frame, Vector2 center, float radius, Color color, float thickness)
@@ -61,7 +62,7 @@ namespace IngameScript
                         frame.Add(new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
+                            Data = MFDTheme.SQ,
                             Position = (p1 + p2) / 2f,
                             Size = new Vector2(length + thickness, thickness),
                             RotationOrScale = rotation,
@@ -70,6 +71,34 @@ namespace IngameScript
                         });
                     }
                 }
+            }
+
+            public static string FormatRange(double meters)
+            {
+                return meters >= 1000 ? $"{meters / 1000:F1}km" : $"{meters:F0}m";
+            }
+
+            /// <summary>
+            /// Projects a local-space direction (relative to cockpit) onto 2D screen coordinates
+            /// using FOV perspective projection. The localDirection must already be transformed
+            /// into cockpit-local space (via worldToCockpitMatrix).
+            /// </summary>
+            internal static Vector2 ProjectToScreen(Vector3D localDirection, Vector2 center, Vector2 surfaceSize)
+            {
+                float scale = surfaceSize.Y / HUDModule.COCKPIT_FOV_SCALE_Y;
+                float screenX = center.X + (float)(localDirection.X / -localDirection.Z) * scale;
+                float screenY = center.Y + (float)(-localDirection.Y / -localDirection.Z) * scale;
+                return new Vector2(screenX, screenY);
+            }
+
+            /// <summary>
+            /// Transforms a world-space direction into cockpit-local space and projects to screen.
+            /// Convenience overload that combines TransformNormal + ProjectToScreen.
+            /// </summary>
+            internal static Vector2 WorldToScreen(Vector3D worldDirection, MatrixD worldToCockpitMatrix, Vector2 center, Vector2 surfaceSize)
+            {
+                Vector3D localDirection = Vector3D.TransformNormal(worldDirection, worldToCockpitMatrix);
+                return ProjectToScreen(localDirection, center, surfaceSize);
             }
 
             public static Vector2 RotatePoint(Vector2 point, Vector2 pivot, float angle)

@@ -1,4 +1,5 @@
 using Sandbox.ModAPI.Ingame;
+using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
@@ -28,6 +29,36 @@ namespace IngameScript
                     Index = idx;
                 }
             }
+
+            // ==== Sequential Activation State Machine ====
+            // Pool radars activate one at a time in a chain:
+            //   IDLE → SEARCHING → LOCKED
+            // Only 1 radar is SEARCHING at any time. When it finds a new target
+            // (not already locked by another), it transitions to LOCKED and the
+            // next IDLE radar becomes SEARCHING.
+            private enum RadarRole { IDLE, SEARCHING, LOCKED, RWR }
+
+            private class RadarState
+            {
+                public RadarRole Role;
+                public long TrackedEntityId;
+                public string TrackedName;
+                public int TicksSinceLastSeen;
+                // True once we've called ActivateBehavior_On for this radar at runtime
+                public bool BehaviorActivated;
+                // Cooldown ticks after activation before we start reading data
+                public int ActivationCooldown;
+            }
+
+            private List<RadarState> radarStates = new List<RadarState>();
+
+            // Target priority rotation for diversity in multi-target detection
+            private static readonly string[] TargetPriorityActions = {
+                "SetTargetPriority_Closest",
+                "SetTargetPriority_Largest",
+                "SetTargetPriority_Smallest"
+            };
+            private int nextPriorityIndex = 0;
 
             // ==== RWR (Radar Warning Receiver) Integrated Functionality ====
             private class RWRTrackingState
@@ -66,13 +97,25 @@ namespace IngameScript
             public bool IsThreat { get { return anyThreatDetected; } }
             public List<RWRWarning> activeThreats = new List<RWRWarning>();
 
-            // Track radar correlation: true when radar 1 (track) is following the selected enemy
+            // True when ANY pool radar in LOCKED state matches the selected enemy
             public bool IsTrackLocked { get; private set; }
 
             private string lastConsoleOutput = "";
 
             // Accumulated absolute time for radar tracking (in ticks)
             private long accumulatedTimeTicks = 0;
+
+            // Sequential init: activate RWR radars one per tick first, then start the chain
+            private int initRWRIndex = 0;
+            private bool rwrInitComplete = false;
+            // Once RWR init is done, we activate the first pool radar as SEARCHING
+            private bool poolChainStarted = false;
+
+            // Activation cooldown: after calling ActivateBehavior_On, wait this many ticks
+            // before reading data (SE needs time to process the action)
+            private const int ACTIVATION_COOLDOWN = 10;
+            // Ticks before a LOCKED radar that lost its target reverts to IDLE
+            private const int LOST_TARGET_TIMEOUT = 120;
 
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
@@ -91,24 +134,30 @@ namespace IngameScript
                     if (flightBlock != null && combatBlock != null)
                     {
                         detectedAIPairs.Add(new AIBlockPair(flightBlock, combatBlock, i));
-                        allRadars.Add(new RadarTrackingModule(flightBlock, combatBlock));
+                        var radar = new RadarTrackingModule(flightBlock, combatBlock);
+                        allRadars.Add(radar);
+                        radarStates.Add(new RadarState());
                         rwrStates.Add(new RWRTrackingState());
                     }
                 }
 
-                // Load RWR config from CustomData (using centralized cache)
+                // Load RWR config from CustomData
+                int maxRWR = Math.Max(0, allRadars.Count - 1);
                 string savedCount = SystemManager.GetCustomDataValue("RWRCount");
                 int count;
                 if (!string.IsNullOrEmpty(savedCount) && int.TryParse(savedCount, out count))
                 {
-                    configuredRWRCount = Math.Max(0, Math.Min(count, allRadars.Count));
+                    configuredRWRCount = Math.Max(0, Math.Min(count, maxRWR));
                 }
                 else
                 {
-                    configuredRWRCount = allRadars.Count; // Default: use all
+                    configuredRWRCount = allRadars.Count >= 2 ? 1 : 0;
                 }
 
-                program.Echo($"RadarControl: {allRadars.Count} radars, RWR: {GetActiveRWRCount()}");
+                // Assign initial roles — NO ApplyAction here (unreliable in constructor)
+                ReassignRoles();
+
+                program.Echo($"RadarControl: {allRadars.Count} radars, Pool: {GetSweepTrackPoolSize()}, RWR: {GetActiveRWRCount()}");
             }
 
             public override string[] GetOptions()
@@ -124,6 +173,7 @@ namespace IngameScript
                 // RWR Controls
                 options.Add(string.Format("RWR [{0}]", rwrEnabled ? "ON" : "OFF"));
                 int activeRWR = GetActiveRWRCount();
+                int poolSize = GetSweepTrackPoolSize();
                 options.Add(string.Format("RWR Units + (Current: {0}/{1})", activeRWR, allRadars.Count));
                 options.Add(string.Format("RWR Units - (Current: {0}/{1})", activeRWR, allRadars.Count));
 
@@ -141,15 +191,30 @@ namespace IngameScript
                     }
                 }
 
-                // Summary info
-                int tracking = 0;
+                // Per-radar state display
                 for (int i = 0; i < allRadars.Count; i++)
                 {
-                    if (allRadars[i].IsTracking)
-                        tracking++;
+                    var state = radarStates[i];
+                    string roleStr;
+                    switch (state.Role)
+                    {
+                        case RadarRole.SEARCHING:
+                            roleStr = $"R{i + 1}: SEARCHING";
+                            break;
+                        case RadarRole.LOCKED:
+                            roleStr = $"R{i + 1}: LOCKED [{state.TrackedName}]";
+                            break;
+                        case RadarRole.RWR:
+                            roleStr = $"R{i + 1}: RWR";
+                            break;
+                        default:
+                            roleStr = $"R{i + 1}: IDLE";
+                            break;
+                    }
+                    options.Add(roleStr);
                 }
 
-                options.Add($"Radars Active: {tracking}/{allRadars.Count}");
+                options.Add($"Pool: {poolSize} | RWR: {activeRWR}");
                 options.Add($"Total Contacts: {myJet.enemyList.Count}");
 
                 return options.ToArray();
@@ -177,10 +242,11 @@ namespace IngameScript
                         break;
 
                     case 1: // Increase RWR count
-                        if (configuredRWRCount < allRadars.Count)
+                        if (configuredRWRCount < allRadars.Count - 1)
                         {
                             configuredRWRCount++;
                             SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            ReassignRoles();
                         }
                         break;
 
@@ -189,6 +255,7 @@ namespace IngameScript
                         {
                             configuredRWRCount--;
                             SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            ReassignRoles();
                         }
                         break;
                 }
@@ -196,81 +263,139 @@ namespace IngameScript
 
             public override void Tick()
             {
+                if (allRadars.Count == 0) return;
+
                 // Accumulate absolute time for radar tracking
                 accumulatedTimeTicks += ParentProgram.Runtime.TimeSinceLastRun.Ticks;
 
+                int poolSize = GetSweepTrackPoolSize();
+
+                // UpdateTracking on ALL radars EVERY tick — even during init.
+                // This keeps timestamps current so velocity calculations don't spike
+                // when a radar first starts processing.
+                for (int i = 0; i < allRadars.Count; i++)
+                {
+                    if (allRadars[i] != null)
+                        allRadars[i].UpdateTracking(accumulatedTimeTicks);
+                }
+
+                // ============================================================
+                // PHASE 0: Staggered initialization
+                // First init all RWR radars (1 per tick), then start pool chain
+                // ============================================================
+                if (!rwrInitComplete)
+                {
+                    int rwrCount = GetActiveRWRCount();
+                    if (rwrCount == 0 || initRWRIndex >= rwrCount)
+                    {
+                        rwrInitComplete = true;
+                    }
+                    else
+                    {
+                        int radarIndex = GetRWRRadarIndex(initRWRIndex);
+                        if (radarIndex < allRadars.Count)
+                        {
+                            ActivateRadar(radarIndex, "SetTargetPriority_Closest");
+                        }
+                        initRWRIndex++;
+                        // Don't process pool this tick — let SE digest the RWR activation
+                        goto SkipPool;
+                    }
+                }
+
+                if (!poolChainStarted && rwrInitComplete)
+                {
+                    // Start the chain: activate the first pool radar as SEARCHING
+                    if (poolSize > 0)
+                    {
+                        StartSearching(0);
+                    }
+                    poolChainStarted = true;
+                }
+
+                // ============================================================
+                // PHASE 2: Sequential pool processing
+                // ============================================================
                 IsTrackLocked = false;
+                int searchingIndex = -1;
 
-                // Determine how many radars serve scan/track roles
-                int scanTrackCount = Math.Min(2, allRadars.Count); // 0=scan, 1=track
-
-                // --- Scan & Track radars (indices 0 and 1) ---
-                for (int i = 0; i < scanTrackCount; i++)
+                for (int i = 0; i < poolSize; i++)
                 {
                     var radar = allRadars[i];
+                    var state = radarStates[i];
                     if (radar == null) continue;
 
-                    radar.UpdateTracking(accumulatedTimeTicks);
-
-                    if (radar.IsTracking && radar.HasReceivedPosition)
+                    // Decrement activation cooldown
+                    if (state.ActivationCooldown > 0)
                     {
-                        Vector3D targetPos = radar.TargetPosition;
-                        Vector3D targetVel = radar.TargetVelocity;
-                        string targetName = radar.TrackedObjectName;
+                        state.ActivationCooldown--;
+                        continue; // Skip processing until cooldown expires
+                    }
 
-                        // Guard: skip zero/origin positions (stale default data)
-                        if (targetPos.LengthSquared() < 1.0)
-                            continue;
+                    if (state.Role == RadarRole.SEARCHING)
+                    {
+                        searchingIndex = i;
+                        ProcessSearchingRadar(i, poolSize);
+                    }
+                    else if (state.Role == RadarRole.LOCKED)
+                    {
+                        ProcessLockedRadar(i, poolSize);
+                    }
+                    // IDLE radars do nothing — they wait to be activated
+                }
 
-                        // Both scan (0) and track (1) feed enemyList
-                        myJet.UpdateOrAddEnemy(targetPos, targetVel, targetName, i);
-
-                        // Radar 1 = track: correlate with selected enemy
-                        if (i == 1)
+                // If no radar is currently SEARCHING and there are IDLE radars, start the next one
+                if (searchingIndex == -1 && poolChainStarted)
+                {
+                    // Check if any radar became SEARCHING during processing (from ProcessLockedRadar demoting)
+                    bool hasSearcher = false;
+                    for (int i = 0; i < poolSize; i++)
+                    {
+                        if (radarStates[i].Role == RadarRole.SEARCHING)
                         {
-                            var selected = myJet.GetSelectedEnemy();
-                            if (selected.HasValue)
+                            hasSearcher = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasSearcher)
+                    {
+                        // Find first IDLE radar and start it searching
+                        for (int i = 0; i < poolSize; i++)
+                        {
+                            if (radarStates[i].Role == RadarRole.IDLE)
                             {
-                                // Match by EntityId or Name
-                                if ((selected.Value.EntityId != 0 && selected.Value.EntityId == radar.TrackedEntityId) ||
-                                    (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == targetName))
-                                {
-                                    IsTrackLocked = true;
-                                }
+                                StartSearching(i);
+                                break;
                             }
                         }
                     }
                 }
 
-                // --- RWR radars (indices 2+) — update tracking but don't feed enemyList ---
-                for (int i = scanTrackCount; i < allRadars.Count; i++)
+                // ============================================================
+                // PHASE 3: Compute IsTrackLocked
+                // ============================================================
+                var selected = myJet.GetSelectedEnemy();
+                if (selected.HasValue)
                 {
-                    var radar = allRadars[i];
-                    if (radar != null)
+                    for (int i = 0; i < poolSize; i++)
                     {
-                        radar.UpdateTracking(accumulatedTimeTicks);
-                    }
-                }
+                        var state = radarStates[i];
+                        if (state.Role != RadarRole.LOCKED) continue;
 
-                // If only 1 radar, it does implicit track too
-                if (allRadars.Count == 1 && allRadars[0] != null && allRadars[0].IsTracking && allRadars[0].HasReceivedPosition)
-                {
-                    var selected = myJet.GetSelectedEnemy();
-                    if (selected.HasValue)
-                    {
-                        string trackName = allRadars[0].TrackedObjectName;
-                        if ((selected.Value.EntityId != 0 && selected.Value.EntityId == allRadars[0].TrackedEntityId) ||
-                            (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == trackName))
+                        if ((selected.Value.EntityId != 0 && selected.Value.EntityId == state.TrackedEntityId) ||
+                            (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == state.TrackedName))
                         {
                             IsTrackLocked = true;
+                            break;
                         }
                     }
                 }
 
-                // Decay old contacts
-                myJet.UpdateEnemyDecay();
-
-                // RWR Threat Detection
+            SkipPool:
+                // ============================================================
+                // PHASE 4: Process RWR pool
+                // ============================================================
                 if (rwrEnabled && rwrStates.Count > 0)
                 {
                     activeThreats.Clear();
@@ -278,7 +403,7 @@ namespace IngameScript
 
                     Vector3D playerPos = myJet._cockpit.GetPosition();
                     Vector3D playerVel = myJet._cockpit.GetShipVelocities().LinearVelocity;
-                    Vector3D gravity = myJet._cockpit.GetNaturalGravity();
+                    Vector3D gravity = myJet.CachedGravity;
 
                     int rwrCount = GetActiveRWRCount();
                     for (int i = 0; i < rwrCount; i++)
@@ -286,12 +411,238 @@ namespace IngameScript
                         ProcessRWR(i, playerPos, playerVel, gravity);
                     }
 
-                    // Manage warning sounds
                     ManageWarningSounds();
-
-                    // Update console output (only when state changes)
                     UpdateConsoleOutput();
                 }
+
+                // ============================================================
+                // PHASE 5: Decay old contacts
+                // ============================================================
+                myJet.UpdateEnemyDecay();
+
+            }
+
+            // ============================================================
+            // Sequential chain: Process a SEARCHING radar
+            // ============================================================
+            private void ProcessSearchingRadar(int index, int poolSize)
+            {
+                var radar = allRadars[index];
+                var state = radarStates[index];
+
+                if (!radar.IsTracking || !radar.HasReceivedPosition)
+                    return; // Still scanning, nothing found yet
+
+                Vector3D targetPos = radar.TargetPosition;
+                if (targetPos.LengthSquared() < 1.0)
+                    return; // Stale/zero position
+
+                long entityId = radar.TrackedEntityId;
+                string targetName = radar.TrackedObjectName;
+
+                // Check if this target is already LOCKED by another radar
+                bool alreadyLocked = IsEntityLockedByAnother(entityId, targetName, index, poolSize);
+
+                // Always feed enemy list — even for already-locked targets,
+                // the SEARCHING radar is a valid data source
+                string feedName = !string.IsNullOrEmpty(targetName) ? targetName : "";
+                myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
+
+                if (!alreadyLocked)
+                {
+                    // NEW target found! Lock onto it
+                    state.Role = RadarRole.LOCKED;
+                    state.TrackedEntityId = entityId;
+                    state.TrackedName = feedName;
+                    state.TicksSinceLastSeen = 0;
+
+                    // Activate next IDLE radar as SEARCHING
+                    ActivateNextSearcher(index, poolSize);
+                }
+                // If already locked by another, stay SEARCHING — SE will naturally
+                // cycle to a different target via UpdateTargetInterval
+            }
+
+            // ============================================================
+            // Sequential chain: Process a LOCKED radar
+            // ============================================================
+            private void ProcessLockedRadar(int index, int poolSize)
+            {
+                var radar = allRadars[index];
+                var state = radarStates[index];
+
+                if (radar.IsTracking && radar.HasReceivedPosition)
+                {
+                    Vector3D targetPos = radar.TargetPosition;
+                    if (targetPos.LengthSquared() < 1.0)
+                    {
+                        // Position is zero/stale
+                        state.TicksSinceLastSeen++;
+                        if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                        {
+                            DemoteToIdle(index);
+                        }
+                        return;
+                    }
+
+                    long entityId = radar.TrackedEntityId;
+                    string targetName = radar.TrackedObjectName;
+                    string feedName = !string.IsNullOrEmpty(targetName) ? targetName : state.TrackedName;
+
+                    if (entityId == state.TrackedEntityId)
+                    {
+                        // Same target — feed and reset
+                        myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
+                        state.TicksSinceLastSeen = 0;
+                        if (!string.IsNullOrEmpty(targetName))
+                            state.TrackedName = targetName;
+                    }
+                    else
+                    {
+                        // SE switched to a different target
+                        string newTargetName = !string.IsNullOrEmpty(targetName) ? targetName : "";
+
+                        if (!IsEntityLockedByAnother(entityId, newTargetName, index, poolSize))
+                        {
+                            // New target is NOT locked by anyone else — adopt it
+                            myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, newTargetName, index, entityId);
+                            state.TrackedEntityId = entityId;
+                            state.TrackedName = newTargetName;
+                            state.TicksSinceLastSeen = 0;
+                        }
+                        else
+                        {
+                            // Already locked by another — stay LOCKED, feed data, wait for SE to cycle back
+                            myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, newTargetName, index, entityId);
+                            state.TicksSinceLastSeen++;
+                            if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                            {
+                                DemoteToIdle(index);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Lost tracking
+                    state.TicksSinceLastSeen++;
+                    if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                    {
+                        DemoteToIdle(index);
+                    }
+                }
+            }
+
+            // ============================================================
+            // Activate a radar — SE ENGINE REQUIREMENT:
+            // The flight+combat block pair MUST be configured in this exact
+            // sequence, in a single tick. Splitting properties and behavior
+            // activation across ticks causes SE to disable the behavior.
+            // This matches the proven pattern from Rdav's Guided Missile Script.
+            // DO NOT reorder, split, or "optimize" this sequence.
+            //
+            // Order: Flight properties → flight ActivateBehavior_On →
+            //        Combat properties → combat ActivateBehavior_On →
+            //        SetTargetingGroup → SetTargetPriority
+            // ============================================================
+            private void ActivateRadar(int index, string priorityAction)
+            {
+                var radar = allRadars[index];
+                var state = radarStates[index];
+
+                if (!state.BehaviorActivated)
+                {
+                    // Flight block: keep disabled, do NOT activate behavior.
+                    // The combat block pushes waypoints to the flight block's internal
+                    // list via AiBlockSystem events regardless of flight block activation.
+                    // NOT activating prevents the autopilot's stuck detection from clearing
+                    // waypoints (the ship isn't flying, so stuck detection would fire).
+                    radar.L_FlightBlock.Enabled = false;
+                    radar.L_FlightBlock.CollisionAvoidance = false;
+
+                    // Combat block: activate behavior — this is the only block that needs it
+                    radar.L_CombatBLock.Enabled = true;
+                    radar.L_CombatBLock.UpdateTargetInterval = 5; // SE clamps to [5,60]
+                    radar.L_CombatBLock.SearchEnemyComponent.TargetingLockOptions = VRage.Game.ModAPI.Ingame.MyGridTargetingRelationFiltering.Enemy;
+                    radar.L_CombatBLock.SelectedAttackPattern = 3;
+                    radar.L_CombatBLock.SetValue<long>("OffensiveCombatIntercept_GuidanceType", 0);
+                    radar.L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true);
+                    radar.L_CombatBLock.ApplyAction("ActivateBehavior_On");
+                    radar.L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
+
+                    state.BehaviorActivated = true;
+                    state.ActivationCooldown = ACTIVATION_COOLDOWN;
+                }
+
+                // Always apply priority — safe anytime, doesn't toggle behavior
+                radar.L_CombatBLock.ApplyAction(priorityAction);
+            }
+
+            // ============================================================
+            // Start a radar searching
+            // ============================================================
+            private void StartSearching(int index)
+            {
+                var state = radarStates[index];
+                state.Role = RadarRole.SEARCHING;
+                state.TrackedEntityId = 0;
+                state.TrackedName = "";
+                state.TicksSinceLastSeen = 0;
+
+                // Rotate priority so each searcher looks for different targets
+                string priority = TargetPriorityActions[nextPriorityIndex % TargetPriorityActions.Length];
+                nextPriorityIndex++;
+
+                ActivateRadar(index, priority);
+            }
+
+            // ============================================================
+            // Demote a LOCKED radar back to IDLE (behavior stays on, it just
+            // won't be processed until re-activated as SEARCHING)
+            // ============================================================
+            private void DemoteToIdle(int index)
+            {
+                var state = radarStates[index];
+                state.Role = RadarRole.IDLE;
+                state.TrackedEntityId = 0;
+                state.TrackedName = "";
+                state.TicksSinceLastSeen = 0;
+            }
+
+            // ============================================================
+            // Find and activate the next IDLE radar as SEARCHING
+            // ============================================================
+            private void ActivateNextSearcher(int afterIndex, int poolSize)
+            {
+                // Search from afterIndex+1 wrapping around, find first IDLE
+                for (int offset = 1; offset < poolSize; offset++)
+                {
+                    int candidate = (afterIndex + offset) % poolSize;
+                    if (radarStates[candidate].Role == RadarRole.IDLE)
+                    {
+                        StartSearching(candidate);
+                        return;
+                    }
+                }
+                // No IDLE radars left — all are LOCKED. That's fine.
+            }
+
+            // ============================================================
+            // Check if an entity is already LOCKED by another pool radar
+            // ============================================================
+            private bool IsEntityLockedByAnother(long entityId, string name, int excludeIndex, int poolSize)
+            {
+                for (int i = 0; i < poolSize; i++)
+                {
+                    if (i == excludeIndex) continue;
+                    if (radarStates[i].Role != RadarRole.LOCKED) continue;
+
+                    if (entityId != 0 && radarStates[i].TrackedEntityId == entityId)
+                        return true;
+                    if (!string.IsNullOrEmpty(name) && radarStates[i].TrackedName == name)
+                        return true;
+                }
+                return false;
             }
 
             public override void HandleSpecialFunction(int key)
@@ -304,49 +655,70 @@ namespace IngameScript
                 return "Radar Control is a status display";
             }
 
-            // Public API for modules to request radars
-            public List<RadarTrackingModule> RequestRadars(int count)
-            {
-                var result = new List<RadarTrackingModule>();
-
-                int available = Math.Min(count, allRadars.Count);
-                for (int i = 0; i < available; i++)
-                {
-                    result.Add(allRadars[i]);
-                }
-
-                return result;
-            }
-
             // Get total count of available radars
             public int GetRadarCount()
             {
                 return allRadars.Count;
             }
 
+            // ==== Pool / RWR Size Helpers ====
+
+            private int GetSweepTrackPoolSize()
+            {
+                return Math.Max(0, allRadars.Count - configuredRWRCount);
+            }
+
+            private void ReassignRoles()
+            {
+                int poolSize = GetSweepTrackPoolSize();
+                for (int i = 0; i < allRadars.Count; i++)
+                {
+                    if (i < poolSize)
+                    {
+                        // Keep LOCKED if already locked, otherwise set to IDLE
+                        if (radarStates[i].Role != RadarRole.LOCKED)
+                        {
+                            radarStates[i].Role = RadarRole.IDLE;
+                            radarStates[i].TrackedEntityId = 0;
+                            radarStates[i].TrackedName = "";
+                            radarStates[i].TicksSinceLastSeen = 0;
+                        }
+                    }
+                    else
+                    {
+                        // RWR — clear any tracking state
+                        radarStates[i].Role = RadarRole.RWR;
+                        radarStates[i].TrackedEntityId = 0;
+                        radarStates[i].TrackedName = "";
+                        radarStates[i].TicksSinceLastSeen = 0;
+                    }
+                }
+                // Reset chain — will re-pick a SEARCHING radar next tick
+                poolChainStarted = false;
+            }
+
             // ==== RWR Helper Methods ====
-            // Use centralized SystemManager for CustomData access
 
             private int GetActiveRWRCount()
             {
-                // RWR radars are index 2+ (after scan and track)
-                int rwrRadarCount = Math.Max(0, allRadars.Count - 2);
-                if (rwrRadarCount == 0)
+                if (configuredRWRCount == 0 && allRadars.Count <= 2)
                 {
-                    // If fewer than 3 radars, piggyback RWR on all radars
-                    rwrRadarCount = allRadars.Count;
+                    return allRadars.Count;
                 }
-                if (configuredRWRCount == 0)
-                    return rwrRadarCount;
-                return Math.Min(configuredRWRCount, rwrRadarCount);
+                return Math.Min(configuredRWRCount, allRadars.Count);
+            }
+
+            private int GetRWRRadarIndex(int rwrIndex)
+            {
+                int poolSize = GetSweepTrackPoolSize();
+                if (configuredRWRCount == 0 && allRadars.Count <= 2)
+                    return rwrIndex;
+                return poolSize + rwrIndex;
             }
 
             private void ProcessRWR(int rwrIndex, Vector3D playerPos, Vector3D playerVel, Vector3D gravity)
             {
-                // Map RWR index to actual radar index
-                // If 3+ radars: RWR uses index 2+ (offset by scan+track)
-                // If fewer than 3: RWR piggybacks on all radars (no offset)
-                int radarIndex = allRadars.Count >= 3 ? rwrIndex + 2 : rwrIndex;
+                int radarIndex = GetRWRRadarIndex(rwrIndex);
 
                 if (radarIndex >= allRadars.Count || rwrIndex >= rwrStates.Count)
                     return;
@@ -362,7 +734,6 @@ namespace IngameScript
                     Vector3D enemyPos = radar.TargetPosition;
                     Vector3D enemyVel = radar.TargetVelocity;
 
-                    // Skip zero/origin positions (stale default data)
                     if (enemyPos.LengthSquared() < 1.0)
                     {
                         if (state.CurrentEnemyName != "")
@@ -432,12 +803,7 @@ namespace IngameScript
                 if (relativeSpeed < 1.0)
                 {
                     if (enemySpeed < 0.5) return false;
-                    Vector3D enemyDirection = enemyVel;
-                    if (enemyDirection.LengthSquared() > 0)
-                        enemyDirection = Vector3D.Normalize(enemyDirection);
-                    Vector3D toPlayer = Vector3D.Normalize(relativePos);
-                    double aspectAngle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(enemyDirection, toPlayer), -1.0, 1.0));
-                    double aspectAngleDeg = MathHelper.ToDegrees(aspectAngle);
+                    double aspectAngleDeg = NavigationHelper.GetAspectAngleDeg(enemyVel, relativePos);
                     return aspectAngleDeg < 30.0;
                 }
 
@@ -455,13 +821,7 @@ namespace IngameScript
 
                 if (closestApproachDistance > 500.0) return false;
 
-                Vector3D enemyDirection2 = enemyVel;
-                if (enemyDirection2.LengthSquared() > 0)
-                    enemyDirection2 = Vector3D.Normalize(enemyDirection2);
-                Vector3D toPlayer2 = Vector3D.Normalize(relativePos);
-                double aspectAngle2 = Math.Acos(MathHelper.Clamp(Vector3D.Dot(enemyDirection2, toPlayer2), -1.0, 1.0));
-                double aspectAngleDeg2 = MathHelper.ToDegrees(aspectAngle2);
-
+                double aspectAngleDeg2 = NavigationHelper.GetAspectAngleDeg(enemyVel, relativePos);
                 if (aspectAngleDeg2 > 90.0) return false;
 
                 return true;
@@ -487,7 +847,8 @@ namespace IngameScript
 
                     sb.Append("R").Append(i + 1).Append(":");
 
-                    if (i < allRadars.Count && allRadars[i].IsTracking)
+                    int radarIndex = GetRWRRadarIndex(i);
+                    if (radarIndex < allRadars.Count && allRadars[radarIndex].IsTracking)
                     {
                         sb.Append("A,T");
 

@@ -364,6 +364,7 @@ FodyWeavers.xsd
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # AI-generated analysis/session notes (not part of source)
 project.md
@@ -372,6 +373,21 @@ FIXES_SUMMARY.md
 Continue.md
 PERFORMANCE_ANALYSIS.md
 TARGETING_ANALYSIS.md
+
+# Internal tooling scripts
+/*.py
+image_display.cs
+
+# SE API analysis reports
+se_api_usage.json
+se_api_usage_report.txt
+se_api_verification.txt
+
+# Test artifacts
+test_*
+
+# Design mockups
+design/
 
 # Windows NUL device artifact
 nul

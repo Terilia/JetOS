@@ -1,5 +1,6 @@
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
+using System.Collections.Generic;
 using VRageMath;
 
 namespace IngameScript
@@ -30,8 +31,6 @@ namespace IngameScript
             //Keeps Record Of The Flight Module
             public IMyFlightMovementBlock L_FlightBlock;
             public IMyOffensiveCombatBlock L_CombatBLock;
-            public bool BoostMode = false;
-
             // Store last two (position, timestamp) entries
             TrackingPoint p1;
             TrackingPoint p0;
@@ -44,6 +43,9 @@ namespace IngameScript
             public int CurrentTick;
             const int ForcedRefreshRate = 40; //this is used to force a position relog on static grids
 
+            // Reusable buffer for GetWaypoints to avoid allocation each tick
+            List<IMyAutopilotWaypoint> _waypointBuffer = new List<IMyAutopilotWaypoint>();
+
             /// <summary>
             /// Constructor, takes flight and combat AI blocks
             /// </summary>
@@ -51,47 +53,31 @@ namespace IngameScript
             /// <param name="LBlockC">The combat block to use</param>
             public RadarTrackingModule(IMyFlightMovementBlock LBlock_F, IMyOffensiveCombatBlock LBlockC)
             {
-                //Sets
                 L_FlightBlock = LBlock_F;
                 L_CombatBLock = LBlockC;
-
-                //AI Move Block Settings Used For Continual Tracking
-                L_FlightBlock.Enabled = false; // Must be DISABLED to prevent autopilot control
-                L_FlightBlock.MinimalAltitude = 10; //possibly could be larger
-                L_FlightBlock.PrecisionMode = false;
-                L_FlightBlock.SpeedLimit = 400;
-                L_FlightBlock.AlignToPGravity = false;
-                L_FlightBlock.CollisionAvoidance = false;
-                L_FlightBlock.ApplyAction("ActivateBehavior_On"); // Behavior ON allows receiving waypoints from Combat Block
-
-                //AI combat block settings
-                L_CombatBLock.Enabled = true;
-                L_CombatBLock.UpdateTargetInterval = 4;
-                L_CombatBLock.SearchEnemyComponent.TargetingLockOptions = VRage.Game.ModAPI.Ingame.MyGridTargetingRelationFiltering.Enemy;
-                L_CombatBLock.SelectedAttackPattern = 3; //Sets To Intercept Mode
-                L_CombatBLock.SetValue<long>("OffensiveCombatIntercept_GuidanceType", 0); // 1 target prediction, 0 basic
-                L_CombatBLock.SetValueBool("OffensiveCombatIntercept_OverrideCollisionAvoidance", true); //Sets To Ignore All Collision Detection
-                L_CombatBLock.ApplyAction("ActivateBehavior_On");
-                L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
-                L_CombatBLock.ApplyAction("SetTargetPriority_Closest");
+                // Property config deferred to RadarControlModule.ActivateRadar()
+                if (LBlock_F != null) { LBlock_F.Enabled = false; LBlock_F.CollisionAvoidance = false; }
             }
 
             /// <summary>
-            /// Call This Before Using Any Of The Properties, Updates Position
+            /// Call This Before Using Any Of The Properties, Updates Position.
+            /// Reads from GetWaypoints() list instead of CurrentWaypoint — the flight
+            /// block's behavior is not activated, so CurrentWaypoint is never set, but
+            /// the combat block still pushes waypoints to the internal list.
             /// </summary>
             public void UpdateTracking(long CurrentPBTime_Ticks)
             {
                 //Updates Time
                 CurrentTime = CurrentPBTime_Ticks;
 
-                // Retrieves the flight block's waypoint
-                IMyAutopilotWaypoint currentWaypoint = L_FlightBlock.CurrentWaypoint;
+                // Read waypoint list — combat block pushes target position here
+                // even though flight block behavior is not activated
+                _waypointBuffer.Clear();
+                L_FlightBlock.GetWaypoints(_waypointBuffer);
 
-                // Null check, or check if block is currently tracking
-                if (currentWaypoint != null)
+                if (_waypointBuffer.Count > 0)
                 {
-                    //NB this can be up to 2 ticks out of date due to the asynch nature of this
-                    Vector3D TargetPosition = currentWaypoint.Matrix.Translation;
+                    Vector3D TargetPosition = _waypointBuffer[0].Matrix.Translation;
 
                     //Need To Use This As Otherwise Gives False Data
                     if (TargetPosition != p0.Position || CurrentTick > ForcedRefreshRate)
@@ -120,9 +106,14 @@ namespace IngameScript
                 get
                 {
                     // Extract position and time from the stored tracking points
-                    Vector3D pos1 = p1.Position;
                     double time1 = p1.Timestamp;
 
+                    // p1 not yet initialized (still at default zero) — no valid velocity yet.
+                    // Without two real position samples, velocity would be
+                    // (realPos - ZeroVector) / time = wildly wrong.
+                    if (time1 <= 0) return Vector3D.Zero;
+
+                    Vector3D pos1 = p1.Position;
                     Vector3D pos0 = p0.Position;
                     double time0 = p0.Timestamp;
 
@@ -146,16 +137,6 @@ namespace IngameScript
                 get
                 {
 
-                    //This Is Emergency Ultra Burn, Use Only In Emergencies As Very Performance Intensive
-                    if (BoostMode)
-                    {
-                        L_CombatBLock.Enabled = false;
-                        L_CombatBLock.Enabled = true;
-                        var CurrentWaypoint = L_FlightBlock.CurrentWaypoint;
-                        var positionwaypoint = CurrentWaypoint.Matrix.GetRow(3);
-                        return new Vector3D(positionwaypoint.X, positionwaypoint.Y, positionwaypoint.Z);
-                    }
-
                     // Extracts Current Position
                     Vector3D lastPosition = p0.Position;
                     double lastTime = p0.Timestamp;
@@ -165,6 +146,10 @@ namespace IngameScript
 
                     //Timestep — convert TimeSpan ticks to seconds
                     double dtSeconds = (double)(CurrentTime - lastTime) / 10000000.0;
+
+                    // Cap extrapolation to 1 second — beyond that data is stale,
+                    // extrapolating further makes static targets appear to fly away
+                    if (dtSeconds > 1.0) return lastPosition;
 
                     //S1 = S0 + UT (simple suvat equation)
                     return lastPosition + velocity * dtSeconds;
@@ -202,8 +187,12 @@ namespace IngameScript
                 get
                 {
                     string detailedInfo = L_CombatBLock.DetailedInfo;
-                    var lines = detailedInfo.Split('\n');
-                    string firstLine = lines[0];
+                    if (string.IsNullOrEmpty(detailedInfo))
+                        return "";
+
+                    // Get first line without allocating a string[] via Split
+                    int nlIndex = detailedInfo.IndexOf('\n');
+                    string firstLine = nlIndex >= 0 ? detailedInfo.Substring(0, nlIndex) : detailedInfo;
 
                     // SE format: "Status: Attacking (TargetName)" — extract name from parentheses
                     int openParen = firstLine.IndexOf('(');
@@ -215,38 +204,10 @@ namespace IngameScript
                         return firstLine.Substring(openParen + 1).Trim();
                     }
 
-                    return firstLine;
+                    return "";
                 }
             }
 
-            /// <summary>
-            /// Checks State Of Blocks Internal
-            /// </summary>
-            public bool CheckWorking(out string errormsg)
-            {
-                if (L_FlightBlock == null || L_FlightBlock.CubeGrid.GetCubeBlock(L_FlightBlock.Position) == null || !L_FlightBlock.IsWorking)
-                { errormsg = " ~ AI Flight Block Not Found,\nInstall Block And Press Recompile"; return false; }
-                if (L_CombatBLock == null || L_CombatBLock.CubeGrid.GetCubeBlock(L_CombatBLock.Position) == null || !L_CombatBLock.IsWorking)
-                { errormsg = " ~ AI Combat Block Not Found,\nInstall Block And Press Recompile"; return false; }
-                errormsg = null;
-                return true;
-            }
-
-            /// <summary>
-            /// Tells You What Is Setup For Line 1 (largest, smallest, closest)
-            /// </summary>
-            public string GetLine1Info()
-            {
-                return L_CombatBLock.TargetPriority + "";
-            }
-
-            /// <summary>
-            /// Tells You What Is Setup For Line 2 (weapons, thrusters etc)
-            /// </summary>
-            public string GetLine2Info()
-            {
-                return L_CombatBLock.SearchEnemyComponent.SubsystemsToDestroy + "";
-            }
         }
     }
 }

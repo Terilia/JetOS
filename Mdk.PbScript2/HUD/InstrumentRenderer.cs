@@ -34,7 +34,7 @@ namespace IngameScript
                 var tapeLine = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
+                    Data = MFDTheme.SQ,
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
                     Color = HUD_PRIMARY,
@@ -71,7 +71,7 @@ namespace IngameScript
                         var tickMark = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
+                            Data = MFDTheme.SQ,
                             Position = new Vector2(tapeLineX + currentTickLength / 2f, yPos),
                             Size = new Vector2(currentTickLength, tapeWidth),
                             Color = HUD_PRIMARY,
@@ -97,6 +97,17 @@ namespace IngameScript
                     }
                 }
 
+                // Semi-transparent background behind speed box
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = MFDTheme.SQ,
+                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130),
+                    Size = new Vector2(digitalSpeedBoxWidth, digitalSpeedBoxHeight),
+                    Color = new Color(0, 0, 0, 128),
+                    Alignment = TextAlignment.CENTER
+                });
+
                 SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentSpeedText = currentSpeedKph.ToString("F0");
@@ -111,6 +122,19 @@ namespace IngameScript
                     FontId = FONT
                 };
                 frame.Add(speedLabel);
+
+                // Mach number below speed box
+                string machText = $"M {mach:F2}";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = machText,
+                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f),
+                    RotationOrScale = 0.5f,
+                    Color = HUD_SECONDARY,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                });
 
                 var caret = new MySprite()
                 {
@@ -153,7 +177,7 @@ namespace IngameScript
                         var markerLine = new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
+                            Data = MFDTheme.SQ,
                             Position = new Vector2(markerX, compassY),
                             Size = new Vector2(2f, markerLineHeight),
                             Color = markerColor,
@@ -172,7 +196,7 @@ namespace IngameScript
                             RotationOrScale = textScale,
                             Color = markerColor,
                             Alignment = TextAlignment.CENTER,
-                            FontId = "White"
+                            FontId = MFDTheme.FONT_W
                         };
                         frame.Add(markerText);
                     }
@@ -189,6 +213,35 @@ namespace IngameScript
                     RotationOrScale = (float)Math.PI
                 };
                 frame.Add(headingIndicator);
+
+                // Digital heading readout box
+                float headingBoxWidth = 50f;
+                float headingBoxHeight = 22f;
+                float headingBoxY = compassY + compassHeight / 2f + 20f;
+
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = MFDTheme.SQ,
+                    Position = new Vector2(centerX, headingBoxY + headingBoxHeight / 2f),
+                    Size = new Vector2(headingBoxWidth, headingBoxHeight),
+                    Color = new Color(0, 0, 0, 128),
+                    Alignment = TextAlignment.CENTER
+                });
+                SpriteHelpers.DrawRectangleOutline(frame, centerX - headingBoxWidth / 2f, headingBoxY,
+                    headingBoxWidth, headingBoxHeight, 1f, HUD_PRIMARY);
+
+                string headingText = ((int)((heading % 360 + 360) % 360)).ToString("D3");
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = headingText,
+                    Position = new Vector2(centerX, headingBoxY + 1f),
+                    RotationOrScale = 0.65f,
+                    Color = HUD_PRIMARY,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                });
             }
 
             private string GetCompassDirection(double heading)
@@ -205,8 +258,8 @@ namespace IngameScript
 
             private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
             {
-                UpdateAltitudeHistory(currentAltitude, currentTime);
-                double verticalVelocity = CalculateVerticalVelocity(currentAltitude, currentTime);
+                // VVI from gravity-projected velocity (computed in UpdateFlightData)
+                double verticalVelocity = verticalVelocityMps;
 
                 float screenWidth = hud.SurfaceSize.X;
                 float screenHeight = hud.SurfaceSize.Y;
@@ -226,7 +279,7 @@ namespace IngameScript
                 var tapeLine = new MySprite()
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
+                    Data = MFDTheme.SQ,
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
                     Color = HUD_PRIMARY,
@@ -258,7 +311,7 @@ namespace IngameScript
                             var tickMark = new MySprite()
                             {
                                 Type = SpriteType.TEXTURE,
-                                Data = "SquareSimple",
+                                Data = MFDTheme.SQ,
                                 Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
                                 Size = new Vector2(currentTickLength, tapeWidth),
                                 Color = HUD_PRIMARY,
@@ -285,7 +338,20 @@ namespace IngameScript
                     }
                 }
 
-                SpriteHelpers.DrawRectangleOutline(frame, digitalAltBoxX - 20, centerY - digitalAltBoxHeight - 225 / 2f, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
+                // Semi-transparent background behind altitude box
+                float altBoxTopLeftX = digitalAltBoxX - 20;
+                float altBoxTopLeftY = centerY - digitalAltBoxHeight - 225 / 2f;
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXTURE,
+                    Data = MFDTheme.SQ,
+                    Position = new Vector2(altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f),
+                    Size = new Vector2(digitalAltBoxWidth, digitalAltBoxHeight),
+                    Color = new Color(0, 0, 0, 128),
+                    Alignment = TextAlignment.CENTER
+                });
+
+                SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentAltitudeText = currentAltitude.ToString("F0");
                 var altitudeLabel = new MySprite()
@@ -311,6 +377,21 @@ namespace IngameScript
                     FontId = FONT
                 };
                 frame.Add(caret);
+
+                // VVI (Vertical Velocity Indicator) below altitude box
+                Color vviColor = Math.Abs(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
+                string vviArrow = verticalVelocity > 1 ? "\u25B2" : verticalVelocity < -1 ? "\u25BC" : "\u25C6";
+                string vviText = $"{vviArrow} {verticalVelocity:F0}";
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = vviText,
+                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f),
+                    RotationOrScale = 0.5f,
+                    Color = vviColor,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = FONT
+                });
             }
 
             private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
@@ -328,7 +409,7 @@ namespace IngameScript
                     RotationOrScale = TEXT_SCALE,
                     Color = HUD_PRIMARY,
                     Alignment = TextAlignment.LEFT,
-                    FontId = "White"
+                    FontId = MFDTheme.FONT_W
                 });
 
                 string peakGText = $"Max G: {peakGForce:F1}";
@@ -340,7 +421,7 @@ namespace IngameScript
                     RotationOrScale = TEXT_SCALE,
                     Color = HUD_PRIMARY,
                     Alignment = TextAlignment.LEFT,
-                    FontId = "White"
+                    FontId = MFDTheme.FONT_W
                 });
             }
 
@@ -463,7 +544,7 @@ namespace IngameScript
                     RotationOrScale = 0.5f,
                     Color = energyColor,
                     Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
+                    FontId = MFDTheme.FONT
                 });
             }
 
@@ -515,7 +596,7 @@ namespace IngameScript
                         RotationOrScale = textScale,
                         Color = warningColor,
                         Alignment = TextAlignment.CENTER,
-                        FontId = "White"
+                        FontId = MFDTheme.FONT_W
                     });
 
                     // AoA value
@@ -528,7 +609,7 @@ namespace IngameScript
                         RotationOrScale = 0.7f,
                         Color = warningColor,
                         Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
+                        FontId = MFDTheme.FONT
                     });
                 }
 
@@ -586,7 +667,7 @@ namespace IngameScript
                         RotationOrScale = TEXT_SCALE,
                         Color = HUD_PRIMARY,
                         Alignment = TextAlignment.LEFT,
-                        FontId = "White"
+                        FontId = MFDTheme.FONT_W
                     };
                     frame.Add(labelSprite);
 
@@ -598,7 +679,7 @@ namespace IngameScript
                         RotationOrScale = TEXT_SCALE,
                         Color = HUD_PRIMARY,
                         Alignment = TextAlignment.RIGHT,
-                        FontId = "White"
+                        FontId = MFDTheme.FONT_W
                     };
                     frame.Add(valueSprite);
                 }
@@ -606,37 +687,17 @@ namespace IngameScript
 
             private void DrawFlightInfo(
                 MySpriteDrawFrame frame,
-                double velocityKPH,
-                double gForces,
-                double heading,
-                double altitude,
-                double aoa,
-                double throttle,
-                double mach
+                double throttle
             )
             {
-                float infoX = hud.SurfaceSize.X - hud.SurfaceSize.X / 2;
-                float boxPadding = 5f;
-                float textHeight = 30f;
-
-                var surface = hud;
-                var textScale = 0.75f;
-
-                Vector2 maxTextSize = surface.MeasureStringInPixels(
-                    new StringBuilder("SPD: 00.0 kph"),
-                    "White",
-                    textScale
-                );
-                float maxWidth = maxTextSize.X + boxPadding * 2;
-
                 DrawThrottleBarWithBox(
                     frame,
-                    surface,
+                    hud,
                     (float)throttle / 100,
-                    new Vector2(5, hud.SurfaceSize.Y - textHeight - 140),
+                    new Vector2(5, hud.SurfaceSize.Y - 30f - 140),
                     80,
                     8,
-                    textScale
+                    0.75f
                 );
             }
 
@@ -668,7 +729,7 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, lineThickness / 2),
                         Size = new Vector2(boxSize.X, lineThickness),
                         Color = boxColor
@@ -678,7 +739,7 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, boxSize.Y - lineThickness / 2),
                         Size = new Vector2(boxSize.X, lineThickness),
                         Color = boxColor
@@ -688,7 +749,7 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(lineThickness / 2, boxSize.Y / 2),
                         Size = new Vector2(lineThickness, boxSize.Y),
                         Color = boxColor
@@ -698,7 +759,7 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(boxSize.X - lineThickness / 2, boxSize.Y / 2),
                         Size = new Vector2(lineThickness, boxSize.Y),
                         Color = boxColor
@@ -707,13 +768,13 @@ namespace IngameScript
 
                 float filledHeight = barHeight * throttle;
                 Vector2 filledSize = new Vector2(maxWidth * 100, filledHeight * boxSize.Y * 1.25f);
-                barColor = throttle > THROTTLE_HYDROGEN_THRESHOLD ? HUD_EMPHASIS : HUD_PRIMARY;
+                barColor = hydrogenswitch ? HUD_EMPHASIS : HUD_PRIMARY;
 
                 frame.Add(
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSize.Y / 2) * 1.025f),
                         Size = new Vector2(boxSize.X, filledSize.Y * 1.05f),
                         Color = barColor
@@ -721,37 +782,6 @@ namespace IngameScript
                 );
             }
 
-            private void UpdateAltitudeHistory(double currentAltitude, TimeSpan currentTime)
-            {
-                altitudeHistory.Enqueue(new AltitudeTimePoint(currentTime, currentAltitude));
-                while (altitudeHistory.Count > 1 && currentTime - altitudeHistory.Peek().Time > historyDuration)
-                {
-                    altitudeHistory.Dequeue();
-                }
-            }
-
-            private double CalculateVerticalVelocity(double currentAltitude, TimeSpan currentTime)
-            {
-                if (altitudeHistory.Count < 2)
-                {
-                    return 0;
-                }
-
-                AltitudeTimePoint oldestData = altitudeHistory.Peek();
-                TimeSpan oldestTime = oldestData.Time;
-                double oldestAltitude = oldestData.Altitude;
-
-                TimeSpan timeDifference = currentTime - oldestTime;
-                if (timeDifference.TotalSeconds < 0.01)
-                {
-                    return 0;
-                }
-
-                double altitudeChange = currentAltitude - oldestAltitude;
-                double vvi = altitudeChange / timeDifference.TotalSeconds;
-
-                return vvi;
-            }
         }
     }
 }

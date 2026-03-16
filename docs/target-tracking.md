@@ -2,20 +2,17 @@
 
 ## Overview
 
-Targets flow from sensors through a central enemy list to consumers (HUD, weapons, gun turrets). Three independent sensor types feed into one shared `enemyList` on the `Jet` class.
+Targets flow from the radar system through a central enemy list to consumers (HUD, weapons, gun turrets). `RadarControlModule` is the sole target acquisition source, feeding into one shared `enemyList` on the `Jet` class.
 
 ```mermaid
 flowchart TD
     subgraph Sensors ["Acquisition Layer"]
-        RAY["RaycastCameraControl\n(camera raycast, 35km)"]
-        ATA["AirtoAir\n(AI block radar lock)"]
         RCM["RadarControlModule\n(scan + track + RWR)"]
     end
 
     subgraph Storage ["Central Storage"]
         UOA["Jet.UpdateOrAddEnemy()\n3-tier deduplication"]
         EL["Jet.enemyList\nList&lt;EnemyContact&gt;"]
-        PIN["Jet.pinnedRaycastTarget\n(static, no decay)"]
         SEL["Jet.GetSelectedEnemy()\nidentity-based lookup"]
     end
 
@@ -23,25 +20,18 @@ flowchart TD
         HUD["HUDModule\nlead pip, radar scope,\ntarget brackets"]
         GUN["GunControlModule\nclosest enemy in cone,\nauto-aim turrets"]
         FIRE["AirtoAir / AirToGround\nmissile GPS programming"]
-        TGP["RaycastCameraControl\nservo tracking"]
     end
 
-    RAY --> UOA
-    RAY --> PIN
-    ATA --> UOA
     RCM --> UOA
 
     UOA --> EL
     EL --> |"decay every 60 ticks"| EL
     EL --> SEL
-    PIN --> SEL
 
     SEL --> HUD
     EL --> GUN
     SEL --> FIRE
-    SEL --> TGP
 
-    style PIN fill:#8b6914
     style SEL fill:#2d5a2d
 ```
 
@@ -56,10 +46,11 @@ Each contact in `enemyList` holds:
 | Position | Vector3D | World position |
 | Velocity | Vector3D | Velocity vector |
 | Acceleration | Vector3D | EMA-filtered (60% old + 40% new) |
-| Name | string | Grid name or "Raycast" |
+| Name | string | Grid name (from AI block DetailedInfo) |
 | EntityId | long | SE entity ID (0 if unknown) |
 | LastSeenTicks | long | GameTicks when last updated |
-| SourceIndex | int | 0=scan, 1=track, 2+=RWR, -1=raycast |
+| SourceIndex | int | 0=scan, 1=track, 2+=RWR |
+| TrackHistory | uint | 30-bit timeline: 1 bit per second, bit 0 = most recent |
 
 **Source:** `Jet.cs` — `EnemyContact` struct
 
@@ -92,12 +83,12 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant Sensor as Radar/Raycast
+    participant Sensor as RadarControlModule
     participant Jet as Jet.enemyList
     participant Decay as UpdateEnemyDecay()
     participant Consumer as HUD/Weapons
 
-    Sensor->>Jet: UpdateOrAddEnemy(pos, vel, name, source)
+    Sensor->>Jet: UpdateOrAddEnemy(pos, vel, name, source, entityId)
     Note over Jet: Deduplicate (EntityId → Name → 50m proximity)
     Note over Jet: Compute EMA acceleration if < 5s old
     Jet->>Jet: Update LastSeenTicks = GameTicks
@@ -109,7 +100,7 @@ sequenceDiagram
 
     loop Every 60 ticks
         Decay->>Jet: Remove contacts where AgeTicks > CONTACT_DECAY_TICKS
-        Note over Jet: Stale contacts removed
+        Note over Jet: Stale contacts removed (CONTACT_DECAY_TICKS = 600)
     end
 ```
 
@@ -124,29 +115,24 @@ The pilot selects targets via `FlipGPS()` (toolbar key 8), which cycles through 
 ```mermaid
 flowchart TD
     FLIP["FlipGPS() — toolbar key 8"] --> SORT["GetEnemiesSortedByDistance()"]
-    SORT --> FIND["Find current selection in sorted list\n(match by EntityId, then Name)"]
+    SORT --> FIND["Find current selection in sorted list\n(match by EntityId, then Name+Source)"]
     FIND --> NEXT["Advance to next entry (wrapping)"]
-    NEXT --> ISPIN{"Is next entry the\npinned raycast target?"}
-    ISPIN -- "Yes" --> SELPIN["Jet.SelectPinned()"]
-    ISPIN -- "No" --> SELEN["Jet.SelectEnemy(contact)"]
-    SELPIN --> GPS["UpdateActiveTargetGPS()"]
-    SELEN --> GPS
+    NEXT --> SELEN["Jet.SelectEnemy(contact)\nsets selectedEnemyEntityId + selectedEnemyName"]
+    SELEN --> GPS["UpdateActiveTargetGPS()"]
 ```
 
 ### Selection Priority in GetSelectedEnemy()
 
 ```mermaid
 flowchart TD
-    GET["GetSelectedEnemy()"] --> PINQ{"isPinnedSelected\n&& pinnedRaycastTarget != null?"}
-    PINQ -- "Yes" --> RETPIN["Return pinned target"]
-    PINQ -- "No" --> EIDQ{"selectedEnemyEntityId != 0?"}
+    GET["GetSelectedEnemy()"] --> EIDQ{"selectedEnemyEntityId != 0?"}
     EIDQ -- "Yes (match in list)" --> RETEID["Return by EntityId"]
     EIDQ -- "No" --> NAMEQ{"selectedEnemyName != empty?"}
     NAMEQ -- "Yes (match in list)" --> RETNAME["Return by Name"]
     NAMEQ -- "No" --> RETNULL["Return null"]
 ```
 
-**Source:** `Jet.cs` — `GetSelectedEnemy()`, `SelectEnemy()`, `SelectPinned()`; `SystemManager.cs` — `FlipGPS()`
+**Source:** `Jet.cs` — `GetSelectedEnemy()`, `SelectEnemy()`, `ClearSelection()`; `SystemManager.cs` — `FlipGPS()`
 
 ---
 
@@ -172,8 +158,8 @@ flowchart LR
 
 | Key | Format | Writers | Readers |
 |-----|--------|---------|---------|
-| `Cached` | `GPS:Target:X:Y:Z:#FF75C9F1:` | SystemManager, RaycastCamera, AirtoAir | Weapon modules (missile GPS) |
-| `CachedSpeed` | `X:Y:Z:#FF75C9F1:` | SystemManager, RaycastCamera, AirtoAir | External missile scripts |
+| `Cached` | `GPS:Target:X:Y:Z:#FF75C9F1:` | SystemManager, AirtoAir | Weapon modules (missile GPS) |
+| `CachedSpeed` | `X:Y:Z:#FF75C9F1:` | SystemManager, AirtoAir | External missile scripts |
 | `Cache0`-`CacheN` | GPS format | AirToGround, AirtoAir | Same modules (pre-fire staging) |
 | `0`-`4` | GPS format | AirToGround, AirtoAir | Detached missile scripts |
 | `Topdown` | `true`/`false` | AirToGround | AirToGround (persisted toggle) |
@@ -184,29 +170,25 @@ flowchart LR
 
 ## Sensor Details
 
-### Raycast (RaycastCameraControl)
-
-- Camera raycast up to 35 km
-- Hit creates an `EnemyContact` with `SourceIndex = -1`
-- Also stored as `Jet.pinnedRaycastTarget` (never decays, survives enemy list cleanup)
-- Auto-selects via `SelectPinned()` on successful hit
-
-**Source:** `Modules/RaycastCameraControl.cs` — `ExecuteRaycast()`
-
-### Radar (RadarControlModule)
+### Radar (RadarControlModule) — Sole Acquisition Source
 
 - Uses AI Flight + AI Combat block pairs
-- Index 0 = scan radar, Index 1 = track radar, Index 2+ = RWR
+- Sequential activation state machine: `IDLE → SEARCHING → LOCKED`
+- Only 1 pool radar SEARCHING at a time; when it finds a new target (not already locked), it transitions to LOCKED and activates the next IDLE as SEARCHING
+- Remaining pairs assigned as RWR (passive threat detection)
 - Auto-detects pairs named `"AI Flight"` / `"AI Combat"` through `"AI Flight 99"` / `"AI Combat 99"`
 - Each pair feeds `UpdateOrAddEnemy()` with its source index
+- `IsTrackLocked` is true when any LOCKED pool radar matches the currently selected enemy (by EntityId or Name)
 
-**Source:** `Modules/RadarControlModule.cs` — `Tick()` method
+**Source:** `Modules/RadarControlModule.cs` — constructor (pair detection), `Tick()` (scan/track/RWR loop)
 
-### AirtoAir Seeker
+### AirtoAir — Radar Consumer (Not a Sensor)
 
-- Wraps the primary AI block pair for active radar lock
-- Provides lock/search sound cues via SoundManager
-- Auto-selects closest enemy if no selection exists
+- Does NOT directly feed `UpdateOrAddEnemy()` — reads from `Jet.enemyList` only
+- Auto-selects closest enemy via `GetClosestNEnemies(1)` if no selection exists
+- Syncs selected enemy GPS to CustomData via `UpdateActiveTargetGPS()`
+- Uses `RadarControlModule.IsTrackLocked` for lock detection (no separate tracker)
+- Seeker toggle only affects weapon tone sounds (lock/search), not radar blocks
 
 **Source:** `Modules/AirtoAir.cs` — `Tick()` method
 

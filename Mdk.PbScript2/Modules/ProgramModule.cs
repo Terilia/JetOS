@@ -14,7 +14,6 @@ namespace IngameScript
             public abstract void ExecuteOption(int index);
             public virtual void HandleSpecialFunction(int key) { }
             public virtual void Tick() { }
-            public int currentTick = 0;
             public virtual string GetHotkeys()
             {
                 return "";

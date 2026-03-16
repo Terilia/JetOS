@@ -7,32 +7,36 @@ Every game tick (~16ms at 60 Hz), `Program.Main()` delegates to `SystemManager.M
 ```mermaid
 flowchart TD
     A["Program.Main()"] --> B["SystemManager.Main()"]
-    B --> C["Increment GameTicks"]
-    C --> D["Altitude/Speed Warning Check"]
-    D --> E["SoundManager.Tick()"]
-    E --> F{Has toolbar argument?}
+    B --> T{"UpdateType.Trigger?"}
+    T -- Yes --> DEFER["Defer argument, return early"]
+    T -- No --> C["Increment GameTicks"]
+    C --> G1["Cache gravity"]
+    G1 --> D["Altitude/Speed Warning Check"]
+    D --> F{Has toolbar argument?}
     F -- Yes --> G["HandleInput(arg)"]
     F -- No --> H["DisplayMenu()"]
     G --> I["Active Module .Tick()"]
     H --> I
     I --> J["Background Ticks"]
-
-    J --> J1["RaycastCameraControl.Tick()"]
     J --> J2["HUDModule.Tick()"]
     J --> J3["RadarControlModule.Tick()"]
     J --> J4["AirtoAir.Tick()"]
     J --> J5["GunControlModule.Tick()"]
+    J --> SP["HandleSpecialFunctionInputs()"]
+    SP --> SND["SoundManager.Tick()"]
 
-    style J1 fill:#2d5a2d
-    style J2 fill:#2d5a2d
+    style J2 fill:#2d4a5a
     style J3 fill:#2d4a5a
     style J4 fill:#2d4a5a
     style J5 fill:#2d4a5a
+    style SND fill:#2d5a2d
 ```
 
-> Green = always ticks. Blue = ticks only when not the active module (avoids double-tick).
+> Blue = background-ticks when not the active module (avoids double-tick; the active module already ticked above). Green = runs unconditionally every tick.
+>
+> All four background-ticked modules effectively run every tick: when one IS the active module it ticks via the "Active Module .Tick()" step; when it is not, it ticks via the background section. `SoundManager.Tick()` runs last so that all module sound requests from the current tick are collected before processing.
 
-**Source:** `SystemManager.cs` — `Main()` method
+**Source:** `SystemManager.cs` — `Main()` method (lines 136-230)
 
 ---
 
@@ -44,25 +48,25 @@ Module initialization order matters because some modules depend on others:
 flowchart TD
     P["Program()"] --> SM["SystemManager.Initialize(this)"]
     SM --> JET["new Jet(GridTerminalSystem)"]
-    JET --> CDM["CustomDataManager.Initialize()"]
+    JET --> LCD["Get JetOS surfaces 0/1/2"]
+    LCD --> CDM["CustomDataManager.Initialize()"]
     CDM --> SND["SoundManager.Initialize()"]
     SND --> RAD["new RadarControlModule()"]
     RAD --> |"inject into Jet"| JETREF["Jet.radarControl = radarControlModule"]
     JETREF --> ATG["new AirToGround()"]
     ATG --> ATA["new AirtoAir()"]
-    ATA --> RCC["new RaycastCameraControl()"]
-    RCC --> HUD["new HUDModule(radarControlModule)"]
-    HUD --> CFG["new ConfigurationModule()"]
+    ATA --> HUD["new HUDModule(radarControlModule)"]
+    HUD --> UI["new UIController(lcdMain, lcdExtra)"]
+    UI --> CFG["new ConfigurationModule()"]
     CFG --> GUN["new GunControlModule()"]
-    GUN --> UI["new UIController(lcdMain, lcdExtra)"]
 
     style RAD fill:#8b4513,color:#fff
     style HUD fill:#2d5a2d
 ```
 
-> RadarControlModule initializes first because HUDModule and AirtoAir reference it.
+> RadarControlModule (brown) initializes first because HUDModule and AirtoAir reference it. HUDModule (green) is stored in a dedicated field for background ticking and status panel access.
 
-**Source:** `SystemManager.cs` — `Initialize()` method
+**Source:** `SystemManager.cs` — `Initialize()` method (lines 38-101)
 
 ---
 
@@ -96,7 +100,7 @@ flowchart LR
     MOD_BACK -- "false" --> EXIT["Exit to main menu"]
 ```
 
-**Source:** `SystemManager.cs` — `HandleInput()`, `NavigateUp()`, `NavigateDown()`, `ExecuteCurrentOption()`, `DeselectOrGoBack()`
+**Source:** `SystemManager.cs` — `HandleInput()` (line 270), `NavigateUp()` (line 358), `NavigateDown()` (line 370), `ExecuteCurrentOption()` (line 389), `DeselectOrGoBack()` (line 402)
 
 ---
 
@@ -122,7 +126,6 @@ classDiagram
     ProgramModule <|-- AirToGround
     ProgramModule <|-- AirtoAir
     ProgramModule <|-- HUDModule
-    ProgramModule <|-- RaycastCameraControl
     ProgramModule <|-- ConfigurationModule
     ProgramModule <|-- GunControlModule
 ```
@@ -133,13 +136,12 @@ classDiagram
 |--------|-----------|----------------|------------|
 | RadarControlModule | Radar Control | Yes (if not active) | Jet |
 | AirToGround | Air To Ground | No | Jet |
-| AirtoAir | Air To Air | Yes (if not active) | Jet, RadarTrackingModule |
-| HUDModule | HUD Control | Yes (always) | Jet, RadarControlModule |
-| RaycastCameraControl | TargetingPod Control | Yes (always) | Jet |
+| AirtoAir | Air To Air | Yes (if not active) | Jet |
+| HUDModule | HUD Control | Yes (if not active) | Jet, RadarControlModule |
 | ConfigurationModule | Configuration | No | — |
-| GunControlModule | Gun Control | Yes (if not active) | Jet, BallisticsCalculator |
+| GunControlModule | Gun Control | Yes (if not active) | Jet |
 
-**Source:** `Modules/ProgramModule.cs` (base class), `SystemManager.cs` lines 78-100 (instantiation), lines 194-218 (tick routing)
+**Source:** `Modules/ProgramModule.cs` (base class), `SystemManager.cs` lines 77-93 (instantiation), lines 198-221 (tick routing)
 
 ---
 
@@ -150,7 +152,7 @@ flowchart TD
     subgraph Jet ["Jet (Hardware Abstraction)"]
         BLOCKS["Block References\ncockpit, thrusters, bays,\nguns, tanks, stabilizers"]
         ENEMIES["enemyList: List&lt;EnemyContact&gt;\nAll detected targets with decay"]
-        SELECT["Selection State\nselectedEnemyEntityId\nselectedEnemyName\npinnedRaycastTarget"]
+        SELECT["Selection State\nselectedEnemyEntityId\nselectedEnemyName"]
         FLIGHT["Flight APIs\nGetVelocity(), GetAltitude(),\nGetCockpitMatrix()"]
     end
 
@@ -182,4 +184,4 @@ flowchart TD
     TRY --> |Success| DONE["Continue next tick"]
 ```
 
-**Source:** `Program.cs` — `Main()` method
+**Source:** `Program.cs` — `Main()` method (lines 27-50)

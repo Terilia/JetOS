@@ -15,8 +15,14 @@ namespace IngameScript
             public IMyCockpit _cockpit;
             public List<IMyThrust> _thrusters;
             public List<IMyThrust> _thrustersbackwards;
-            public IMyFlightMovementBlock _aiFlightBlock;
-            public IMyOffensiveCombatBlock _aiCombatBlock;
+
+            // Engine grouping (left/right split by grid position, populated in constructor)
+            public List<IMyThrust> leftEngines = new List<IMyThrust>();
+            public List<IMyThrust> rightEngines = new List<IMyThrust>();
+            public List<IMyThrust> centerEngines = new List<IMyThrust>();
+            public List<IMyThrust> leftAB = new List<IMyThrust>();
+            public List<IMyThrust> rightAB = new List<IMyThrust>();
+            public List<IMyThrust> centerAB = new List<IMyThrust>();
 
             // Game tick counter for consistent timing (updated by SystemManager)
             public static long GameTicks = 0;
@@ -24,10 +30,6 @@ namespace IngameScript
             // Identity-based target selection
             public string selectedEnemyName = "";
             public long selectedEnemyEntityId = 0;
-
-            // Pinned raycast target (static, never decays, separate from enemyList)
-            public EnemyContact? pinnedRaycastTarget = null;
-            public bool isPinnedSelected = false; // true when the pinned target is the active selection
 
             // Enemy contact tracking with decay
             public struct EnemyContact
@@ -54,7 +56,7 @@ namespace IngameScript
                     EntityId = entityId;
                     LastSeenTicks = GameTicks;
                     SourceIndex = source;
-                    TrackHistory = 1; // first update = current second tracked
+                    TrackHistory = 0x3FFFFFFF; // all 30 bits set — new contact starts fully green
                     LastHistoryShiftTick = GameTicks;
                 }
 
@@ -65,6 +67,15 @@ namespace IngameScript
                 /// Returns the 30-bit tracking history adjusted for current staleness.
                 /// Bit 0 = most recent second, bit 29 = 30 seconds ago.
                 /// </summary>
+                public bool Matches(EnemyContact other)
+                {
+                    if (EntityId != 0 && other.EntityId != 0)
+                        return EntityId == other.EntityId;
+                    if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(other.Name))
+                        return Name == other.Name;
+                    return Vector3D.Distance(Position, other.Position) < 50.0;
+                }
+
                 public uint GetDisplayHistory()
                 {
                     long elapsedTicks = GameTicks - LastHistoryShiftTick;
@@ -77,19 +88,24 @@ namespace IngameScript
             }
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
-            public const long CONTACT_DECAY_TICKS = 25; // 25 iterations without update
+            public const long CONTACT_DECAY_TICKS = 600; // ~10 seconds without update before removal
             private int decayCheckCounter = 0;
             private const int DECAY_CHECK_INTERVAL = 60; // Check decay every 60 ticks (1 second)
 
             // Centralized radar control
             public RadarControlModule radarControl;
 
+            // Cached gravity vector (updated once per tick by SystemManager)
+            public Vector3D CachedGravity = Vector3D.Zero;
+
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
             public List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
             public IMyTerminalBlock hudBlock;
             public IMyTextSurface hud;
+            public IMyTextSurface hud2; // Back layer for parallax depth
             public List<IMyGasTank> tanks = new List<IMyGasTank>();
+            public List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
             public int offset = 0;
             public bool manualfire = true; // Set to true if you want to fire the guns manually, false if you want to use the radar system
             public List<IMySmallGatlingGun> _gatlings = new List<IMySmallGatlingGun>();
@@ -117,20 +133,16 @@ namespace IngameScript
                     t => t.CubeGrid == _cockpit.CubeGrid && !t.CustomName.Contains("Industrial")
                 );
 
-                // AI blocks for radar tracking (primary pair, used by AirtoAir)
-                _aiFlightBlock = grid.GetBlockWithName("AI Flight") as IMyFlightMovementBlock;
-                _aiCombatBlock = grid.GetBlockWithName("AI Combat") as IMyOffensiveCombatBlock;
-
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
-                grid.GetBlocksOfType(_bays, b => b.CustomName.Contains("Bay"));
+                grid.GetBlocksOfType(_bays, b => b.CustomName.Contains("Bay") && b.IsSameConstructAs(_cockpit));
                 _bays.Sort(
                     (a, b) =>
                         ExtractBayNumber(a.CustomName).CompareTo(ExtractBayNumber(b.CustomName))
                 );
 
-                grid.GetBlocksOfType(rightstab, g => g.CustomName.Contains("invertedstab")); //invertedstab
-                grid.GetBlocksOfType(leftstab, g => g.CustomName.Contains("normalstab")); //normalstab
+                grid.GetBlocksOfType(rightstab, g => g.CustomName.Contains("invertedstab") && g.IsSameConstructAs(_cockpit));
+                grid.GetBlocksOfType(leftstab, g => g.CustomName.Contains("normalstab") && g.IsSameConstructAs(_cockpit));
                 _thrustersbackwards = new List<IMyThrust>();
                 grid.GetBlocksOfType(
                     _thrustersbackwards,
@@ -139,15 +151,52 @@ namespace IngameScript
                         && !g.CustomName.Contains("Industrial")
                         && g.GridThrustDirection == Vector3I.Backward
                 );
+                // Group backward thrusters into L/R engine + afterburner by grid position
+                // Center thrusters (same X as cockpit) go into BOTH sides
+                // SE grid X axis: looking from cockpit forward, X+ is LEFT, X- is RIGHT
+                int cockpitX = _cockpit.Position.X;
+                for (int i = 0; i < _thrustersbackwards.Count; i++)
+                {
+                    var t = _thrustersbackwards[i];
+                    bool isLeft = t.Position.X > cockpitX;
+                    bool isRight = t.Position.X < cockpitX;
+                    bool isCenter = t.Position.X == cockpitX;
+                    bool isHydrogen = t.BlockDefinition.SubtypeId.Contains("Hydrogen");
+                    if (isHydrogen)
+                    {
+                        if (isCenter) centerAB.Add(t);
+                        else if (isLeft) leftAB.Add(t);
+                        else if (isRight) rightAB.Add(t);
+                    }
+                    else
+                    {
+                        if (isCenter) centerEngines.Add(t);
+                        else if (isLeft) leftEngines.Add(t);
+                        else if (isRight) rightEngines.Add(t);
+                    }
+                }
+
                 hudBlock = grid.GetBlockWithName("Fighter HUD");
                 hud = hudBlock as IMyTextSurface;
                 grid.GetBlocksOfType(
                     tanks,
                     g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet")
                 );
-                hud.ContentType = ContentType.SCRIPT;
-                hud.ScriptBackgroundColor = new Color(0, 0, 0, 0);
-                hud.ScriptForegroundColor = Color.White;
+                grid.GetBlocksOfType(
+                    batteries,
+                    b => b.CubeGrid == _cockpit.CubeGrid
+                );
+
+                // Back HUD layer for parallax depth effect (optional)
+                var hud2Block = grid.GetBlockWithName("Fighter HUD2");
+                hud2 = hud2Block as IMyTextSurface;
+                if (hud2 != null)
+                {
+                    hud2.ContentType = ContentType.SCRIPT;
+                    hud2.Script = "";
+                    hud2.ScriptBackgroundColor = new Color(0, 0, 0, 0);
+                    hud2.ScriptForegroundColor = Color.White;
+                }
             }
             private int ExtractBayNumber(string name)
             {
@@ -284,45 +333,36 @@ namespace IngameScript
             {
                 _resultBuffer.Clear();
 
-                if (_cockpit == null || enemyList.Count == 0)
-                    return _resultBuffer;
+                var sorted = SortEnemiesByDistance();
+                int count = Math.Min(n, sorted.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    _resultBuffer.Add(sorted[i].Value);
+                }
 
-                Vector3D cockpitPos = GetCockpitPosition();
+                return _resultBuffer;
+            }
 
-                // Reuse sort buffer
+            private List<KeyValuePair<double, EnemyContact>> SortEnemiesByDistance()
+            {
                 _sortBuffer.Clear();
+                if (_cockpit == null) return _sortBuffer;
+                Vector3D cockpitPos = GetCockpitPosition();
                 for (int i = 0; i < enemyList.Count; i++)
                 {
                     double distance = Vector3D.Distance(enemyList[i].Position, cockpitPos);
                     _sortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
                 }
-
-                // Sort by distance
                 _sortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-                // Take top N
-                int count = Math.Min(n, _sortBuffer.Count);
-                for (int i = 0; i < count; i++)
-                {
-                    _resultBuffer.Add(_sortBuffer[i].Value);
-                }
-
-                return _resultBuffer;
+                return _sortBuffer;
             }
 
             // ------------------------------
             // IDENTITY-BASED TARGET SELECTION
             // ------------------------------
 
-            /// <summary>
-            /// Returns the selected contact from enemyList by EntityId/Name match,
-            /// or the pinned target if isPinnedSelected.
-            /// </summary>
             public EnemyContact? GetSelectedEnemy()
             {
-                if (isPinnedSelected && pinnedRaycastTarget.HasValue)
-                    return pinnedRaycastTarget.Value;
-
                 if (selectedEnemyEntityId != 0)
                 {
                     for (int i = 0; i < enemyList.Count; i++)
@@ -352,71 +392,28 @@ namespace IngameScript
                 return GetSelectedEnemy().HasValue;
             }
 
-            /// <summary>
-            /// Sets identity fields to select an enemy from enemyList. Clears isPinnedSelected.
-            /// </summary>
             public void SelectEnemy(EnemyContact contact)
             {
                 selectedEnemyName = contact.Name;
                 selectedEnemyEntityId = contact.EntityId;
-                isPinnedSelected = false;
             }
 
-            /// <summary>
-            /// Sets isPinnedSelected = true, keeping pinned raycast target as active selection.
-            /// </summary>
-            public void SelectPinned()
-            {
-                isPinnedSelected = true;
-                selectedEnemyName = "";
-                selectedEnemyEntityId = 0;
-            }
-
-            /// <summary>
-            /// Clears all selection state.
-            /// </summary>
             public void ClearSelection()
             {
                 selectedEnemyName = "";
                 selectedEnemyEntityId = 0;
-                isPinnedSelected = false;
             }
 
             // Reusable buffer for sorted-by-distance results
             private List<EnemyContact> _distanceSortedBuffer = new List<EnemyContact>();
-            private List<KeyValuePair<double, EnemyContact>> _distanceSortBuffer = new List<KeyValuePair<double, EnemyContact>>();
 
-            /// <summary>
-            /// Returns enemies sorted by distance from cockpit. Includes pinned target at its correct position.
-            /// </summary>
             public List<EnemyContact> GetEnemiesSortedByDistance()
             {
                 _distanceSortedBuffer.Clear();
-
-                if (_cockpit == null)
-                    return _distanceSortedBuffer;
-
-                Vector3D cockpitPos = GetCockpitPosition();
-
-                _distanceSortBuffer.Clear();
-                for (int i = 0; i < enemyList.Count; i++)
+                var sorted = SortEnemiesByDistance();
+                for (int i = 0; i < sorted.Count; i++)
                 {
-                    double distance = Vector3D.Distance(enemyList[i].Position, cockpitPos);
-                    _distanceSortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
-                }
-
-                // Include pinned target if it exists
-                if (pinnedRaycastTarget.HasValue)
-                {
-                    double pinDistance = Vector3D.Distance(pinnedRaycastTarget.Value.Position, cockpitPos);
-                    _distanceSortBuffer.Add(new KeyValuePair<double, EnemyContact>(pinDistance, pinnedRaycastTarget.Value));
-                }
-
-                _distanceSortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
-
-                for (int i = 0; i < _distanceSortBuffer.Count; i++)
-                {
-                    _distanceSortedBuffer.Add(_distanceSortBuffer[i].Value);
+                    _distanceSortedBuffer.Add(sorted[i].Value);
                 }
 
                 return _distanceSortedBuffer;
@@ -429,19 +426,19 @@ namespace IngameScript
             {
                 double ageSeconds = contact.AgeSeconds;
 
-                if (ageSeconds < 30)
+                if (ageSeconds < 3)
                 {
                     // Fresh: Bright red
                     return new Color(255, 0, 0);
                 }
-                else if (ageSeconds < 60)
+                else if (ageSeconds < 6)
                 {
-                    // Recent: Orange
+                    // Aging: Orange
                     return new Color(255, 165, 0);
                 }
                 else
                 {
-                    // Old: Yellow
+                    // Stale: Yellow
                     return new Color(255, 255, 0);
                 }
             }
@@ -501,6 +498,20 @@ namespace IngameScript
             public IReadOnlyList<IMyThrust> Thrusters => _thrusters;
 
             /// <summary>
+            /// Returns (functional, total) count for an engine group.
+            /// </summary>
+            public static void GetEngineHealth(List<IMyThrust> engines, out int functional, out int total)
+            {
+                total = engines.Count;
+                functional = 0;
+                for (int i = 0; i < engines.Count; i++)
+                {
+                    if (engines[i] != null && engines[i].IsFunctional)
+                        functional++;
+                }
+            }
+
+            /// <summary>
             /// Example: sets thrust override on all thrusters (0.0 -> 1.0).
             /// </summary>
             public void SetThrustOverride(float percentage)
@@ -515,19 +526,46 @@ namespace IngameScript
                 }
             }
 
-
-
-            // ------------------------------
-            // AI RADAR BLOCKS
-            // ------------------------------
-
             /// <summary>
-            /// Enables or disables the AI Combat Block for radar tracking.
+            /// Returns (currentThrust, maxEffectiveThrust) in kN for an engine group.
             /// </summary>
-            public void SetAIRadarEnabled(bool enabled)
+            public static void GetEngineThrust(List<IMyThrust> engines, out float current, out float max)
             {
-                if (_aiCombatBlock != null)
-                    _aiCombatBlock.Enabled = enabled;
+                current = 0f; max = 0f;
+                for (int i = 0; i < engines.Count; i++)
+                {
+                    if (engines[i] == null || !engines[i].IsFunctional) continue;
+                    current += engines[i].CurrentThrust;
+                    max += engines[i].MaxEffectiveThrust;
+                }
+                current /= 1000f; // Convert N to kN
+                max /= 1000f;
+            }
+
+            public void GetBatteryStatus(out float currentMWh, out float maxMWh, out float netDrainMW)
+            {
+                currentMWh = 0f; maxMWh = 0f; netDrainMW = 0f;
+                for (int i = 0; i < batteries.Count; i++)
+                {
+                    if (batteries[i] == null || !batteries[i].IsFunctional) continue;
+                    currentMWh += batteries[i].CurrentStoredPower;
+                    maxMWh += batteries[i].MaxStoredPower;
+                    netDrainMW += batteries[i].CurrentOutput - batteries[i].CurrentInput;
+                }
+            }
+
+            public void GetFuelStatus(out double fillRatio, out double remainSeconds)
+            {
+                double cap = 0, filled = 0;
+                for (int i = 0; i < tanks.Count; i++)
+                {
+                    if (tanks[i] == null) continue;
+                    if (!tanks[i].BlockDefinition.SubtypeId.Contains("Hydrogen")) continue;
+                    cap += tanks[i].Capacity;
+                    filled += tanks[i].Capacity * tanks[i].FilledRatio;
+                }
+                fillRatio = cap > 0 ? filled / cap : 0;
+                remainSeconds = fillRatio * 600; // same 10min assumption as GridVisualization
             }
 
             // ------------------------------
@@ -535,31 +573,38 @@ namespace IngameScript
             // ------------------------------
 
             /// <summary>
+            /// Gets ammo count for a single gatling gun.
+            /// </summary>
+            public static int GetGunAmmo(IMySmallGatlingGun gun)
+            {
+                if (gun == null || !gun.IsFunctional)
+                    return 0;
+
+                var inventory = gun.GetInventory();
+                if (inventory == null)
+                    return 0;
+
+                int ammo = 0;
+                for (int j = 0; j < inventory.ItemCount; j++)
+                {
+                    var item = inventory.GetItemAt(j);
+                    if (item.HasValue)
+                    {
+                        ammo += (int)item.Value.Amount;
+                    }
+                }
+                return ammo;
+            }
+
+            /// <summary>
             /// Gets total ammo count across all gatling guns.
-            /// Returns the number of ammunition items (NATO 25x184mm or similar).
             /// </summary>
             public int GetTotalGunAmmo()
             {
                 int total = 0;
                 for (int i = 0; i < _gatlings.Count; i++)
                 {
-                    var gun = _gatlings[i];
-                    if (gun == null || !gun.IsFunctional)
-                        continue;
-
-                    var inventory = gun.GetInventory();
-                    if (inventory == null)
-                        continue;
-
-                    // Sum all items in the gun's inventory (ammo magazines)
-                    for (int j = 0; j < inventory.ItemCount; j++)
-                    {
-                        var item = inventory.GetItemAt(j);
-                        if (item.HasValue)
-                        {
-                            total += (int)item.Value.Amount;
-                        }
-                    }
+                    total += GetGunAmmo(_gatlings[i]);
                 }
                 return total;
             }

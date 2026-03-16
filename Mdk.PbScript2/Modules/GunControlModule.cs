@@ -23,6 +23,9 @@ namespace IngameScript
                 public float YawError;
                 public float PitchError;
                 public int ElevationSign; // +1 or -1, derived from hinge mounting orientation
+                // Ship rotation compensation (feedforward)
+                public MatrixD LastShipMatrix;
+                public bool HasPreviousMatrix;
             }
 
             // --- Turret References ---
@@ -35,6 +38,7 @@ namespace IngameScript
 
             // --- Control State ---
             private bool controlEnabled = false;
+            private int tickCounter = 0;
 
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
@@ -120,9 +124,8 @@ namespace IngameScript
             {
                 from = Vector3D.Normalize(from);
                 to = Vector3D.Normalize(to);
-                double dot = MathHelper.Clamp(Vector3D.Dot(from, to), -1, 1);
-                double angle = Math.Acos(dot);
                 Vector3D cross = Vector3D.Cross(from, to);
+                double angle = Math.Atan2(cross.Length(), Vector3D.Dot(from, to));
                 return angle * Math.Sign(Vector3D.Dot(cross, axis));
             }
 
@@ -134,8 +137,8 @@ namespace IngameScript
                     return 0;
                 projected = Vector3D.Normalize(projected);
 
-                double dot = MathHelper.Clamp(Vector3D.Dot(projected, baseForward), -1, 1);
-                double angle = Math.Acos(dot);
+                Vector3D projCross = Vector3D.Cross(projected, baseForward);
+                double angle = Math.Atan2(projCross.Length(), Vector3D.Dot(projected, baseForward));
                 if (Vector3D.Dot(projected, rotorUp) < 0)
                     angle = -angle;
                 return angle;
@@ -232,10 +235,10 @@ namespace IngameScript
 
             public override void Tick()
             {
-                currentTick++;
+                tickCounter++;
 
                 // Recalculate motor signs periodically (handles rotor movement changing geometry)
-                if (currentTick % 60 == 0)
+                if (tickCounter % 60 == 0)
                 {
                     DetermineMotorSigns(leftTurret);
                     DetermineMotorSigns(rightTurret);
@@ -292,18 +295,60 @@ namespace IngameScript
                 double currentPitch = GetElevationAngle(gunFwd, rotorUp, baseForward, baseLeft);
                 float pitchDeg = MathHelper.ToDegrees((float)((desiredPitch - currentPitch) * turret.ElevationSign));
 
-                // Yaw: negate because SE positive RPM = counterclockwise from above (leftward),
-                // but SignedAngleBetween gives positive for clockwise (rightward) rotation.
-                // Pitch: sign is correct via elevationSign (same formula as Whiplash).
-                turret.Rotor.TargetVelocityRPM = MathHelper.Clamp(-KP * yawDeg, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
-                turret.Hinge.TargetVelocityRPM = MathHelper.Clamp(KP * pitchDeg, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
-
-                // Stop motors when close enough to prevent jitter
-                if (Math.Abs(yawDeg) < 0.5f && Math.Abs(pitchDeg) < 0.5f)
+                // Ship rotation feedforward using cockpit matrix (ship-only rotation,
+                // avoids self-coupling from turret's own yaw included in rotor matrix)
+                float yawFeedforward = 0f;
+                float pitchFeedforward = 0f;
+                MatrixD currentShipMatrix = cockpit.WorldMatrix;
+                if (turret.HasPreviousMatrix)
                 {
-                    turret.Rotor.TargetVelocityRPM = 0f;
-                    turret.Hinge.TargetVelocityRPM = 0f;
+                    Vector3D lastFwd = turret.LastShipMatrix.Forward;
+                    Vector3D lastUp = turret.LastShipMatrix.Up;
+                    Vector3D lastLeft = turret.LastShipMatrix.Left;
+                    Vector3D curFwd = currentShipMatrix.Forward;
+
+                    // Yaw drift: project current forward onto last frame's horizontal plane
+                    Vector3D flatCurFwd = curFwd - Vector3D.Dot(curFwd, lastUp) * lastUp;
+                    if (flatCurFwd.LengthSquared() > 1e-10)
+                    {
+                        flatCurFwd = Vector3D.Normalize(flatCurFwd);
+                        Vector3D driftCross = Vector3D.Cross(flatCurFwd, lastFwd);
+                        double driftAngle = Math.Atan2(driftCross.Length(), Vector3D.Dot(flatCurFwd, lastFwd));
+                        driftAngle *= Math.Sign(Vector3D.Dot(driftCross, lastUp));
+                        yawFeedforward = (float)(driftAngle * 3600.0 / (2.0 * Math.PI));
+                    }
+
+                    // Pitch drift: similar for elevation axis
+                    Vector3D flatCurFwdElev = curFwd - Vector3D.Dot(curFwd, lastLeft) * lastLeft;
+                    if (flatCurFwdElev.LengthSquared() > 1e-10)
+                    {
+                        flatCurFwdElev = Vector3D.Normalize(flatCurFwdElev);
+                        Vector3D elevCross = Vector3D.Cross(flatCurFwdElev, lastFwd);
+                        double elevAngle = Math.Atan2(elevCross.Length(), Vector3D.Dot(flatCurFwdElev, lastFwd));
+                        elevAngle *= Math.Sign(Vector3D.Dot(elevCross, lastLeft));
+                        pitchFeedforward = (float)(elevAngle * turret.ElevationSign * 3600.0 / (2.0 * Math.PI));
+                    }
                 }
+                turret.LastShipMatrix = currentShipMatrix;
+                turret.HasPreviousMatrix = true;
+
+                // Compute final commands, applying deadband before writing
+                float yawCmd = MathHelper.Clamp(-KP * yawDeg + yawFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+                float pitchCmd = MathHelper.Clamp(KP * pitchDeg + pitchFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+
+                // Deadband: zero out when close enough to prevent jitter
+                if (Math.Abs(yawDeg) < 0.5f && Math.Abs(pitchDeg) < 0.5f
+                    && Math.Abs(yawFeedforward) < 0.5f && Math.Abs(pitchFeedforward) < 0.5f)
+                {
+                    yawCmd = 0f;
+                    pitchCmd = 0f;
+                }
+
+                // Conditional writes: only set RPM if value actually changed (avoids network sync)
+                if (Math.Abs(turret.Rotor.TargetVelocityRPM - yawCmd) > 0.01f)
+                    turret.Rotor.TargetVelocityRPM = yawCmd;
+                if (Math.Abs(turret.Hinge.TargetVelocityRPM - pitchCmd) > 0.01f)
+                    turret.Hinge.TargetVelocityRPM = pitchCmd;
 
                 turret.YawError = Math.Abs(yawDeg);
                 turret.PitchError = Math.Abs(pitchDeg);
@@ -323,7 +368,7 @@ namespace IngameScript
                 Vector3D shipForward = cockpit.WorldMatrix.Forward;
 
                 Vector3D shooterVelocity = cockpit.GetShipVelocities().LinearVelocity;
-                Vector3D gravity = cockpit.GetNaturalGravity();
+                Vector3D gravity = myJet.CachedGravity;
 
                 // Find closest enemy within cone of ship's forward (fixed cone, not gun's moving forward)
                 Vector3D? bestTargetPos = null;
@@ -340,8 +385,7 @@ namespace IngameScript
                     if (distance < 10) continue;
 
                     Vector3D toTargetNorm = toTarget / distance;
-                    double dotProduct = Vector3D.Dot(shipForward, toTargetNorm);
-                    double angleRad = Math.Acos(MathHelper.Clamp(dotProduct, -1.0, 1.0));
+                    double angleRad = Math.Atan2(Vector3D.Cross(shipForward, toTargetNorm).Length(), Vector3D.Dot(shipForward, toTargetNorm));
 
                     if (angleRad <= MAX_ANGLE_RAD && distance <= MAX_ENGAGE_RANGE && distance < bestDistance)
                     {
@@ -394,25 +438,9 @@ namespace IngameScript
                 return total;
             }
 
-            private int GetGunAmmo(IMySmallGatlingGun gun)
+            private static int GetGunAmmo(IMySmallGatlingGun gun)
             {
-                if (gun == null || !gun.IsFunctional)
-                    return 0;
-
-                var inventory = gun.GetInventory();
-                if (inventory == null)
-                    return 0;
-
-                int ammo = 0;
-                for (int i = 0; i < inventory.ItemCount; i++)
-                {
-                    var item = inventory.GetItemAt(i);
-                    if (item.HasValue)
-                    {
-                        ammo += (int)item.Value.Amount;
-                    }
-                }
-                return ammo;
+                return Jet.GetGunAmmo(gun);
             }
 
             // Public getters for HUD integration

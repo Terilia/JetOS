@@ -42,12 +42,12 @@ namespace IngameScript
                 // Build local-space transform: cockpit inverse gives us
                 //   .X = right, .Y = up, .Z = backward (negative = forward)
                 // Same as the lead pip uses, proven correct.
-                MatrixD worldToLocal = MatrixD.Invert(cockpit.WorldMatrix);
+                MatrixD worldToLocal = MatrixD.Transpose(cockpit.WorldMatrix);
 
                 // We need a horizontal-plane projection, not a cockpit-relative one.
                 // The cockpit matrix pitches/rolls with the jet — we only want yaw.
                 // Project the cockpit forward onto the gravity plane to get "yaw forward".
-                Vector3D gravity = cockpit.GetNaturalGravity();
+                Vector3D gravity = myjet.CachedGravity;
                 Vector3D worldUp;
                 if (gravity.LengthSquared() < 0.01)
                     worldUp = cockpit.WorldMatrix.Up;
@@ -81,18 +81,9 @@ namespace IngameScript
                 // --- Determine auto-scale range from radar contacts ---
                 float maxDist = 0f;
                 var enemies = myjet.enemyList;
-                var pinnedTarget = myjet.pinnedRaycastTarget;
 
                 for (int i = 0; i < enemies.Count; i++)
                 {
-                    // Skip pinned target for range calculation
-                    if (pinnedTarget.HasValue && enemies[i].EntityId != 0 &&
-                        enemies[i].EntityId == pinnedTarget.Value.EntityId)
-                        continue;
-                    if (pinnedTarget.HasValue && enemies[i].EntityId == 0 &&
-                        enemies[i].Name == pinnedTarget.Value.Name)
-                        continue;
-
                     float dist = (float)Vector3D.Distance(enemies[i].Position, cockpitPos);
                     if (dist > maxDist)
                         maxDist = dist;
@@ -115,7 +106,7 @@ namespace IngameScript
                 if (ringPx > 5f && ringPx < radarRadius)
                 {
                     DrawDashedCircle(frame, radarCenter, ringPx, new Color(HUD_SECONDARY, 0.35f));
-                    string ringLabel = ringRange >= 1000 ? $"{ringRange / 1000:F0}km" : $"{ringRange:F0}m";
+                    string ringLabel = SpriteHelpers.FormatRange(ringRange);
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXT,
@@ -124,12 +115,12 @@ namespace IngameScript
                         RotationOrScale = 0.3f,
                         Color = new Color(HUD_SECONDARY, 0.5f),
                         Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
+                        FontId = MFDTheme.FONT
                     });
                 }
 
                 // Outer range label
-                string outerLabel = radarRange >= 1000 ? $"{radarRange / 1000:F1}km" : $"{radarRange:F0}m";
+                string outerLabel = SpriteHelpers.FormatRange(radarRange);
                 frame.Add(new MySprite()
                 {
                     Type = SpriteType.TEXT,
@@ -138,7 +129,7 @@ namespace IngameScript
                     RotationOrScale = 0.28f,
                     Color = new Color(HUD_SECONDARY, 0.5f),
                     Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
+                    FontId = MFDTheme.FONT
                 });
 
                 // Player arrow (always center, pointing up)
@@ -204,9 +195,7 @@ namespace IngameScript
                         contactColor = new Color(100, 100, 100);
 
                     // Highlight selected enemy
-                    bool isSelected = selectedEnemy.HasValue &&
-                        ((enemy.EntityId != 0 && enemy.EntityId == selectedEnemy.Value.EntityId) ||
-                         (enemy.Name == selectedEnemy.Value.Name));
+                    bool isSelected = selectedEnemy.HasValue && enemy.Matches(selectedEnemy.Value);
 
                     float iconSize = clamped ? 5f : 7f;
 
@@ -214,7 +203,7 @@ namespace IngameScript
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = pos,
                         Size = new Vector2(iconSize, iconSize),
                         RotationOrScale = isSelected ? MathHelper.PiOver4 : 0f,
@@ -240,7 +229,7 @@ namespace IngameScript
                             RotationOrScale = 0.28f,
                             Color = contactColor,
                             Alignment = TextAlignment.LEFT,
-                            FontId = "Monospace"
+                            FontId = MFDTheme.FONT
                         });
                     }
                 }
@@ -256,7 +245,7 @@ namespace IngameScript
                         RotationOrScale = 0.4f,
                         Color = HUD_PRIMARY,
                         Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
+                        FontId = MFDTheme.FONT
                     });
                 }
             }
@@ -293,7 +282,7 @@ namespace IngameScript
             // Pre-allocated list for wingman positions to avoid per-frame allocation
             private List<Vector3D> _wingmanPositionBuffer = new List<Vector3D>();
 
-            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
+            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
                 _wingmanPositionBuffer.Clear();
 
@@ -304,17 +293,10 @@ namespace IngameScript
                     string value;
                     if (SystemManager.TryGetCustomDataValue(wingmanKey, out value) && !string.IsNullOrEmpty(value))
                     {
-                        // Value format: "GPS:Name:X:Y:Z:Color:" - split the value portion
-                        var parts = value.Split(':');
-                        if (parts.Length >= 5)
+                        Vector3D pos;
+                        if (NavigationHelper.TryParseGps(value, out pos))
                         {
-                            double x, y, z;
-                            if (double.TryParse(parts[2], out x) &&
-                                double.TryParse(parts[3], out y) &&
-                                double.TryParse(parts[4], out z))
-                            {
-                                _wingmanPositionBuffer.Add(new Vector3D(x, y, z));
-                            }
+                            _wingmanPositionBuffer.Add(pos);
                         }
                     }
                 }
@@ -322,14 +304,8 @@ namespace IngameScript
                 if (_wingmanPositionBuffer.Count == 0) return;
 
                 Vector3D shooterPosition = cockpit.GetPosition();
-                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
-
-                const float COCKPIT_FOV_SCALE_X = 0.3434f;
-                const float COCKPIT_FOV_SCALE_Y = 0.31f;
-                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
-                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
 
                 foreach (var wingmanPos in _wingmanPositionBuffer)
                 {
@@ -341,10 +317,7 @@ namespace IngameScript
                     if (Math.Abs(localDirection.Z) < MIN_Z_FOR_PROJECTION)
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
-                    float screenX = center.X + (float)(localDirection.X / -localDirection.Z) * scaleX;
-                    float screenY = center.Y + (float)(-localDirection.Y / -localDirection.Z) * scaleY;
-
-                    Vector2 ghostPos = new Vector2(screenX, screenY);
+                    Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,

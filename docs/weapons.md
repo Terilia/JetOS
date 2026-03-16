@@ -41,6 +41,29 @@ flowchart TD
 
 ---
 
+## Radar State Machine — Sequential Activation
+
+Pool radars (non-RWR) use a sequential activation chain:
+
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> SEARCHING : ActivateNextSearcher()
+    SEARCHING --> LOCKED : New target found\n(not already locked)
+    LOCKED --> IDLE : Lost target\n(120 ticks timeout)
+    SEARCHING --> SEARCHING : Target already locked\nby another radar\n(stays searching)
+```
+
+- Only 1 pool radar is SEARCHING at any time
+- When SEARCHING finds a new target, it transitions to LOCKED and the next IDLE radar becomes SEARCHING
+- SEARCHING always feeds `enemyList` (even for already-locked targets)
+- LOCKED radars continuously feed position data; demote to IDLE after `LOST_TARGET_TIMEOUT = 120` ticks
+- Priority rotation (`Closest → Largest → Smallest`) ensures diversity in multi-target detection
+
+**Source:** `Modules/RadarControlModule.cs` — `ProcessSearchingRadar()`, `ProcessLockedRadar()`, `StartSearching()`
+
+---
+
 ## RWR Threat Assessment
 
 Each RWR radar independently tracks an enemy and evaluates whether it's a threat:
@@ -107,15 +130,17 @@ flowchart LR
 
 ### AirtoAir Module Flow
 
+AirtoAir is a radar **consumer**, not a sensor. It reads from `Jet.enemyList` (populated by `RadarControlModule`) and uses `RadarControlModule.IsTrackLocked` for lock detection.
+
 ```mermaid
 flowchart TD
     subgraph TickLoop ["AirtoAir.Tick() — runs every frame"]
-        AUTO["Auto-select closest enemy\nif no selection exists"]
+        AUTO["Auto-select closest enemy\nif no selection exists\n(from Jet.enemyList)"]
         GPS["UpdateActiveTargetGPS()\nwrite selected enemy to CustomData"]
         SEEKER{"Seeker enabled?"}
-        SEEKER -- "No" --> DONE["Skip radar"]
-        SEEKER -- "Yes" --> UPDATE["radarTracker.UpdateTracking()"]
-        UPDATE --> LOCKED{"radarTracker.IsTracking?"}
+        SEEKER -- "No" --> DONE["Skip weapon tones"]
+        SEEKER -- "Yes" --> CHECK["Check radarControl.IsTrackLocked"]
+        CHECK --> LOCKED{"Lock on\nselected enemy?"}
         LOCKED -- "Yes" --> LOCK_TONE["SoundManager.RequestWeapon\n('AIM9Lock', PRIORITY_LOCK)"]
         LOCKED -- "No" --> SEARCH_TONE["SoundManager.RequestWeapon\n('AIM9Search', PRIORITY_SEARCH)"]
     end
@@ -128,14 +153,14 @@ flowchart TD
 
 ### Seeker Toggle
 
-Toggling the seeker enables/disables the primary AI Combat block:
+Toggling the seeker enables/disables weapon lock/search tones. The seeker does **not** control radar blocks directly — `RadarControlModule` manages all AI block activation independently.
 
-| Action | AI Combat Block | AI Flight Block |
-|--------|----------------|-----------------|
-| Seeker ON | Enabled, Behavior=On, Pattern=Intercept(3), Priority=Closest | Enabled |
-| Seeker OFF | Disabled, Behavior=Off | Disabled |
+| Seeker State | Behavior |
+|-------------|----------|
+| ON | Plays AIM9Lock tone when `RadarControlModule.IsTrackLocked`, otherwise AIM9Search tone |
+| OFF | No weapon tones, radar continues operating in background |
 
-**Source:** `Modules/AirtoAir.cs` — `Tick()`, `ToggleSensor()`
+**Source:** `Modules/AirtoAir.cs` — `Tick()`, `ToggleAirtoAirMode()`
 
 ---
 
@@ -253,38 +278,3 @@ flowchart TD
 | Muzzle Velocity | 1100 m/s | 200-2000 | `gun_muzzle_velocity` |
 
 **Source:** `Modules/GunControlModule.cs` — `Tick()`, `TrackTarget()`, `DriveTowardDirection()`, `DetermineMotorSigns()`
-
----
-
-## Targeting Pod (RaycastCameraControl)
-
-Camera-based target acquisition with servo-controlled turret:
-
-```mermaid
-flowchart TD
-    subgraph Hardware ["Physical Setup"]
-        CAM["Camera Targeting Turret\n(raycast enabled)"]
-        ROTOR["Targeting Rotor\n(azimuth)"]
-        HINGE["Targeting Hinge\n(elevation)"]
-        RC["Remote Control\n(orientation reference)"]
-        LCD["LCD Targeting Pod\n(status display)"]
-    end
-
-    subgraph Raycast ["ExecuteRaycast()"]
-        FIRE["camera.Raycast(35000)"] --> HIT{"Hit detected?"}
-        HIT -- "Yes" --> STORE["Store as pinnedRaycastTarget\n+ UpdateOrAddEnemy(source=-1)\n+ SelectPinned()\n+ UpdateActiveTargetGPS()"]
-        HIT -- "No" --> MISS["No action"]
-    end
-
-    subgraph Track ["TrackTarget() — every tick"]
-        SEL["GetSelectedEnemy()"] --> DIR["Direction to target\nin Remote Control frame"]
-        DIR --> SERVO["Proportional control:\nrotor.RPM = -KP * relX * damping\nhinge.RPM = -KP * relY * damping"]
-        SERVO --> ALIGNED{"angle < 2 deg?"}
-        ALIGNED -- "Yes" --> STOPSERVO["Stop servos"]
-        ALIGNED -- "No" --> CONT["Continue tracking"]
-    end
-```
-
-**Servo parameters:** KP = 0.05, Max RPM = 5.0, Lock threshold = 2 deg
-
-**Source:** `Modules/RaycastCameraControl.cs` — `ExecuteRaycast()`, `TrackTarget()`

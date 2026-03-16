@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
@@ -12,51 +11,29 @@ namespace IngameScript
         {
             private void DrawLeadingPip(
         MySpriteDrawFrame frame,
-        IMyCockpit cockpit,
         IMyTextSurface hud,
-        Vector3D targetPosition,
-        Vector3D targetVelocity,
+        MatrixD worldToCockpitMatrix,
         Vector3D shooterPosition,
-        Vector3D shooterVelocity,
-        double projectileSpeed,
+        Vector3D targetPosition,
+        Vector3D interceptPoint,
+        Vector3D aimPoint,
+        double timeToIntercept,
         Color pipColor,
         Color offScreenColor,
         Color behindColor,
-        Color reticleColor,
-        Vector3D targetAcceleration = default(Vector3D)
+        Color reticleColor
     )
             {
-                if (cockpit == null || hud == null) return; // Safety check
-                const float MIN_DISTANCE_FOR_SCALING = 50f;  // Target closer than this uses max pip size (e.g., 500 meters)
-                const float MAX_DISTANCE_FOR_SCALING = 3000f; // Target farther than this uses min pip size (e.g., 3000 meters)
-                const float MAX_PIP_SIZE_FACTOR = 0.1f;      // Pip size factor at min distance (relative to viewportMinDim)
-                const float MIN_PIP_SIZE_FACTOR = 0.01f;     // Pip size factor at max distance (relative to viewportMinDim)
+                if (hud == null) return;
+                const float MIN_DISTANCE_FOR_SCALING = 50f;
+                const float MAX_DISTANCE_FOR_SCALING = 3000f;
+                const float MAX_PIP_SIZE_FACTOR = 0.1f;
+                const float MIN_PIP_SIZE_FACTOR = 0.01f;
 
-                Vector3D interceptPoint;
-                double timeToIntercept;
-                Vector3D aimPoint;
-                bool isAimingAtPip = false; // Initialize the output parameter to false
-                                            // Use the iterative solver
-                if (!BallisticsCalculator.CalculateInterceptPoint(
-                shooterPosition,
-                shooterVelocity,
-                projectileSpeed,
-                targetPosition,
-                targetVelocity,
-                INTERCEPT_ITERATIONS,
-                out interceptPoint,
-                out timeToIntercept,
-                out aimPoint,
-                targetAcceleration
-            ))
-                {
-                    return;
-                }
-
+                bool isAimingAtPip = false;
 
                 // Use aimPoint (accounts for bullet drop) instead of interceptPoint (target future position)
                 Vector3D directionToIntercept = aimPoint - shooterPosition;
-                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
                 Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
 
                 Vector2 surfaceSize = hud.SurfaceSize;
@@ -90,15 +67,7 @@ namespace IngameScript
                 }
 
 
-                // FOV projection constants - empirically determined from cockpit perspective
-                // These values convert 3D directions to 2D screen coordinates
-                const float COCKPIT_FOV_SCALE_X = 0.3434f; // Horizontal FOV scale factor
-                const float COCKPIT_FOV_SCALE_Y = 0.31f;   // Vertical FOV scale (adjusted for aspect ratio)
-                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
-                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
-                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
-                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
-                Vector2 pipScreenPos = new Vector2(screenX, screenY);
+                Vector2 pipScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToIntercept, center, surfaceSize);
 
                 bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
                                   pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
@@ -112,7 +81,8 @@ namespace IngameScript
                 {
                     for (int i = 0; i < myjet._gatlings.Count; i++)
                     {
-                        myjet._gatlings[i].Enabled = true;
+                        if (!myjet._gatlings[i].Enabled)
+                            myjet._gatlings[i].Enabled = true;
                     }
                 }
                 else
@@ -121,7 +91,8 @@ namespace IngameScript
                     {
                         for (int i = 0; i < myjet._gatlings.Count; i++)
                         {
-                            myjet._gatlings[i].Enabled = false;
+                            if (myjet._gatlings[i].Enabled)
+                                myjet._gatlings[i].Enabled = false;
                         }
                     }
                 }
@@ -152,13 +123,11 @@ namespace IngameScript
                             RotationOrScale = 0.5f,
                             Color = ttiColor,
                             Alignment = TextAlignment.LEFT,
-                            FontId = "Monospace"
+                            FontId = MFDTheme.FONT
                         });
 
                         // Draw range to intercept point
-                        string rangeText = distanceToIntercept >= 1000
-                            ? $"{distanceToIntercept / 1000:F1}km"
-                            : $"{distanceToIntercept:F0}m";
+                        string rangeText = SpriteHelpers.FormatRange(distanceToIntercept);
 
                         frame.Add(new MySprite()
                         {
@@ -168,36 +137,10 @@ namespace IngameScript
                             RotationOrScale = 0.45f,
                             Color = ttiColor,
                             Alignment = TextAlignment.LEFT,
-                            FontId = "Monospace"
+                            FontId = MFDTheme.FONT
                         });
                     }
 
-                    Vector2 targetScreenPos = Vector2.Zero; // Initialize
-                    const float velocityIndicatorScale = 20f; // Example: Represents 0.3 seconds of travel
-
-                    Vector3D targetVelocityEndPointWorld = interceptPoint + targetVelocity * velocityIndicatorScale;
-
-                    // FIX: Removed duplicate worldToLocalMatrix (already have worldToCockpitMatrix)
-                    // FIX: Removed dead code - localTargetVelocityEndPoint was never used
-                    Vector2 targetVelEndPointScreenPos = Vector2.Zero; // Initialize
-
-                    // 2. Get the direction vector FROM THE SHOOTER to that point
-                    Vector3D directionToVelEndPoint = Vector3D.Normalize(targetVelocityEndPointWorld - shooterPosition);
-
-                    // 3. Transform that DIRECTION into the cockpit's local reference frame
-                    Vector3D localDirectionToVelEndPoint = Vector3D.TransformNormal(directionToVelEndPoint, worldToCockpitMatrix);
-
-                    // 4. Now, project this correct local direction onto the screen
-                    if (localDirectionToVelEndPoint.Z < 0) // Check if it's in front
-                    {
-                        float screenX_vel = center.X + (float)(localDirectionToVelEndPoint.X / -localDirectionToVelEndPoint.Z) * scaleX;
-                        float screenY_vel = center.Y + (float)(-localDirectionToVelEndPoint.Y / -localDirectionToVelEndPoint.Z) * scaleY;
-                        targetVelEndPointScreenPos = new Vector2(screenX_vel, screenY_vel);
-
-                        // Draw your line from pipScreenPos to targetVelEndPointScreenPos
-                    }
-
-                    // FIX: Use worldToCockpitMatrix instead of duplicate worldToLocalMatrix
                     Vector3D directionToTarget = targetPosition - shooterPosition;
                     Vector3D localDirectionToTarget = Vector3D.TransformNormal(directionToTarget, worldToCockpitMatrix);
 
@@ -205,10 +148,7 @@ namespace IngameScript
 
                     if (localDirectionToTarget.Z < -MIN_Z_FOR_PROJECTION)
                     {
-
-                        float screenX_tgt = center.X + (float)(localDirectionToTarget.X / -localDirectionToTarget.Z) * scaleX;
-                        float screenY_tgt = center.Y + (float)(-localDirectionToTarget.Y / -localDirectionToTarget.Z) * scaleY; // Y inverted
-                        currentTargetScreenPos = new Vector2(screenX_tgt, screenY_tgt);
+                        currentTargetScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToTarget, center, surfaceSize);
                     }
 
                     // FIX: Removed redundant isOnScreen check (already inside isOnScreen block)
@@ -263,32 +203,48 @@ namespace IngameScript
                         Alignment = TextAlignment.CENTER
                     };
                     frame.Add(arrowSprite);
+
+                    // Range label next to off-screen arrow
+                    double offscreenRange = Vector3D.Distance(shooterPosition, targetPosition);
+                    string offscreenRangeText = SpriteHelpers.FormatRange(offscreenRange);
+                    Vector2 perpDir = new Vector2(-direction.Y, direction.X);
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = offscreenRangeText,
+                        Position = edgePoint + perpDir * 14f - direction * 10f,
+                        RotationOrScale = 0.45f,
+                        Color = offScreenColor,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = MFDTheme.FONT
+                    });
                 }
             }
 
             private void DrawTargetBrackets(
                 MySpriteDrawFrame frame,
-                IMyCockpit cockpit,
                 IMyTextSurface hud,
+                MatrixD worldToCockpitMatrix,
                 Vector3D targetPosition,
                 Vector3D targetVelocity,
                 Vector3D shooterPosition,
                 Vector3D shooterVelocity
             )
             {
-                if (cockpit == null || hud == null) return;
+                if (hud == null) return;
 
                 double range = Vector3D.Distance(shooterPosition, targetPosition);
 
-                Vector3D relativeVelocity = targetVelocity - shooterVelocity;
+                // Closure rate: positive = closing (shooter approaching target)
+                Vector3D relativeVelocity = shooterVelocity - targetVelocity;
                 Vector3D directionToTarget = Vector3D.Normalize(targetPosition - shooterPosition);
                 double closureRate = Vector3D.Dot(relativeVelocity, directionToTarget);
 
-                Vector3D targetForward = Vector3D.Normalize(targetVelocity);
+                Vector3D targetForward = targetVelocity.LengthSquared() > 0.01
+                    ? Vector3D.Normalize(targetVelocity) : directionToTarget;
                 Vector3D toShooter = Vector3D.Normalize(shooterPosition - targetPosition);
-                double aspectAngle = Math.Acos(MathHelper.Clamp(Vector3D.Dot(targetForward, toShooter), -1, 1)) * (180.0 / Math.PI);
+                double aspectAngle = Math.Atan2(Vector3D.Cross(targetForward, toShooter).Length(), Vector3D.Dot(targetForward, toShooter)) * (180.0 / Math.PI);
 
-                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
                 Vector3D directionToTargetLocal = Vector3D.TransformNormal(targetPosition - shooterPosition, worldToCockpitMatrix);
 
                 if (Math.Abs(directionToTargetLocal.Z) < MIN_Z_FOR_PROJECTION)
@@ -299,13 +255,7 @@ namespace IngameScript
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
 
-                const float COCKPIT_FOV_SCALE_X = 0.3434f;
-                const float COCKPIT_FOV_SCALE_Y = 0.31f;
-                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
-                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
-                float screenX = center.X + (float)(directionToTargetLocal.X / -directionToTargetLocal.Z) * scaleX;
-                float screenY = center.Y + (float)(-directionToTargetLocal.Y / -directionToTargetLocal.Z) * scaleY;
-                Vector2 targetScreenPos = new Vector2(screenX, screenY);
+                Vector2 targetScreenPos = SpriteHelpers.ProjectToScreen(directionToTargetLocal, center, surfaceSize);
 
                 bool isOnScreen = targetScreenPos.X >= 0 && targetScreenPos.X <= surfaceSize.X &&
                                   targetScreenPos.Y >= 0 && targetScreenPos.Y <= surfaceSize.Y;
@@ -316,8 +266,8 @@ namespace IngameScript
                 float bracketThickness = 2f;
                 float cornerLength = bracketSize * 0.3f;
 
-                Color bracketColor = closureRate < -10 ? HUD_WARNING :
-                                   closureRate > 10 ? HUD_EMPHASIS : HUD_PRIMARY;
+                Color bracketColor = closureRate > 10 ? HUD_WARNING :
+                                   closureRate < -10 ? HUD_EMPHASIS : HUD_PRIMARY;
 
                 SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2),
                                     targetScreenPos + new Vector2(-bracketSize/2 + cornerLength, -bracketSize/2),
@@ -350,7 +300,7 @@ namespace IngameScript
                 float textY = targetScreenPos.Y + bracketSize/2 + 5f;
                 float textScale = 0.5f;
 
-                string rangeText = range >= 1000 ? $"{range/1000:F1}km" : $"{range:F0}m";
+                string rangeText = SpriteHelpers.FormatRange(range);
                 var rangeSprite = new MySprite()
                 {
                     Type = SpriteType.TEXT,
@@ -359,11 +309,11 @@ namespace IngameScript
                     RotationOrScale = textScale,
                     Color = bracketColor,
                     Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
+                    FontId = MFDTheme.FONT
                 };
                 frame.Add(rangeSprite);
 
-                string closureLabel = closureRate < -10 ? "HOT" : closureRate > 10 ? "COLD" : "---";
+                string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
                 string closureText = $"Vc:{Math.Abs(closureRate):F0} {closureLabel}";
                 var closureSprite = new MySprite()
                 {
@@ -373,7 +323,7 @@ namespace IngameScript
                     RotationOrScale = textScale,
                     Color = bracketColor,
                     Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
+                    FontId = MFDTheme.FONT
                 };
                 frame.Add(closureSprite);
 
@@ -386,22 +336,22 @@ namespace IngameScript
                     RotationOrScale = textScale,
                     Color = bracketColor,
                     Alignment = TextAlignment.CENTER,
-                    FontId = "Monospace"
+                    FontId = MFDTheme.FONT
                 };
                 frame.Add(aspectSprite);
             }
 
             private void DrawGunFunnel(
                 MySpriteDrawFrame frame,
-                IMyCockpit cockpit,
                 IMyTextSurface hud,
+                MatrixD worldToCockpitMatrix,
                 Vector3D interceptPoint,
                 Vector3D shooterPosition,
                 double range,
                 bool isAimingAtPip
             )
             {
-                if (cockpit == null || hud == null) return;
+                if (hud == null) return;
 
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
@@ -409,7 +359,6 @@ namespace IngameScript
                 float funnelWidthFactor = (float)MathHelper.Clamp(range / 2000.0, 0.05, 0.3);
                 float funnelBaseWidth = surfaceSize.X * funnelWidthFactor;
 
-                MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
                 Vector3D directionToIntercept = interceptPoint - shooterPosition;
                 Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
 
@@ -418,13 +367,7 @@ namespace IngameScript
                 if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
                     localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION;
 
-                const float COCKPIT_FOV_SCALE_X = 0.3434f;
-                const float COCKPIT_FOV_SCALE_Y = 0.31f;
-                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
-                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
-                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
-                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
-                Vector2 pipScreenPos = new Vector2(screenX, screenY);
+                Vector2 pipScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToIntercept, center, surfaceSize);
 
                 Color funnelColor = new Color(HUD_PRIMARY, 0.3f);
                 float lineThickness = 1f;
@@ -455,12 +398,12 @@ namespace IngameScript
                         RotationOrScale = 1.0f,
                         Color = cueColor,
                         Alignment = TextAlignment.CENTER,
-                        FontId = "White"
+                        FontId = MFDTheme.FONT_W
                     });
                 }
             }
 
-            private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition)
+            private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
             {
                 bool lowAltitudeWarning = altitude < 100 && velocity.Y < -5;
                 bool collisionWarning = false;
@@ -468,7 +411,7 @@ namespace IngameScript
                 if (targetPosition != Vector3D.Zero)
                 {
                     double range = Vector3D.Distance(shooterPosition, targetPosition);
-                    Vector3D relativeVelocity = velocity;
+                    Vector3D relativeVelocity = velocity - targetVelocity;
                     Vector3D toTarget = Vector3D.Normalize(targetPosition - shooterPosition);
                     double closureRate = -Vector3D.Dot(relativeVelocity, toTarget);
 
@@ -497,10 +440,11 @@ namespace IngameScript
                         RotationOrScale = 1.2f,
                         Color = warningColor,
                         Alignment = TextAlignment.CENTER,
-                        FontId = "White"
+                        FontId = MFDTheme.FONT_W
                     });
                 }
             }
+
         }
     }
 }

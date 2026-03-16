@@ -21,9 +21,8 @@ namespace IngameScript
             private static string[] mainMenuOptions;
             private static Program parentProgram;
             private static UIController uiController;
-            private static int lastHandledSpecialTick = -1;
+            private static string _pendingArgument = null;
             public static int currentTick = 0;
-            private static Program.RaycastCameraControl raycastProgram;
             private static Program.HUDModule hudProgram;
             private static Program.ConfigurationModule configModule;
             private static Program.RadarControlModule radarControlModule;
@@ -34,18 +33,14 @@ namespace IngameScript
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
 
-            // FPS tracking
             private static Jet _myJet;
-            private static long lastTimeTicks = 0;
-            private static double accumulatedTime = 0.0;
-            private static int tickCount = 0;
 
             public static void Initialize(Program program)
             {
                 _myJet = new Jet(program.GridTerminalSystem);
                 var cockpit =
                     program.GridTerminalSystem.GetBlockWithName("JetOS") as IMyTextSurfaceProvider;
-                if (cockpit != null)
+                if (cockpit != null && cockpit.SurfaceCount >= 3)
                 {
                     lcdMain = cockpit.GetSurface(0);
                     lcdMain.ContentType = ContentType.SCRIPT;
@@ -87,10 +82,8 @@ namespace IngameScript
                 airtoAirModule = new AirtoAir(parentProgram, _myJet);
                 modules.Add(airtoAirModule);
 
-                raycastProgram = new RaycastCameraControl(parentProgram, _myJet);
                 hudProgram = new HUDModule(parentProgram, _myJet, lcdWeapons, radarControlModule);
                 modules.Add(hudProgram);
-                modules.Add(raycastProgram);
                 uiController = new UIController(lcdMain, lcdExtra);
 
                 configModule = new ConfigurationModule(parentProgram);
@@ -98,6 +91,7 @@ namespace IngameScript
 
                 gunControlModule = new GunControlModule(parentProgram, _myJet);
                 modules.Add(gunControlModule);
+
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
                 {
@@ -141,16 +135,33 @@ namespace IngameScript
 
             public static void Main(string argument, UpdateType updateSource)
             {
+                // When a toolbar button is pressed, SE calls Main() twice in the same sim tick:
+                // once with UpdateType.Trigger and once with Update1. We must only process once
+                // to prevent double-advancing GameTicks, double-ticking modules, etc.
+                if ((updateSource & UpdateType.Trigger) != 0)
+                {
+                    _pendingArgument = argument;
+                    return;
+                }
+                if (!string.IsNullOrEmpty(_pendingArgument))
+                {
+                    argument = _pendingArgument;
+                    _pendingArgument = null;
+                }
+
                 currentTick++;
                 Jet.GameTicks++;
+
+                // Cache gravity once per tick for all modules
+                if (_myJet._cockpit != null)
+                    _myJet.CachedGravity = _myJet._cockpit.GetNaturalGravity();
 
                 Vector3D cockpitPosition = _myJet.GetCockpitPosition();
                 MatrixD cockpitMatrix = _myJet.GetCockpitMatrix();
 
                 double velocity = _myJet.GetVelocity();
                 double velocityKnots = velocity * 1.94384;
-                double altitude;
-                _myJet._cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
+                double altitude = _myJet.GetAltitude();
 
                 // Altitude warning with hysteresis
                 float altWarn = GetConfigValue("altitude_warning");
@@ -175,10 +186,6 @@ namespace IngameScript
                     }
                 }
 
-                if (currentTick == lastHandledSpecialTick)
-                    return;
-                lastHandledSpecialTick = currentTick;
-
                 if (string.IsNullOrWhiteSpace(argument))
                 {
                     DisplayMenu();
@@ -193,9 +200,8 @@ namespace IngameScript
                     currentModule.Tick();
                 }
 
-                if (raycastProgram != null)
+                if (hudProgram != null && currentModule != hudProgram)
                 {
-                    raycastProgram.Tick();
                     hudProgram.Tick();
                 }
 
@@ -221,24 +227,6 @@ namespace IngameScript
                 // RadarControlModule and AirtoAir sound requests were delayed
                 // by one tick (they'd be processed next tick instead of this one).
                 SoundManager.Tick(currentTick);
-
-                // FPS tracking
-                if (lastTimeTicks == 0)
-                    lastTimeTicks = DateTime.UtcNow.Ticks;
-
-                long nowTicks = DateTime.UtcNow.Ticks;
-                long diffTicks = nowTicks - lastTimeTicks;
-                double deltaSeconds = diffTicks / (double)TimeSpan.TicksPerSecond;
-
-                accumulatedTime += deltaSeconds;
-                tickCount++;
-                if (accumulatedTime >= 1.0)
-                {
-                    accumulatedTime = 0.0;
-                    tickCount = 0;
-                }
-
-                lastTimeTicks = nowTicks;
             }
 
             private static void HandleSpecialFunctionInputs(string argument)
@@ -257,11 +245,16 @@ namespace IngameScript
             {
                 string[] options =
                     currentModule == null ? mainMenuOptions : currentModule.GetOptions();
+                string title = currentModule == null ? "SYSTEM MENU" : currentModule.name.ToUpper();
                 uiController.RenderMainScreen(
-                    title: "System Menu",
+                    title: title,
                     options: options,
                     currentMenuIndex: currentMenuIndex,
-                    navigationInstructions: "1: ▲  | 2: ▼ | 3: Select | 4: Back | 5-8: Special | 9: Menu"
+                    moduleName: currentModule != null ? currentModule.name : null,
+                    statusPanelRenderer: currentModule == null ? (Action<MySpriteDrawFrame, RectangleF>)((frame, panelArea) =>
+                    {
+                        StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick);
+                    }) : null
                 );
 
                 var area = new RectangleF(0, 0, 512, 512);
@@ -325,7 +318,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < sorted.Count; i++)
                     {
-                        // Match by EntityId first, then Name
+                        // Match by EntityId first, then Name+SourceIndex
                         if (selected.Value.EntityId != 0 && sorted[i].EntityId == selected.Value.EntityId)
                         {
                             currentIndex = i;
@@ -341,20 +334,7 @@ namespace IngameScript
 
                 // Advance to next entry (wrapping)
                 int nextIndex = (currentIndex + 1) % sorted.Count;
-                var nextContact = sorted[nextIndex];
-
-                // Check if this is the pinned target
-                if (_myJet.pinnedRaycastTarget.HasValue &&
-                    nextContact.SourceIndex == _myJet.pinnedRaycastTarget.Value.SourceIndex &&
-                    nextContact.Name == _myJet.pinnedRaycastTarget.Value.Name &&
-                    Vector3D.Distance(nextContact.Position, _myJet.pinnedRaycastTarget.Value.Position) < 1.0)
-                {
-                    _myJet.SelectPinned();
-                }
-                else
-                {
-                    _myJet.SelectEnemy(nextContact);
-                }
+                _myJet.SelectEnemy(sorted[nextIndex]);
 
                 UpdateActiveTargetGPS();
             }
@@ -370,11 +350,8 @@ namespace IngameScript
                 Vector3D targetPos = selected.Value.Position;
                 Vector3D targetVel = selected.Value.Velocity;
 
-                // Write through cache — no direct Me.CustomData access
-                string gpsValue = $"GPS:Target:{targetPos.X}:{targetPos.Y}:{targetPos.Z}:#FF75C9F1:";
+                SetCustomDataValue("Cached", NavigationHelper.FormatGps(targetPos));
                 string speedValue = $"{targetVel.X}:{targetVel.Y}:{targetVel.Z}:#FF75C9F1:";
-
-                SetCustomDataValue("Cached", gpsValue);
                 SetCustomDataValue("CachedSpeed", speedValue);
             }
 
@@ -455,6 +432,11 @@ namespace IngameScript
             public static GunControlModule GetGunControl()
             {
                 return gunControlModule;
+            }
+
+            public static HUDModule GetHUDModule()
+            {
+                return hudProgram;
             }
         }
     }

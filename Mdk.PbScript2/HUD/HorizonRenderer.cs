@@ -10,6 +10,8 @@ namespace IngameScript
     {
         partial class HUDModule
         {
+            private List<MySprite> _horizonSprites = new List<MySprite>();
+
             private void DrawArtificialHorizon(
                 MySpriteDrawFrame frame,
                 float pitch,
@@ -19,7 +21,8 @@ namespace IngameScript
                 float pixelsPerDegree
             )
             {
-                List<MySprite> sprites = new List<MySprite>();
+                List<MySprite> sprites = _horizonSprites;
+                sprites.Clear();
 
                 for (int i = -90; i <= 90; i += 5)
                 {
@@ -38,28 +41,60 @@ namespace IngameScript
                     Color lineColor = HUD_PRIMARY;
 
                     float halfWidth = lineWidth * 1.225f;
-                    sprites.Add(
-                        new MySprite()
+
+                    if (!isPositive)
+                    {
+                        // Solid lines for nose-up pitch lines (i<0 because pitch sign is inverted:
+                        // pitch = asin(dot(forward, gravityDown)), so nose-up = negative pitch)
+                        sprites.Add(new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
+                            Data = MFDTheme.SQ,
                             Position = new Vector2(centerX * 0.75f, markerY),
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
                             Alignment = TextAlignment.CENTER
-                        }
-                    );
-                    sprites.Add(
-                        new MySprite()
+                        });
+                        sprites.Add(new MySprite()
                         {
                             Type = SpriteType.TEXTURE,
-                            Data = "SquareSimple",
+                            Data = MFDTheme.SQ,
                             Position = new Vector2(centerX * 1.25f, markerY),
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
                             Alignment = TextAlignment.CENTER
+                        });
+                    }
+                    else
+                    {
+                        // Dashed lines for nose-down pitch lines (i>0 = below horizon)
+                        int dashCount = 4;
+                        float totalDashWidth = lineWidth;
+                        float dashWidth = totalDashWidth / (dashCount * 2 - 1);
+
+                        for (int d = 0; d < dashCount; d++)
+                        {
+                            float dashOffset = -totalDashWidth / 2f + d * (dashWidth * 2) + dashWidth / 2f;
+                            sprites.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = MFDTheme.SQ,
+                                Position = new Vector2(centerX * 0.75f + dashOffset, markerY),
+                                Size = new Vector2(dashWidth, lineThickness),
+                                Color = lineColor,
+                                Alignment = TextAlignment.CENTER
+                            });
+                            sprites.Add(new MySprite()
+                            {
+                                Type = SpriteType.TEXTURE,
+                                Data = MFDTheme.SQ,
+                                Position = new Vector2(centerX * 1.25f + dashOffset, markerY),
+                                Size = new Vector2(dashWidth, lineThickness),
+                                Color = lineColor,
+                                Alignment = TextAlignment.CENTER
+                            });
                         }
-                    );
+                    }
 
                     float tipLength = 12f;
                     float tipAngle = MathHelper.ToRadians(isPositive ? 45f : -45f);
@@ -76,7 +111,7 @@ namespace IngameScript
                             RotationOrScale = 0.8f,
                             Color = lineColor,
                             Alignment = TextAlignment.RIGHT,
-                            FontId = "White"
+                            FontId = MFDTheme.FONT_W
                         }
                     );
                     sprites.Add(
@@ -88,7 +123,7 @@ namespace IngameScript
                             RotationOrScale = 0.8f,
                             Color = lineColor,
                             Alignment = TextAlignment.LEFT,
-                            FontId = "White"
+                            FontId = MFDTheme.FONT_W
                         }
                     );
                 }
@@ -98,7 +133,7 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = new Vector2(centerX * 1.25f, horizonY),
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = HUD_HORIZON,
@@ -109,26 +144,13 @@ namespace IngameScript
                     new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = new Vector2(centerX * 0.75f, horizonY),
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = HUD_HORIZON,
                         Alignment = TextAlignment.CENTER
                     }
                 );
-                sprites.Add(
-                    new MySprite()
-                    {
-                        Type = SpriteType.TEXT,
-                        Data = "-^-",
-                        Position = new Vector2(centerX, centerY - 10),
-                        RotationOrScale = 0.8f,
-                        Color = HUD_EMPHASIS,
-                        Alignment = TextAlignment.CENTER,
-                        FontId = "Monospace"
-                    }
-                );
-
                 float rollRad = MathHelper.ToRadians(-roll);
                 float cosRoll = (float)Math.Cos(rollRad);
                 float sinRoll = (float)Math.Sin(rollRad);
@@ -156,6 +178,25 @@ namespace IngameScript
 
                     frame.Add(sprite);
                 }
+
+            }
+
+            private void DrawAircraftSymbol(MySpriteDrawFrame frame, float centerX, float centerY)
+            {
+                float wingSpan = 35f;
+                float innerSpan = 10f;
+                float dipDepth = 6f;
+                float refThickness = 2.5f;
+                Color refColor = HUD_EMPHASIS;
+
+                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX - wingSpan, centerY),
+                    new Vector2(centerX - innerSpan, centerY), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX - innerSpan, centerY),
+                    new Vector2(centerX, centerY + dipDepth), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX, centerY + dipDepth),
+                    new Vector2(centerX + innerSpan, centerY), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX + innerSpan, centerY),
+                    new Vector2(centerX + wingSpan, centerY), refThickness, refColor);
             }
 
             private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
@@ -186,7 +227,7 @@ namespace IngameScript
                     frame.Add(new MySprite()
                     {
                         Type = SpriteType.TEXTURE,
-                        Data = "SquareSimple",
+                        Data = MFDTheme.SQ,
                         Position = finalPos,
                         Size = new Vector2(2f, tickLength),
                         Color = tickColor,
@@ -199,40 +240,34 @@ namespace IngameScript
             private void DrawFlightPathMarker(
                 MySpriteDrawFrame frame,
                 Vector3D currentVelocity,
-                MatrixD worldMatrix,
+                MatrixD worldToCockpitMatrix,
                 double roll,
                 float centerX,
                 float centerY,
                 float pixelsPerDegree
             )
             {
-                const double DegToRad = Math.PI / 180.0;
+                if (currentVelocity.LengthSquared() < 1.0) return;
+
                 const float MarkerSize = 20f;
                 const float WingLength = 15f;
                 const float WingThickness = 2f;
                 const float WingOffsetX = 10f;
 
+                // Use perspective projection (same as lead pip / target brackets)
+                // to get a physically correct screen position for the velocity vector.
                 Vector3D velocityDirection = Vector3D.Normalize(currentVelocity);
+                Vector3D localVelocity = Vector3D.TransformNormal(velocityDirection, worldToCockpitMatrix);
 
-                Vector3D localVelocity = Vector3D.TransformNormal(
-                    velocityDirection,
-                    MatrixD.Transpose(worldMatrix)
-                );
+                // Only draw when velocity has a forward component
+                if (localVelocity.Z >= 0) return;
+                if (Math.Abs(localVelocity.Z) < MIN_Z_FOR_PROJECTION)
+                    localVelocity.Z = -MIN_Z_FOR_PROJECTION;
 
-                double velocityYaw = Math.Atan2(localVelocity.X, -localVelocity.Z) * 180.0 / Math.PI;
-                double velocityPitch = Math.Atan2(localVelocity.Y, -localVelocity.Z) * 180.0 / Math.PI;
+                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, new Vector2(centerX, centerY), surfaceSize);
 
-                float rollRad = (float)(roll * DegToRad);
-
-                Vector2 markerOffset = new Vector2(
-                    (float)(velocityYaw * pixelsPerDegree),
-                    (float)(-velocityPitch * pixelsPerDegree)
-                );
-
-                Vector2 rotatedOffset = SpriteHelpers.RotatePoint(markerOffset, Vector2.Zero, -rollRad);
-                Vector2 markerPosition = new Vector2(centerX, centerY) + rotatedOffset;
-
-                var marker = new MySprite
+                frame.Add(new MySprite
                 {
                     Type = SpriteType.TEXTURE,
                     Data = "Circle",
@@ -240,8 +275,10 @@ namespace IngameScript
                     Size = new Vector2(MarkerSize, MarkerSize),
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER
-                };
-                frame.Add(marker);
+                });
+
+                // Wings counter-rotate by roll to stay horizon-aligned (like a real F-18 FPM)
+                float rollRad = MathHelper.ToRadians((float)roll);
 
                 Vector2 leftWingOffset = new Vector2(-WingLength / 2 - WingOffsetX, 0f);
                 Vector2 rightWingOffset = new Vector2(WingLength / 2 + WingOffsetX, 0f);
@@ -249,29 +286,27 @@ namespace IngameScript
                 Vector2 rotatedLeftWingOffset = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
                 Vector2 rotatedRightWingOffset = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
 
-                var leftWing = new MySprite
+                frame.Add(new MySprite
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
+                    Data = MFDTheme.SQ,
                     Position = markerPosition + rotatedLeftWingOffset,
                     Size = new Vector2(WingLength, WingThickness),
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER,
                     RotationOrScale = -rollRad
-                };
-                frame.Add(leftWing);
+                });
 
-                var rightWing = new MySprite
+                frame.Add(new MySprite
                 {
                     Type = SpriteType.TEXTURE,
-                    Data = "SquareSimple",
+                    Data = MFDTheme.SQ,
                     Position = markerPosition + rotatedRightWingOffset,
                     Size = new Vector2(WingLength, WingThickness),
                     Color = Color.White,
                     Alignment = TextAlignment.CENTER,
                     RotationOrScale = -rollRad
-                };
-                frame.Add(rightWing);
+                });
             }
         }
     }

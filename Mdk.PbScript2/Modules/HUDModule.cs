@@ -13,61 +13,27 @@ namespace IngameScript
         partial class HUDModule : ProgramModule
         {
             // --- HUD Color Palette (themed) ---
-            internal static Color HUD_PRIMARY
+            // Theme index: 0=Green (default), 1=Cyan, 2=Orange, 3=White
+            private static readonly Color[] THEME_PRIMARY = { Color.Lime, Color.Cyan, Color.Orange, Color.White };
+            private static readonly Color[] THEME_SECONDARY = { Color.Green, Color.DodgerBlue, Color.DarkGoldenrod, Color.Gray };
+            private static readonly Color[] THEME_HORIZON = { Color.LimeGreen, Color.DeepSkyBlue, Color.Goldenrod, Color.LightGray };
+            private static readonly Color[] THEME_RADAR_FRIENDLY = { Color.DarkGreen, Color.DarkBlue, Color.DarkGoldenrod, Color.DarkGray };
+
+            private static int _cachedTheme = 0;
+
+            internal static void CacheTheme()
             {
-                get
-                {
-                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
-                    {
-                        case 1: return Color.Cyan;
-                        case 2: return Color.Orange;
-                        case 3: return Color.White;
-                        default: return Color.Lime;
-                    }
-                }
+                int t = (int)SystemManager.GetConfigValue("hud_theme");
+                _cachedTheme = (t >= 0 && t < THEME_PRIMARY.Length) ? t : 0;
             }
-            internal static Color HUD_SECONDARY
-            {
-                get
-                {
-                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
-                    {
-                        case 1: return Color.DodgerBlue;
-                        case 2: return Color.DarkGoldenrod;
-                        case 3: return Color.Gray;
-                        default: return Color.Green;
-                    }
-                }
-            }
-            internal static Color HUD_HORIZON
-            {
-                get
-                {
-                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
-                    {
-                        case 1: return Color.DeepSkyBlue;
-                        case 2: return Color.Goldenrod;
-                        case 3: return Color.LightGray;
-                        default: return Color.LimeGreen;
-                    }
-                }
-            }
+
+            internal static Color HUD_PRIMARY => THEME_PRIMARY[_cachedTheme];
+            internal static Color HUD_SECONDARY => THEME_SECONDARY[_cachedTheme];
+            internal static Color HUD_HORIZON => THEME_HORIZON[_cachedTheme];
+            internal static Color HUD_RADAR_FRIENDLY => THEME_RADAR_FRIENDLY[_cachedTheme];
             internal static readonly Color HUD_EMPHASIS = Color.Yellow;
             internal static readonly Color HUD_WARNING = Color.Red;
             internal static readonly Color HUD_INFO = Color.White;
-            internal static Color HUD_RADAR_FRIENDLY
-            {
-                get
-                {
-                    switch ((int)SystemManager.GetConfigValue("hud_theme"))
-                    {
-                        case 1: return Color.DarkBlue;
-                        case 2: return Color.DarkGoldenrod;
-                        case 3: return Color.DarkGray;
-                        default: return Color.DarkGreen;
-                    }
-                }
-            }
 
             // --- Layout Constants ---
             private const float SPEED_TAPE_CENTER_Y_FACTOR = 2.25f;
@@ -116,6 +82,7 @@ namespace IngameScript
             internal double smoothedGForces = 0;
             internal double smoothedAoA = 0;
             internal double smoothedThrottle = 0;
+            internal double verticalVelocityMps = 0;
 
             // Running sums for efficient smoothing
             private double velocitySum = 0;
@@ -128,9 +95,17 @@ namespace IngameScript
             internal bool hydrogenswitch = false;
             private const float THROTTLE_RATE = 0.6f;
             private const float HYDROGEN_HYSTERESIS = 0.02f;
+            // AB gate: requires releasing W once at MIL, then re-engaging to activate AB.
+            // Or hold at MIL for 40 ticks to auto-engage.
+            private const int AB_AUTO_ENGAGE_TICKS = 40;
+            private int abHoldCounter = 0;
+            private bool abGatePassed = false; // true after pilot released W once at MIL
 
             // --- Airbrake State ---
             private bool airbrakesOpen = false;
+
+            // --- Thrust Balancing ---
+            // Reads MaxEffectiveThrust per side each tick to keep thrust equal
 
             // --- Manual Fire Toggle ---
             private bool manualFireToggleCooldown = false;
@@ -155,6 +130,8 @@ namespace IngameScript
             // HUD Mode System
             private enum HUDMode { AirToAir, AirToGround, Navigation }
             private HUDMode currentHUDMode = HUDMode.AirToAir;
+
+
 
             // Radar sweep animation
             internal int radarSweepTick = 0;
@@ -197,7 +174,6 @@ namespace IngameScript
             internal const float SPEED_KPH_UNITS_PER_TAPE_HEIGHT = 600f;
 
             // --- FOV projection constants ---
-            internal const float COCKPIT_FOV_SCALE_X = 0.3434f;
             internal const float COCKPIT_FOV_SCALE_Y = 0.31f;
 
             // --- Structs ---
@@ -233,7 +209,6 @@ namespace IngameScript
             {
                 cockpit = jet._cockpit;
                 hudBlock = jet.hudBlock;
-                hud = jet.hud;
                 weaponScreen = weaponSurface;
                 radarControl = radar;
 
@@ -243,13 +218,7 @@ namespace IngameScript
                 thrusters = jet._thrustersbackwards;
                 tanks = jet.tanks;
                 // Disable hydrogen tanks on startup
-                for (int i = 0; i < tanks.Count; i++)
-                {
-                    if (tanks[i] != null)
-                    {
-                        tanks[i].Enabled = false;
-                    }
-                }
+                SetTanksEnabled(false);
                 myjet = jet;
 
                 if (hudBlock == null)
@@ -276,7 +245,7 @@ namespace IngameScript
                 hud.ScriptBackgroundColor = new Color(0, 0, 0, 0);
                 hud.ScriptForegroundColor = Color.White;
 
-                ParentProgram.GridTerminalSystem.GetBlocksOfType(airbreaks);
+                ParentProgram.GridTerminalSystem.GetBlocksOfType(airbreaks, b => b.IsSameConstructAs(ParentProgram.Me));
                 name = "HUD Control";
             }
 
@@ -311,6 +280,9 @@ namespace IngameScript
                 if (!ValidateHUDState())
                     return;
 
+                radarSweepTick++;
+                CacheTheme();
+
                 double throttle = cockpit.MoveIndicator.Z * -1;
                 double jumpthrottle = cockpit.MoveIndicator.Y;
 
@@ -343,17 +315,20 @@ namespace IngameScript
                 Vector3D shooterPosition = cockpit.GetPosition();
                 double altitude = GetAltitude();
 
+                MatrixD worldToCockpitMatrix = MatrixD.Transpose(cockpit.WorldMatrix);
+
                 using (var frame = hud.DrawFrame())
                 {
                     // Horizon & attitude
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
+                    DrawAircraftSymbol(frame, centerX, centerY);
                     DrawBankAngleMarkers(frame, centerX, centerY, (float)roll, pixelsPerDegree);
                     if (SystemManager.GetConfigValue("hud_fpm") > 0.5f)
-                        DrawFlightPathMarker(frame, currentVelocity, worldMatrix, roll, centerX, centerY, pixelsPerDegree);
+                        DrawFlightPathMarker(frame, currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
                     DrawLeftInfoBox(frame, smoothedVelocity, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, pixelsPerDegree, new LabelValue("T", myjet.offset));
-                    DrawFlightInfo(frame, smoothedVelocity, smoothedGForces, heading, smoothedAltitude, smoothedAoA, smoothedThrottle, mach);
+                    DrawFlightInfo(frame, smoothedThrottle);
                     DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
                     if (SystemManager.GetConfigValue("hud_compass") > 0.5f)
                         DrawCompass(frame, heading);
@@ -390,36 +365,29 @@ namespace IngameScript
 
                         if (hasIntercept)
                         {
-                            MatrixD worldToCockpitMatrix = MatrixD.Invert(cockpit.WorldMatrix);
                             Vector3D directionToIntercept = aimPoint - shooterPosition;
                             Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
 
                             bool isAimingAtPip = false;
                             if (localDirectionToIntercept.Z < 0)
                             {
-                                Vector2 center = surfaceSize / 2f;
-                                float scaleX = surfaceSize.X / COCKPIT_FOV_SCALE_X;
-                                float scaleY = surfaceSize.Y / COCKPIT_FOV_SCALE_Y;
-                                float screenX = center.X + (float)(localDirectionToIntercept.X / -localDirectionToIntercept.Z) * scaleX;
-                                float screenY = center.Y + (float)(-localDirectionToIntercept.Y / -localDirectionToIntercept.Z) * scaleY;
-                                Vector2 pipScreenPos = new Vector2(screenX, screenY);
+                                Vector2 pipScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToIntercept, surfaceSize / 2f, surfaceSize);
                                 float pipRadius = viewportMinDim * 0.05f;
-                                float distanceToPip = Vector2.Distance(center, pipScreenPos);
+                                float distanceToPip = Vector2.Distance(surfaceSize / 2f, pipScreenPos);
                                 isAimingAtPip = distanceToPip <= pipRadius;
                             }
 
                             if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
-                                DrawGunFunnel(frame, cockpit, hud, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity, muzzleVelocity, HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO, activeTargetAccel);
+                                DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
+                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO);
                             if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
-                                DrawTargetBrackets(frame, cockpit, hud, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
+                                DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
-                        if (SystemManager.GetConfigValue("hud_breakaway") > 0.5f)
-                            DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition);
-                    }
-                    DrawFormationGhosts(frame, cockpit, hud);
 
-                    // Gun Control Overlay
+                        if (SystemManager.GetConfigValue("hud_breakaway") > 0.5f)
+                            DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition, activeTargetVel);
+                    }
+                    DrawFormationGhosts(frame, hud, worldToCockpitMatrix);
                     DrawGunControlOverlay(frame);
                 }
 
@@ -432,7 +400,7 @@ namespace IngameScript
 
             private bool ValidateHUDState()
             {
-                if (cockpit == null || hud == null)
+                if (cockpit == null || hud == null || hudBlock == null)
                     return false;
 
                 if (!cockpit.IsFunctional || !hudBlock.IsFunctional)
@@ -452,7 +420,7 @@ namespace IngameScript
                 upVector = worldMatrix.Up;
                 Vector3D leftVector = worldMatrix.Left;
 
-                gravity = cockpit.GetNaturalGravity();
+                gravity = myjet.CachedGravity;
                 inGravity = gravity.LengthSquared() > 0;
                 gravityDirection = inGravity ? Vector3D.Normalize(gravity) : Vector3D.Zero;
 
@@ -463,15 +431,18 @@ namespace IngameScript
                         Vector3D.Dot(leftVector, gravityDirection),
                         Vector3D.Dot(upVector, gravityDirection)
                     ) * (180 / Math.PI);
-
-                    if (roll < 0)
-                        roll += 360;
                 }
 
                 velocity = cockpit.GetShipSpeed();
                 mach = velocity / SEA_LEVEL_SPEED_OF_SOUND;
 
                 Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
+
+                // VVI: vertical component of velocity (positive = climbing)
+                if (inGravity)
+                    verticalVelocityMps = Vector3D.Dot(currentVelocity, -gravityDirection);
+                else
+                    verticalVelocityMps = currentVelocity.Y;
                 deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
 
                 if (deltaTime <= 0)
@@ -484,7 +455,6 @@ namespace IngameScript
                 if (gForces > peakGForce)
                     peakGForce = gForces;
 
-                double heading = CalculateHeading();
                 double altitude = GetAltitude();
                 double aoa = CalculateAngleOfAttack(
                     cockpit.WorldMatrix.Forward,
@@ -505,17 +475,29 @@ namespace IngameScript
                 if (throttle > 0.5)
                 {
                     throttlecontrol += throttleChange;
+
+                    // Clamp at MIL until AB gate is passed
+                    if (!hydrogenswitch && throttlecontrol > THROTTLE_HYDROGEN_THRESHOLD)
+                        throttlecontrol = THROTTLE_HYDROGEN_THRESHOLD;
+
                     if (throttlecontrol > 1f)
                         throttlecontrol = 1f;
 
                     if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD && !hydrogenswitch)
                     {
-                        for (int i = 0; i < tanks.Count; i++)
+                        abHoldCounter++;
+                        // AB engages if: pilot released W once and re-pushed, OR held for 40 ticks
+                        if (abGatePassed || abHoldCounter > AB_AUTO_ENGAGE_TICKS)
                         {
-                            if (tanks[i] != null)
-                                tanks[i].Enabled = true;
+                            SetTanksEnabled(true);
+                            hydrogenswitch = true;
+                            abGatePassed = false;
+                            abHoldCounter = 0;
                         }
-                        hydrogenswitch = true;
+                    }
+                    else if (throttlecontrol < THROTTLE_HYDROGEN_THRESHOLD)
+                    {
+                        abHoldCounter = 0;
                     }
                 }
                 else if (throttle < -0.5)
@@ -526,12 +508,23 @@ namespace IngameScript
 
                     if (throttlecontrol < (THROTTLE_HYDROGEN_THRESHOLD - HYDROGEN_HYSTERESIS) && hydrogenswitch)
                     {
-                        for (int i = 0; i < tanks.Count; i++)
-                        {
-                            if (tanks[i] != null)
-                                tanks[i].Enabled = false;
-                        }
+                        SetTanksEnabled(false);
                         hydrogenswitch = false;
+                    }
+                    // Dropping below MIL resets the gate
+                    if (throttlecontrol < THROTTLE_HYDROGEN_THRESHOLD)
+                    {
+                        abGatePassed = false;
+                        abHoldCounter = 0;
+                    }
+                }
+                else
+                {
+                    // W not pressed — if sitting at MIL, this release arms the gate
+                    if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD && !hydrogenswitch)
+                    {
+                        abGatePassed = true;
+                        abHoldCounter = 0;
                     }
                 }
 
@@ -565,7 +558,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < myjet._gatlings.Count; i++)
                     {
-                        if (myjet._gatlings[i] != null)
+                        if (myjet._gatlings[i] != null && !myjet._gatlings[i].Enabled)
                             myjet._gatlings[i].Enabled = true;
                     }
                 }
@@ -574,10 +567,53 @@ namespace IngameScript
                     ? throttlecontrol / THROTTLE_HYDROGEN_THRESHOLD
                     : 1.0f;
 
-                for (int i = 0; i < thrusters.Count; i++)
+                // Read current max thrust capacity per side (center excluded — they don't cause yaw)
+                float leftMax = 0f, rightMax = 0f;
+                for (int i = 0; i < myjet.leftEngines.Count; i++)
+                    if (myjet.leftEngines[i] != null && myjet.leftEngines[i].IsFunctional)
+                        leftMax += myjet.leftEngines[i].MaxEffectiveThrust;
+                for (int i = 0; i < myjet.rightEngines.Count; i++)
+                    if (myjet.rightEngines[i] != null && myjet.rightEngines[i].IsFunctional)
+                        rightMax += myjet.rightEngines[i].MaxEffectiveThrust;
+
+                // Target thrust = weakest side * throttle percentage
+                float weakerMax = Math.Min(leftMax, rightMax);
+                float targetThrust = weakerMax * scaledThrottle;
+
+                // Set each side's override so they produce equal Newtons
+                float leftOverride = leftMax > 0 ? targetThrust / leftMax : 0f;
+                float rightOverride = rightMax > 0 ? targetThrust / rightMax : 0f;
+
+                SetGroupOverride(myjet.leftEngines, leftOverride);
+                SetGroupOverride(myjet.rightEngines, rightOverride);
+
+                // Center engines: no balancing needed, straight throttle
+                SetGroupOverride(myjet.centerEngines, scaledThrottle);
+
+                // Hydrogen/AB engines: full override when AB is on
+                if (hydrogenswitch)
                 {
-                    if (thrusters[i] != null)
-                        thrusters[i].ThrustOverridePercentage = scaledThrottle;
+                    SetGroupOverride(myjet.leftAB, 1f);
+                    SetGroupOverride(myjet.rightAB, 1f);
+                    SetGroupOverride(myjet.centerAB, 1f);
+                }
+            }
+
+            private static void SetGroupOverride(List<IMyThrust> group, float value)
+            {
+                for (int i = 0; i < group.Count; i++)
+                {
+                    if (group[i] != null && Math.Abs(group[i].ThrustOverridePercentage - value) > 0.001f)
+                        group[i].ThrustOverridePercentage = value;
+                }
+            }
+
+            private void SetTanksEnabled(bool enabled)
+            {
+                for (int i = 0; i < tanks.Count; i++)
+                {
+                    if (tanks[i] != null && tanks[i].Enabled != enabled)
+                        tanks[i].Enabled = enabled;
                 }
             }
 
@@ -647,12 +683,7 @@ namespace IngameScript
 
             internal double GetAltitude()
             {
-                double altitude;
-                if (!cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude))
-                {
-                    return 0;
-                }
-                return altitude;
+                return myjet.GetAltitude();
             }
 
             internal double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity, Vector3D upVector)

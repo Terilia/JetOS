@@ -63,8 +63,7 @@ namespace IngameScript
                 else
                 {
                     northHorizontal.Normalize();
-                    eastHorizontal = eastHorizontal = Vector3D.Cross(northHorizontal, worldUp);
-
+                    eastHorizontal = Vector3D.Cross(northHorizontal, worldUp);
                 }
 
 
@@ -90,6 +89,42 @@ namespace IngameScript
                 }
 
                 return headingDegrees;
+            }
+
+            public static bool TryParseGps(string gpsString, out Vector3D result)
+            {
+                result = default(Vector3D);
+                if (string.IsNullOrEmpty(gpsString) || !gpsString.StartsWith("GPS:"))
+                    return false;
+
+                var parts = gpsString.Split(':');
+                if (parts.Length < 5)
+                    return false;
+
+                double x, y, z;
+                if (!double.TryParse(parts[2], out x)
+                    || !double.TryParse(parts[3], out y)
+                    || !double.TryParse(parts[4], out z))
+                    return false;
+
+                result = new Vector3D(x, y, z);
+                return true;
+            }
+
+            public static string FormatGps(Vector3D position)
+            {
+                return string.Format("GPS:Target:{0}:{1}:{2}:#FF75C9F1:",
+                    position.X, position.Y, position.Z);
+            }
+
+            public static double GetAspectAngleDeg(Vector3D velocity, Vector3D relativePos)
+            {
+                Vector3D direction = velocity;
+                if (direction.LengthSquared() > 0)
+                    direction = Vector3D.Normalize(direction);
+                Vector3D toTarget = Vector3D.Normalize(relativePos);
+                double angle = Math.Atan2(Vector3D.Cross(direction, toTarget).Length(), Vector3D.Dot(direction, toTarget));
+                return MathHelper.ToDegrees(angle);
             }
         }
     }

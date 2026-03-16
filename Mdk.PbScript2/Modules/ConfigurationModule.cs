@@ -2,6 +2,8 @@ using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using System.Text;
+using VRage.Game.GUI.TextPanel;
+using VRageMath;
 
 namespace IngameScript
 {
@@ -98,6 +100,7 @@ namespace IngameScript
 
                 // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
                 AddConfig("HUD Theme", "hud_theme", "Color Theme", 0f, 0f, 3f, 1f);
+
             }
 
             private void AddConfig(string category, string name, string displayName, float defaultValue,

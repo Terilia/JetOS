@@ -62,23 +62,7 @@ namespace IngameScript
                     string.Format("Topdown [{0}]", isTopdownEnabled ? "ON" : "OFF"),
                     "PreSelect"
                 };
-                for (int i = 0; i < missileBays.Count; i++)
-                {
-                    string baySymbol = (i < baySelected.Length) ? (baySelected[i] ? "[X]" : "[ ]") : "[ ]";
-                    string bayStatus = missileBays[i]?.IsConnected == true ? "[ON]" : "[OFF]";
-                    var mergeBlock = missileBays[i] as IMyShipMergeBlock;
-                    bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
-                    char colorChar = ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
-                    options.Add(
-                        string.Format(
-                            "{0}{1} {2} {3}",
-                            colorChar,
-                            baySymbol,
-                            missileBays[i]?.CustomName ?? "Unknown Bay",
-                            bayStatus
-                        )
-                    );
-                }
+                MissileBayHelper.BuildBayOptionList(options, missileBays, baySelected);
                 return options.ToArray();
             }
 
@@ -90,25 +74,25 @@ namespace IngameScript
                 }
                 else if (index == 0)
                 {
-                    FireSelectedBays();
-                    TransferCacheToSlots();
+                    MissileBayHelper.FireSelectedBays(missileBays, baySelected, ParentProgram);
+                    MissileBayHelper.TransferCacheToSlots(missileBays.Count);
                 }
                 else if (index == 1)
                 {
-                    ToggleSelectedBays();
+                    MissileBayHelper.ToggleSelectedBays(missileBays, baySelected);
                 }
                 else if (index == 2)
                 {
                     ExecuteBombardment();
-                    TransferCacheToSlots();
+                    MissileBayHelper.TransferCacheToSlots(missileBays.Count);
                 }
                 else if (index == 4)
                 {
-                    FireSelectedBays();
+                    MissileBayHelper.FireSelectedBays(missileBays, baySelected, ParentProgram);
                 }
                 else if (index > 4 && index - 5 < missileBays.Count)
                 {
-                    ToggleBaySelection(index - 5);
+                    MissileBayHelper.ToggleBaySelection(baySelected, index - 5);
                 }
             }
 
@@ -118,93 +102,15 @@ namespace IngameScript
                 SystemManager.SetCustomDataValue("Topdown", isTopdownEnabled ? "true" : "false");
             }
 
-            private void FireSelectedBays()
-            {
-                for (int i = 0; i < missileBays.Count; i++)
-                {
-                    if (baySelected[i])
-                    {
-                        FireMissileFromBayWithGps(i);
-                    }
-                }
-            }
-
-            private void FireNextAvailableBay()
-            {
-                for (int i = 0; i < missileBays.Count; i++)
-                {
-                    var bay = missileBays[i];
-                    if (IsBayReadyToFire(bay))
-                    {
-                        try
-                        {
-                            FireMissileFromBayWithGps(i);
-                            return;
-                        }
-                        catch (Exception e)
-                        {
-                            ParentProgram.Echo($"Bay {i} fire failed: {e.Message}");
-                        }
-                    }
-                }
-            }
-
-            private bool IsBayReadyToFire(IMyShipMergeBlock bay)
-            {
-                if (bay == null)
-                {
-                    return false;
-                }
-                return bay.IsConnected;
-            }
-
-            private void ToggleBaySelection(int bayIndex)
-            {
-                if (bayIndex >= 0 && bayIndex < baySelected.Length)
-                {
-                    baySelected[bayIndex] = !baySelected[bayIndex];
-                }
-            }
-
-            private void ToggleSelectedBays()
-            {
-                for (int i = 0; i < missileBays.Count; i++)
-                {
-                    if (baySelected[i])
-                    {
-                        var bay = missileBays[i];
-                        if (bay != null)
-                        {
-                            bay.Enabled = !bay.Enabled;
-                        }
-                    }
-                }
-            }
-
             private void ExecuteBombardment()
             {
                 var selected = myJet.GetSelectedEnemy();
                 if (!selected.HasValue)
                 {
                     // Fallback: try GPS from cache
-                    string cachedValue = SystemManager.GetCustomDataValue("Cached");
-                    if (string.IsNullOrEmpty(cachedValue) || !cachedValue.StartsWith("GPS:"))
-                    {
+                    Vector3D centralTarget;
+                    if (!NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out centralTarget))
                         return;
-                    }
-                    var parts = cachedValue.Split(':');
-                    if (parts.Length < 5)
-                    {
-                        return;
-                    }
-                    double x, y, z;
-                    if (!double.TryParse(parts[2], out x)
-                        || !double.TryParse(parts[3], out y)
-                        || !double.TryParse(parts[4], out z))
-                    {
-                        return;
-                    }
-                    var centralTarget = new Vector3D(x, y, z);
                     ExecuteBombardmentAtTarget(centralTarget);
                     return;
                 }
@@ -221,86 +127,8 @@ namespace IngameScript
                     if (baySelected[i] && targetIndex < bombardmentTargets.Count)
                     {
                         var targetPosition = bombardmentTargets[targetIndex];
-                        FireMissileFromBayWithGps(i, targetPosition);
+                        MissileBayHelper.FireMissileFromBay(missileBays, i, targetPosition, ParentProgram, myJet);
                         targetIndex++;
-                    }
-                }
-            }
-
-            private void FireMissileFromBayWithGps(
-                int bayIndex,
-                Vector3D targetPosition = default(Vector3D)
-            )
-            {
-                try
-                {
-                    var bay = missileBays[bayIndex];
-                    if (bay == null || !bay.IsConnected)
-                    {
-                        return;
-                    }
-                    if (targetPosition.Equals(default(Vector3D)))
-                    {
-                        // Try selected enemy first
-                        var selected = myJet.GetSelectedEnemy();
-                        if (selected.HasValue)
-                        {
-                            targetPosition = selected.Value.Position;
-                        }
-                        else
-                        {
-                            // Fallback: read from cache
-                            string cachedValue = SystemManager.GetCustomDataValue("Cached");
-                            if (string.IsNullOrEmpty(cachedValue) || !cachedValue.StartsWith("GPS:"))
-                            {
-                                ParentProgram.Echo("No cached GPS data for missile fire");
-                                return;
-                            }
-                            var parts = cachedValue.Split(':');
-                            if (parts.Length < 5)
-                            {
-                                ParentProgram.Echo("Invalid GPS data format");
-                                return;
-                            }
-                            double x, y, z;
-                            if (!double.TryParse(parts[2], out x)
-                                || !double.TryParse(parts[3], out y)
-                                || !double.TryParse(parts[4], out z))
-                            {
-                                return;
-                            }
-                            targetPosition = new Vector3D(x, y, z);
-                        }
-                    }
-                    string gpsData = string.Format(
-                        "GPS:Target:{0}:{1}:{2}:#FF75C9F1:",
-                        targetPosition.X,
-                        targetPosition.Y,
-                        targetPosition.Z
-                    );
-                    // Write bay-specific GPS via cache
-                    string cacheKey = string.Format("Cache{0}", bayIndex);
-                    SystemManager.SetCustomDataValue(cacheKey, gpsData);
-                    bay.ApplyAction("Fire");
-                }
-                catch (Exception e)
-                {
-                    ParentProgram.Echo($"FireMissile error: {e.Message}");
-                }
-            }
-
-            private void TransferCacheToSlots()
-            {
-                for (int i = 0; i < missileBays.Count; i++)
-                {
-                    string cacheKey = string.Format("Cache{0}", i);
-                    string cacheContent = SystemManager.GetCustomDataValue(cacheKey);
-
-                    if (!string.IsNullOrEmpty(cacheContent))
-                    {
-                        string slotKey = i.ToString();
-                        SystemManager.SetCustomDataValue(slotKey, cacheContent);
-                        SystemManager.SetCustomDataValue(cacheKey, "");
                     }
                 }
             }
@@ -345,33 +173,14 @@ namespace IngameScript
                 return targets;
             }
 
-            private static char ColorToChar(int r, int g, int b)
-            {
-                const double BIT_SPACING = 255.0 / 7.0;
-                return (char)(
-                    0xe100
-                    + ((int)Math.Round(r / BIT_SPACING) << 6)
-                    + ((int)Math.Round(g / BIT_SPACING) << 3)
-                    + (int)Math.Round(b / BIT_SPACING)
-                );
-            }
-
             public override void HandleSpecialFunction(int key)
             {
-                if (key == 5)
-                {
-                    FireNextAvailableBay();
-                    TransferCacheToSlots();
-                }
-                if (key == 7)
-                {
-                    TransferCacheToSlots();
-                }
+                MissileBayHelper.HandleWeaponHotkey(key, missileBays, ParentProgram);
             }
 
             public override string GetHotkeys()
             {
-                return "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
+                return MissileBayHelper.WEAPON_HOTKEYS;
             }
         }
     }
