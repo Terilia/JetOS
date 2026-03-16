@@ -20,7 +20,7 @@ flowchart LR
         direction TB
         L1["Left engines\n200 kN max\nOverride: 80%\n= 160 kN"]
         R1["Right engines\n300 kN max\nOverride: 80%\n= 240 kN"]
-        YAW["80 kN imbalance\n→ YAW LEFT"]
+        YAW["80 kN imbalance\nYAW LEFT"]
     end
 
     L1 --> YAW
@@ -30,7 +30,7 @@ flowchart LR
         direction TB
         L2["Left engines\n200 kN max\nOverride: 80%\n= 160 kN"]
         R2["Right engines\n300 kN max\nOverride: 53.3%\n= 160 kN"]
-        BAL["0 kN imbalance\n→ STRAIGHT FLIGHT"]
+        BAL["0 kN imbalance\nSTRAIGHT FLIGHT"]
     end
 
     L2 --> BAL
@@ -72,7 +72,7 @@ flowchart TD
     subgraph override ["3 — COMPUTE PER-SIDE OVERRIDES"]
         OVR_L["leftOverride = targetThrust ÷ leftMax"]
         OVR_R["rightOverride = targetThrust ÷ rightMax"]
-        GUARD["Guard: if side max = 0 → override = 0"]
+        GUARD["Guard: if side max = 0, override = 0"]
     end
 
     subgraph apply ["4 — APPLY TO ENGINES"]
@@ -187,22 +187,9 @@ stateDiagram-v2
     HIT --> ADAPT : Next tick reads\nnew MaxEffectiveThrust
     ADAPT --> BALANCED : weakerMax = new rightMax\nboth sides limited
 
-    note right of NORMAL
-        leftMax: 400 kN
-        rightMax: 400 kN
-        weakerMax: 400 kN
-        leftOverride: 80%
-        rightOverride: 80%
-    end note
-
-    note right of BALANCED
-        leftMax: 400 kN
-        rightMax: 200 kN
-        weakerMax: 200 kN
-        leftOverride: 40%
-        rightOverride: 80%
-    end note
 ```
+
+**NORMAL**: leftMax=400kN, rightMax=400kN, weakerMax=400kN, both overrides at 80%. **BALANCED (after damage)**: rightMax drops to 200kN, weakerMax=200kN, leftOverride=40%, rightOverride=80%.
 
 ### Progressive Degradation
 
@@ -227,7 +214,7 @@ flowchart TD
     CALC --> CHOICE{Weaker side\nstill > 0?}
 
     CHOICE -- Yes --> REDUCE["Reduce stronger side override\nto match weaker side"]
-    CHOICE -- No --> ZERO["Both sides → 0 override\nCenter engines only"]
+    CHOICE -- No --> ZERO["Both sides = 0 override\nCenter engines only"]
 
     REDUCE --> FLY["Controlled flight continues\nat reduced thrust"]
     ZERO --> LIMP["Limp mode: center thrust only\nno yaw correction possible"]

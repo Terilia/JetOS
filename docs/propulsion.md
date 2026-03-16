@@ -6,7 +6,9 @@
 
 JetOS manages a twin-engine configuration with atmospheric thrusters for normal flight and hydrogen thrusters for afterburner boost. Engines are dynamically grouped by grid position relative to the cockpit, enabling per-side thrust balancing and asymmetric damage handling.
 
-**[Open the animated engine schematic](propulsion-animation.svg)** to see the system in action — this is a 1:1 canvas recreation of the in-game `StatusPanelRenderer`, running every drawing call identically to the C# source. The throttle cycles automatically through IDLE → MIL → AB stages. Embed with `<object data="propulsion-animation.svg" type="image/svg+xml">`. The [HTML version](propulsion-animation.html) also works standalone in any browser.
+**[Open the animated engine schematic](propulsion-animation.svg)** to see the system in action — a 1:1 recreation of the in-game `StatusPanelRenderer`, running every drawing call identically to the C# source. The throttle cycles automatically through IDLE, MIL, and AB stages. The [HTML version](propulsion-animation.html) also works standalone.
+
+To embed: `<object data="propulsion-animation.svg" type="image/svg+xml" width="600" height="1200"></object>`
 
 ---
 
@@ -55,29 +57,19 @@ The throttle system provides three distinct power stages with a safety gate prev
 stateDiagram-v2
     direction LR
 
-    state "NORMAL\n0 – 80%" as NORMAL
-    state "MIL\n80% (clamped)" as MIL
-    state "AFTERBURNER\n80 – 100%" as AB
+    state "NORMAL (0-80%)" as NORMAL
+    state "MIL (80% clamped)" as MIL
+    state "AFTERBURNER (80-100%)" as AB
 
     [*] --> NORMAL : Throttle up (W)
     NORMAL --> MIL : Reaches 80%
     MIL --> NORMAL : Throttle down (S)
 
-    MIL --> AB : Gate passed\n(release+repress W\nor hold 40 ticks)
-    AB --> NORMAL : Throttle < 78%
-
-    note right of MIL
-        Throttle CLAMPS at 80%
-        until AB gate is passed.
-        Green HUD bar.
-    end note
-
-    note right of AB
-        H2 tanks enabled.
-        Full thrust.
-        Yellow HUD bar.
-    end note
+    MIL --> AB : Gate passed
+    AB --> NORMAL : Below 78%
 ```
+
+**MIL**: Throttle clamps at 80% until AB gate is passed. Green HUD bar. **AB**: H2 tanks enabled, full thrust. Yellow HUD bar.
 
 | Stage | Throttle Range | Thrust Sources | H2 Tanks | HUD Bar Color |
 |-------|---------------|----------------|----------|---------------|
@@ -95,8 +87,8 @@ The gate prevents accidentally engaging afterburner (which consumes hydrogen fue
 flowchart TD
     START["Throttle reaches 80%\n(MIL clamp active)"] --> CHOICE{Pilot action}
 
-    CHOICE --> PATH_A["<b>Path A: Release & Re-engage</b>\nRelease W at MIL"]
-    CHOICE --> PATH_B["<b>Path B: Hold Through</b>\nKeep W held at MIL"]
+    CHOICE --> PATH_A["Path A: Release and Re-engage\nRelease W at MIL"]
+    CHOICE --> PATH_B["Path B: Hold Through\nKeep W held at MIL"]
 
     PATH_A --> ARMED["Gate ARMED\n(abGatePassed = true)"]
     ARMED --> REPRESS["Press W again"]
@@ -132,13 +124,13 @@ flowchart LR
     end
 
     subgraph gate ["AB Gate Logic"]
-        TC["throttlecontrol\n(0.0 → 1.0)"]
+        TC["throttlecontrol\n(0.0 to 1.0)"]
         CLAMP["Clamp at 0.80\nif AB not passed"]
         AB_CHECK["AB gate check\n(release+re-engage\nor 40-tick hold)"]
     end
 
     subgraph scale ["Throttle Scaling"]
-        SCALE["scaledThrottle =\nthrottle ÷ 0.80\n(maps 0-80% → 0-1)"]
+        SCALE["scaledThrottle =\nthrottle / 0.80\n(maps 0-80% to 0-1)"]
     end
 
     subgraph balance ["Engine Balancing"]
@@ -193,6 +185,18 @@ H2 tanks are toggled via `SetTanksEnabled()`:
 - **On startup**: Tanks disabled (prevents accidental fuel drain)
 
 Only tanks whose `Enabled` state actually differs from the target value are touched (avoids redundant API calls that cost instruction cycles).
+
+---
+
+## Live Engine Visualization
+
+The engine animation below is a 1:1 JavaScript port of `StatusPanelRenderer.cs` — every drawing call, color, and formula is identical to the in-game MFD. The throttle cycles automatically through IDLE, NORMAL, MIL, and AB stages.
+
+<object data="propulsion-animation.svg" type="image/svg+xml" width="600" height="1200">
+  <a href="propulsion-animation.svg">Open engine animation</a>
+</object>
+
+> The animation shows: 3D-projected compressor blade discs with depth-sorted rendering, 48 golden-ratio-spaced air particles per engine with hermite smoothstep phasing, multi-tongue exhaust plume with per-stage coloring (blue/MIL white-blue/AB orange-yellow), combustion chamber glow proportional to thrust, and resource cards.
 
 ---
 

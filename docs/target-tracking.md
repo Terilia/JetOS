@@ -89,7 +89,7 @@ sequenceDiagram
     participant Consumer as HUD/Weapons
 
     Sensor->>Jet: UpdateOrAddEnemy(pos, vel, name, source, entityId)
-    Note over Jet: Deduplicate (EntityId → Name → 50m proximity)
+    Note over Jet: Deduplicate (EntityId, Name, 50m proximity)
     Note over Jet: Compute EMA acceleration if < 5s old
     Jet->>Jet: Update LastSeenTicks = GameTicks
 
@@ -149,7 +149,7 @@ flowchart LR
     subgraph Fire ["Missile Fire Sequence"]
         CD_C --> BAY["Cache{N} = GPS string"]
         BAY --> MERGE["bay.ApplyAction('Fire')"]
-        MERGE --> XFER["TransferCacheToSlots()\nCache{N} → slot {N}"]
+        MERGE --> XFER["TransferCacheToSlots()\nCache N to slot N"]
         XFER --> MSL["Missile script reads\nCustomData slot {N}"]
     end
 ```

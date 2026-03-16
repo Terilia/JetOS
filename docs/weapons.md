@@ -187,7 +187,7 @@ sequenceDiagram
     end
 
     Module->>CD: TransferCacheToSlots()
-    Note over CD: "Cache{N}" → "{N}"
+    Note over CD: Cache N copied to slot N
     Note over CD: Clear "Cache{N}"
 
     Missile->>CD: Read slot "{N}" for target GPS
