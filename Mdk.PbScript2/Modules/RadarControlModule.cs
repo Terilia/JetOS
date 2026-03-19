@@ -807,8 +807,8 @@ namespace IngameScript
                     return aspectAngleDeg < 30.0;
                 }
 
-                Vector3D losDirection = Vector3D.Normalize(relativePos);
-                double closingVelocity = -Vector3D.Dot(relativeVel, losDirection);
+                Vector3D losDirection = VN(relativePos);
+                double closingVelocity = -VD(relativeVel, losDirection);
 
                 if (closingVelocity <= 0) return false;
 
@@ -817,7 +817,7 @@ namespace IngameScript
 
                 Vector3D ourFuturePos = playerPos + playerVel * timeToClosestApproach;
                 Vector3D enemyFuturePos = enemyPos + enemyVel * timeToClosestApproach;
-                double closestApproachDistance = Vector3D.Distance(ourFuturePos, enemyFuturePos);
+                double closestApproachDistance = VDi(ourFuturePos, enemyFuturePos);
 
                 if (closestApproachDistance > 500.0) return false;
 

@@ -48,21 +48,21 @@ namespace IngameScript
                         // pitch = asin(dot(forward, gravityDown)), so nose-up = negative pitch)
                         sprites.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXTURE,
+                            Type = MFDTheme.TX,
                             Data = MFDTheme.SQ,
                             Position = new Vector2(centerX * 0.75f, markerY),
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = MFDTheme.AC
                         });
                         sprites.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXTURE,
+                            Type = MFDTheme.TX,
                             Data = MFDTheme.SQ,
                             Position = new Vector2(centerX * 1.25f, markerY),
                             Size = new Vector2(lineWidth, lineThickness),
                             Color = lineColor,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = MFDTheme.AC
                         });
                     }
                     else
@@ -77,27 +77,27 @@ namespace IngameScript
                             float dashOffset = -totalDashWidth / 2f + d * (dashWidth * 2) + dashWidth / 2f;
                             sprites.Add(new MySprite()
                             {
-                                Type = SpriteType.TEXTURE,
+                                Type = MFDTheme.TX,
                                 Data = MFDTheme.SQ,
                                 Position = new Vector2(centerX * 0.75f + dashOffset, markerY),
                                 Size = new Vector2(dashWidth, lineThickness),
                                 Color = lineColor,
-                                Alignment = TextAlignment.CENTER
+                                Alignment = MFDTheme.AC
                             });
                             sprites.Add(new MySprite()
                             {
-                                Type = SpriteType.TEXTURE,
+                                Type = MFDTheme.TX,
                                 Data = MFDTheme.SQ,
                                 Position = new Vector2(centerX * 1.25f + dashOffset, markerY),
                                 Size = new Vector2(dashWidth, lineThickness),
                                 Color = lineColor,
-                                Alignment = TextAlignment.CENTER
+                                Alignment = MFDTheme.AC
                             });
                         }
                     }
 
                     float tipLength = 12f;
-                    float tipAngle = MathHelper.ToRadians(isPositive ? 45f : -45f);
+                    float tipAngle = ToRad(isPositive ? 45f : -45f);
 
                     string label = Math.Abs(i).ToString();
                     float labelOffsetX = halfWidth + tipLength + 10f;
@@ -105,24 +105,24 @@ namespace IngameScript
                     sprites.Add(
                         new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = label,
                             Position = new Vector2(centerX - labelOffsetX, markerY + 10f),
                             RotationOrScale = 0.8f,
                             Color = lineColor,
-                            Alignment = TextAlignment.RIGHT,
+                            Alignment = MFDTheme.AR,
                             FontId = MFDTheme.FONT_W
                         }
                     );
                     sprites.Add(
                         new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = label,
                             Position = new Vector2(centerX + labelOffsetX, markerY + 10f),
                             RotationOrScale = 0.8f,
                             Color = lineColor,
-                            Alignment = TextAlignment.LEFT,
+                            Alignment = MFDTheme.AL,
                             FontId = MFDTheme.FONT_W
                         }
                     );
@@ -132,28 +132,28 @@ namespace IngameScript
                 sprites.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = new Vector2(centerX * 1.25f, horizonY),
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = HUD_HORIZON,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     }
                 );
                 sprites.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = new Vector2(centerX * 0.75f, horizonY),
                         Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
                         Color = HUD_HORIZON,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     }
                 );
-                float rollRad = MathHelper.ToRadians(-roll);
-                float cosRoll = (float)Math.Cos(rollRad);
-                float sinRoll = (float)Math.Sin(rollRad);
+                float rollRad = ToRad(-roll);
+                float cosRoll = (float)Cs(rollRad);
+                float sinRoll = (float)Sn(rollRad);
 
                 for (int s = 0; s < sprites.Count; s++)
                 {
@@ -168,7 +168,7 @@ namespace IngameScript
 
                     sprite.Position = rotated + new Vector2(centerX, centerY);
 
-                    if (sprite.Type == SpriteType.TEXTURE)
+                    if (sprite.Type == MFDTheme.TX)
                     {
                         float existing = sprite.RotationOrScale;
                         sprite.RotationOrScale = existing + rollRad;
@@ -204,14 +204,14 @@ namespace IngameScript
                 int[] bankAngles = new int[] { 15, 30, 45, 60, -15, -30, -45, -60 };
                 float horizonRadius = pixelsPerDegree * 20f;
 
-                float rollRad = MathHelper.ToRadians(-roll);
-                float cosRoll = (float)Math.Cos(rollRad);
-                float sinRoll = (float)Math.Sin(rollRad);
+                float rollRad = ToRad(-roll);
+                float cosRoll = (float)Cs(rollRad);
+                float sinRoll = (float)Sn(rollRad);
 
                 foreach (int angle in bankAngles)
                 {
-                    float angleRad = MathHelper.ToRadians(angle);
-                    Vector2 tickPos = new Vector2((float)Math.Sin(angleRad) * horizonRadius, -(float)Math.Cos(angleRad) * horizonRadius);
+                    float angleRad = ToRad(angle);
+                    Vector2 tickPos = new Vector2((float)Sn(angleRad) * horizonRadius, -(float)Cs(angleRad) * horizonRadius);
 
                     Vector2 rotatedTick = new Vector2(
                         tickPos.X * cosRoll - tickPos.Y * sinRoll,
@@ -226,12 +226,12 @@ namespace IngameScript
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = finalPos,
                         Size = new Vector2(2f, tickLength),
                         Color = tickColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         RotationOrScale = angleRad + rollRad
                     });
                 }
@@ -256,8 +256,8 @@ namespace IngameScript
 
                 // Use perspective projection (same as lead pip / target brackets)
                 // to get a physically correct screen position for the velocity vector.
-                Vector3D velocityDirection = Vector3D.Normalize(currentVelocity);
-                Vector3D localVelocity = Vector3D.TransformNormal(velocityDirection, worldToCockpitMatrix);
+                Vector3D velocityDirection = VN(currentVelocity);
+                Vector3D localVelocity = VTN(velocityDirection, worldToCockpitMatrix);
 
                 // Only draw when velocity has a forward component
                 if (localVelocity.Z >= 0) return;
@@ -269,16 +269,16 @@ namespace IngameScript
 
                 frame.Add(new MySprite
                 {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Circle",
+                    Type = MFDTheme.TX,
+                    Data = TEXTURE_CIRCLE_SOLID,
                     Position = markerPosition,
                     Size = new Vector2(MarkerSize, MarkerSize),
                     Color = Color.White,
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 });
 
                 // Wings counter-rotate by roll to stay horizon-aligned (like a real F-18 FPM)
-                float rollRad = MathHelper.ToRadians((float)roll);
+                float rollRad = ToRad((float)roll);
 
                 Vector2 leftWingOffset = new Vector2(-WingLength / 2 - WingOffsetX, 0f);
                 Vector2 rightWingOffset = new Vector2(WingLength / 2 + WingOffsetX, 0f);
@@ -288,23 +288,23 @@ namespace IngameScript
 
                 frame.Add(new MySprite
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = markerPosition + rotatedLeftWingOffset,
                     Size = new Vector2(WingLength, WingThickness),
                     Color = Color.White,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     RotationOrScale = -rollRad
                 });
 
                 frame.Add(new MySprite
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = markerPosition + rotatedRightWingOffset,
                     Size = new Vector2(WingLength, WingThickness),
                     Color = Color.White,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     RotationOrScale = -rollRad
                 });
             }

@@ -33,6 +33,7 @@
     <ItemGroup>
       <Compile Remove="Diagnostics\**" />
       <None Include="Diagnostics\**" />
+      <Compile Remove="UI\StartupSequence.cs" />
     </ItemGroup>
 
 </Project>

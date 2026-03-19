@@ -31,13 +31,13 @@ namespace IngameScript
                 // No gravity on bullet — SE projectiles travel in straight lines
                 Vector3D A_net = targetAcceleration;
                 double a4 = 0.25 * A_net.LengthSquared();
-                double a3 = Vector3D.Dot(V_rel, A_net);
-                double a2 = V_rel.LengthSquared() + Vector3D.Dot(D, A_net) - S2;
-                double a1 = 2.0 * Vector3D.Dot(D, V_rel);
+                double a3 = VD(V_rel, A_net);
+                double a2 = V_rel.LengthSquared() + VD(D, A_net) - S2;
+                double a1 = 2.0 * VD(D, V_rel);
                 double a0 = D.LengthSquared();
 
                 double qA = V_rel.LengthSquared() - S2;
-                double qB = 2.0 * Vector3D.Dot(D, V_rel);
+                double qB = 2.0 * VD(D, V_rel);
                 double qC = D.LengthSquared();
 
                 double t = -1;

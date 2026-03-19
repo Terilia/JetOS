@@ -106,40 +106,40 @@ namespace IngameScript
                 // Build base "left" axis from rotor Up and gun Forward
                 Vector3D gunFwd = turret.Gun.WorldMatrix.Forward;
                 Vector3D rotorUp = turret.Rotor.WorldMatrix.Up;
-                Vector3D baseLeft = Vector3D.Cross(rotorUp, gunFwd);
+                Vector3D baseLeft = VX(rotorUp, gunFwd);
                 if (baseLeft.LengthSquared() < 1e-6)
                 {
                     turret.ElevationSign = 1;
                     return;
                 }
-                baseLeft = Vector3D.Normalize(baseLeft);
+                baseLeft = VN(baseLeft);
 
                 // elevationSign: which way the hinge's rotation axis relates to baseLeft
-                turret.ElevationSign = Math.Sign(Vector3D.Dot(baseLeft, turret.Hinge.WorldMatrix.Up));
+                turret.ElevationSign = Math.Sign(VD(baseLeft, turret.Hinge.WorldMatrix.Up));
                 if (turret.ElevationSign == 0)
                     turret.ElevationSign = 1;
             }
 
             private static double SignedAngleBetween(Vector3D from, Vector3D to, Vector3D axis)
             {
-                from = Vector3D.Normalize(from);
-                to = Vector3D.Normalize(to);
-                Vector3D cross = Vector3D.Cross(from, to);
-                double angle = Math.Atan2(cross.Length(), Vector3D.Dot(from, to));
-                return angle * Math.Sign(Vector3D.Dot(cross, axis));
+                from = VN(from);
+                to = VN(to);
+                Vector3D cross = VX(from, to);
+                double angle = At2(cross.Length(), VD(from, to));
+                return angle * Math.Sign(VD(cross, axis));
             }
 
             private static double GetElevationAngle(Vector3D direction, Vector3D rotorUp, Vector3D baseForward, Vector3D baseLeft)
             {
                 // Project direction onto the elevation plane (perpendicular to baseLeft)
-                Vector3D projected = direction - Vector3D.Dot(direction, baseLeft) * baseLeft;
+                Vector3D projected = direction - VD(direction, baseLeft) * baseLeft;
                 if (projected.LengthSquared() < 1e-10)
                     return 0;
-                projected = Vector3D.Normalize(projected);
+                projected = VN(projected);
 
-                Vector3D projCross = Vector3D.Cross(projected, baseForward);
-                double angle = Math.Atan2(projCross.Length(), Vector3D.Dot(projected, baseForward));
-                if (Vector3D.Dot(projected, rotorUp) < 0)
+                Vector3D projCross = VX(projected, baseForward);
+                double angle = At2(projCross.Length(), VD(projected, baseForward));
+                if (VD(projected, rotorUp) < 0)
                     angle = -angle;
                 return angle;
             }
@@ -273,14 +273,14 @@ namespace IngameScript
 
                 // --- Yaw: signed angle in the rotor's rotation plane ---
                 // Project both gun forward and target direction onto the plane perpendicular to rotorUp
-                Vector3D flatGun = gunFwd - Vector3D.Dot(gunFwd, rotorUp) * rotorUp;
-                Vector3D flatTarget = targetWorldDir - Vector3D.Dot(targetWorldDir, rotorUp) * rotorUp;
+                Vector3D flatGun = gunFwd - VD(gunFwd, rotorUp) * rotorUp;
+                Vector3D flatTarget = targetWorldDir - VD(targetWorldDir, rotorUp) * rotorUp;
 
                 double yawRad = SignedAngleBetween(flatGun, flatTarget, rotorUp);
-                float yawDeg = MathHelper.ToDegrees((float)yawRad);
+                float yawDeg = (float)ToDeg(yawRad);
 
                 // --- Pitch: elevation angle difference with mounting-aware sign ---
-                Vector3D baseLeft = Vector3D.Cross(rotorUp, gunFwd);
+                Vector3D baseLeft = VX(rotorUp, gunFwd);
                 if (baseLeft.LengthSquared() < 1e-6)
                 {
                     // Gun pointing along rotor axis — can't determine yaw, just stop
@@ -288,12 +288,12 @@ namespace IngameScript
                     turret.Hinge.TargetVelocityRPM = 0f;
                     return;
                 }
-                baseLeft = Vector3D.Normalize(baseLeft);
-                Vector3D baseForward = Vector3D.Normalize(Vector3D.Cross(baseLeft, rotorUp));
+                baseLeft = VN(baseLeft);
+                Vector3D baseForward = VN(VX(baseLeft, rotorUp));
 
                 double desiredPitch = GetElevationAngle(targetWorldDir, rotorUp, baseForward, baseLeft);
                 double currentPitch = GetElevationAngle(gunFwd, rotorUp, baseForward, baseLeft);
-                float pitchDeg = MathHelper.ToDegrees((float)((desiredPitch - currentPitch) * turret.ElevationSign));
+                float pitchDeg = (float)ToDeg((desiredPitch - currentPitch) * turret.ElevationSign);
 
                 // Ship rotation feedforward using cockpit matrix (ship-only rotation,
                 // avoids self-coupling from turret's own yaw included in rotor matrix)
@@ -308,24 +308,24 @@ namespace IngameScript
                     Vector3D curFwd = currentShipMatrix.Forward;
 
                     // Yaw drift: project current forward onto last frame's horizontal plane
-                    Vector3D flatCurFwd = curFwd - Vector3D.Dot(curFwd, lastUp) * lastUp;
+                    Vector3D flatCurFwd = curFwd - VD(curFwd, lastUp) * lastUp;
                     if (flatCurFwd.LengthSquared() > 1e-10)
                     {
-                        flatCurFwd = Vector3D.Normalize(flatCurFwd);
-                        Vector3D driftCross = Vector3D.Cross(flatCurFwd, lastFwd);
-                        double driftAngle = Math.Atan2(driftCross.Length(), Vector3D.Dot(flatCurFwd, lastFwd));
-                        driftAngle *= Math.Sign(Vector3D.Dot(driftCross, lastUp));
+                        flatCurFwd = VN(flatCurFwd);
+                        Vector3D driftCross = VX(flatCurFwd, lastFwd);
+                        double driftAngle = At2(driftCross.Length(), VD(flatCurFwd, lastFwd));
+                        driftAngle *= Math.Sign(VD(driftCross, lastUp));
                         yawFeedforward = (float)(driftAngle * 3600.0 / (2.0 * Math.PI));
                     }
 
                     // Pitch drift: similar for elevation axis
-                    Vector3D flatCurFwdElev = curFwd - Vector3D.Dot(curFwd, lastLeft) * lastLeft;
+                    Vector3D flatCurFwdElev = curFwd - VD(curFwd, lastLeft) * lastLeft;
                     if (flatCurFwdElev.LengthSquared() > 1e-10)
                     {
-                        flatCurFwdElev = Vector3D.Normalize(flatCurFwdElev);
-                        Vector3D elevCross = Vector3D.Cross(flatCurFwdElev, lastFwd);
-                        double elevAngle = Math.Atan2(elevCross.Length(), Vector3D.Dot(flatCurFwdElev, lastFwd));
-                        elevAngle *= Math.Sign(Vector3D.Dot(elevCross, lastLeft));
+                        flatCurFwdElev = VN(flatCurFwdElev);
+                        Vector3D elevCross = VX(flatCurFwdElev, lastFwd);
+                        double elevAngle = At2(elevCross.Length(), VD(flatCurFwdElev, lastFwd));
+                        elevAngle *= Math.Sign(VD(elevCross, lastLeft));
                         pitchFeedforward = (float)(elevAngle * turret.ElevationSign * 3600.0 / (2.0 * Math.PI));
                     }
                 }
@@ -333,8 +333,8 @@ namespace IngameScript
                 turret.HasPreviousMatrix = true;
 
                 // Compute final commands, applying deadband before writing
-                float yawCmd = MathHelper.Clamp(-KP * yawDeg + yawFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
-                float pitchCmd = MathHelper.Clamp(KP * pitchDeg + pitchFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+                float yawCmd = Cl(-KP * yawDeg + yawFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+                float pitchCmd = Cl(KP * pitchDeg + pitchFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
 
                 // Deadband: zero out when close enough to prevent jitter
                 if (Math.Abs(yawDeg) < 0.5f && Math.Abs(pitchDeg) < 0.5f
@@ -385,7 +385,7 @@ namespace IngameScript
                     if (distance < 10) continue;
 
                     Vector3D toTargetNorm = toTarget / distance;
-                    double angleRad = Math.Atan2(Vector3D.Cross(shipForward, toTargetNorm).Length(), Vector3D.Dot(shipForward, toTargetNorm));
+                    double angleRad = At2(VX(shipForward, toTargetNorm).Length(), VD(shipForward, toTargetNorm));
 
                     if (angleRad <= MAX_ANGLE_RAD && distance <= MAX_ENGAGE_RANGE && distance < bestDistance)
                     {
@@ -421,7 +421,7 @@ namespace IngameScript
                     aimPoint = bestTargetPos.Value;
 
                 // Drive toward computed aim direction
-                Vector3D aimDir = Vector3D.Normalize(aimPoint - gunPosition);
+                Vector3D aimDir = VN(aimPoint - gunPosition);
                 DriveTowardDirection(turret, aimDir);
 
                 if (turret.YawError < LOCK_THRESHOLD_DEG && turret.PitchError < LOCK_THRESHOLD_DEG)

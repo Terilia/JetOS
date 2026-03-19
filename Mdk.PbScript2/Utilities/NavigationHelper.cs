@@ -19,7 +19,7 @@ namespace IngameScript
 
                 if (hasGravity)
                 {
-                    worldUp = -Vector3D.Normalize(gravity);
+                    worldUp = -VN(gravity);
                 }
                 else
                 {
@@ -55,15 +55,15 @@ namespace IngameScript
                 {
                     // North is ambiguous, use world East (X+) as primary reference instead
                     Vector3D worldEastRef = new Vector3D(1, 0, 0);
-                    eastHorizontal = Vector3D.Normalize(Vector3D.Reject(worldEastRef, worldUp));
+                    eastHorizontal = VN(Vector3D.Reject(worldEastRef, worldUp));
                     // Define horizontal North as 90 degrees left of horizontal East
-                    northHorizontal = Vector3D.Cross(worldUp, eastHorizontal);
+                    northHorizontal = VX(worldUp, eastHorizontal);
                     // No need to normalize northHorizontal if worldUp and eastHorizontal are unit/orthogonal
                 }
                 else
                 {
                     northHorizontal.Normalize();
-                    eastHorizontal = Vector3D.Cross(northHorizontal, worldUp);
+                    eastHorizontal = VX(northHorizontal, worldUp);
                 }
 
 
@@ -73,16 +73,16 @@ namespace IngameScript
 
                 // 5. Calculate Components & Angle with Atan2
                 // Get the coordinates of forwardHorizontal relative to the North/East horizontal axes
-                double northComponent = Vector3D.Dot(forwardHorizontal, northHorizontal);
-                double eastComponent = Vector3D.Dot(forwardHorizontal, eastHorizontal);
+                double northComponent = VD(forwardHorizontal, northHorizontal);
+                double eastComponent = VD(forwardHorizontal, eastHorizontal);
 
                 // Atan2(y, x) gives the angle counter-clockwise from the positive X-axis.
                 // We want the angle from North (northComponent) towards East (eastComponent).
                 // So, Y = East component, X = North component.
-                double headingRadians = Math.Atan2(eastComponent, northComponent);
+                double headingRadians = At2(eastComponent, northComponent);
 
                 // 6. Convert to Degrees [0, 360)
-                double headingDegrees = MathHelper.ToDegrees(headingRadians);
+                double headingDegrees = ToDeg(headingRadians);
                 if (headingDegrees < 0)
                 {
                     headingDegrees += 360.0;
@@ -121,10 +121,10 @@ namespace IngameScript
             {
                 Vector3D direction = velocity;
                 if (direction.LengthSquared() > 0)
-                    direction = Vector3D.Normalize(direction);
-                Vector3D toTarget = Vector3D.Normalize(relativePos);
-                double angle = Math.Atan2(Vector3D.Cross(direction, toTarget).Length(), Vector3D.Dot(direction, toTarget));
-                return MathHelper.ToDegrees(angle);
+                    direction = VN(direction);
+                Vector3D toTarget = VN(relativePos);
+                double angle = At2(VX(direction, toTarget).Length(), VD(direction, toTarget));
+                return ToDeg(angle);
             }
         }
     }

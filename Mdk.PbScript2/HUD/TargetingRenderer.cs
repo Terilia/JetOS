@@ -34,7 +34,7 @@ namespace IngameScript
 
                 // Use aimPoint (accounts for bullet drop) instead of interceptPoint (target future position)
                 Vector3D directionToIntercept = aimPoint - shooterPosition;
-                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+                Vector3D localDirectionToIntercept = VTN(directionToIntercept, worldToCockpitMatrix);
 
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
@@ -44,8 +44,8 @@ namespace IngameScript
                 float reticleArmLength = viewportMinDim * 0.025f;
                 float arrowSize = viewportMinDim * 0.04f;
                 float arrowHeadSize = viewportMinDim * 0.025f;
-                double distanceToIntercept = Vector3D.Distance(shooterPosition, interceptPoint);
-                float distanceScaleFactor = (float)MathHelper.Clamp((MAX_DISTANCE_FOR_SCALING - distanceToIntercept) / (MAX_DISTANCE_FOR_SCALING - MIN_DISTANCE_FOR_SCALING), 0.0, 1.0);
+                double distanceToIntercept = VDi(shooterPosition, interceptPoint);
+                float distanceScaleFactor = Cl((float)((MAX_DISTANCE_FOR_SCALING - distanceToIntercept) / (MAX_DISTANCE_FOR_SCALING - MIN_DISTANCE_FOR_SCALING)), 0.0f, 1.0f);
                 float currentPipSizeFactor = MathHelper.Lerp(MIN_PIP_SIZE_FACTOR, MAX_PIP_SIZE_FACTOR, distanceScaleFactor);
                 float dynamicPipSize = viewportMinDim * currentPipSizeFactor;
 
@@ -100,12 +100,12 @@ namespace IngameScript
                 {
                     var pipSprite = new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = TEXTURE_CIRCLE,
                         Position = pipScreenPos,
                         Size = new Vector2(dynamicPipSize, dynamicPipSize),
                         Color = pipColor,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     };
                     frame.Add(pipSprite);
 
@@ -117,12 +117,12 @@ namespace IngameScript
 
                         frame.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = ttiText,
                             Position = pipScreenPos + new Vector2(dynamicPipSize / 2 + 8f, -8f),
                             RotationOrScale = 0.5f,
                             Color = ttiColor,
-                            Alignment = TextAlignment.LEFT,
+                            Alignment = MFDTheme.AL,
                             FontId = MFDTheme.FONT
                         });
 
@@ -131,18 +131,18 @@ namespace IngameScript
 
                         frame.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = rangeText,
                             Position = pipScreenPos + new Vector2(dynamicPipSize / 2 + 8f, 4f),
                             RotationOrScale = 0.45f,
                             Color = ttiColor,
-                            Alignment = TextAlignment.LEFT,
+                            Alignment = MFDTheme.AL,
                             FontId = MFDTheme.FONT
                         });
                     }
 
                     Vector3D directionToTarget = targetPosition - shooterPosition;
-                    Vector3D localDirectionToTarget = Vector3D.TransformNormal(directionToTarget, worldToCockpitMatrix);
+                    Vector3D localDirectionToTarget = VTN(directionToTarget, worldToCockpitMatrix);
 
                     Vector2 currentTargetScreenPos = Vector2.Zero; // Initialize
 
@@ -163,10 +163,10 @@ namespace IngameScript
                     direction.Normalize();
                     float maxDistX = surfaceSize.X / 2f - arrowSize / 2f;
                     float maxDistY = surfaceSize.Y / 2f - arrowSize / 2f;
-                    float angle = (float)Math.Atan2(direction.Y, direction.X);
+                    float angle = (float)At2(direction.Y, direction.X);
 
-                    float edgeX = (float)Math.Cos(angle) * maxDistX;
-                    float edgeY = (float)Math.Sin(angle) * maxDistY;
+                    float edgeX = (float)Cs(angle) * maxDistX;
+                    float edgeY = (float)Sn(angle) * maxDistY;
 
                     // FIX: Prevent division by zero when edgeX or edgeY is near zero
                     Vector2 edgePoint;
@@ -187,35 +187,35 @@ namespace IngameScript
                     }
 
 
-                    edgePoint.X = MathHelper.Clamp(edgePoint.X, arrowSize / 2f, surfaceSize.X - arrowSize / 2f);
-                    edgePoint.Y = MathHelper.Clamp(edgePoint.Y, arrowSize / 2f, surfaceSize.Y - arrowSize / 2f);
+                    edgePoint.X = Cl(edgePoint.X, arrowSize / 2f, surfaceSize.X - arrowSize / 2f);
+                    edgePoint.Y = Cl(edgePoint.Y, arrowSize / 2f, surfaceSize.Y - arrowSize / 2f);
 
 
-                    float arrowRotation = (float)Math.Atan2(direction.Y, direction.X);
+                    float arrowRotation = (float)At2(direction.Y, direction.X);
                     var arrowSprite = new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = TEXTURE_TRIANGLE,
                         Position = edgePoint,
                         Size = new Vector2(arrowHeadSize, arrowHeadSize),
                         Color = offScreenColor,
                         RotationOrScale = arrowRotation + (float)Math.PI / 2f,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     };
                     frame.Add(arrowSprite);
 
                     // Range label next to off-screen arrow
-                    double offscreenRange = Vector3D.Distance(shooterPosition, targetPosition);
+                    double offscreenRange = VDi(shooterPosition, targetPosition);
                     string offscreenRangeText = SpriteHelpers.FormatRange(offscreenRange);
                     Vector2 perpDir = new Vector2(-direction.Y, direction.X);
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = offscreenRangeText,
                         Position = edgePoint + perpDir * 14f - direction * 10f,
                         RotationOrScale = 0.45f,
                         Color = offScreenColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT
                     });
                 }
@@ -233,19 +233,19 @@ namespace IngameScript
             {
                 if (hud == null) return;
 
-                double range = Vector3D.Distance(shooterPosition, targetPosition);
+                double range = VDi(shooterPosition, targetPosition);
 
                 // Closure rate: positive = closing (shooter approaching target)
                 Vector3D relativeVelocity = shooterVelocity - targetVelocity;
-                Vector3D directionToTarget = Vector3D.Normalize(targetPosition - shooterPosition);
-                double closureRate = Vector3D.Dot(relativeVelocity, directionToTarget);
+                Vector3D directionToTarget = VN(targetPosition - shooterPosition);
+                double closureRate = VD(relativeVelocity, directionToTarget);
 
                 Vector3D targetForward = targetVelocity.LengthSquared() > 0.01
-                    ? Vector3D.Normalize(targetVelocity) : directionToTarget;
-                Vector3D toShooter = Vector3D.Normalize(shooterPosition - targetPosition);
-                double aspectAngle = Math.Atan2(Vector3D.Cross(targetForward, toShooter).Length(), Vector3D.Dot(targetForward, toShooter)) * (180.0 / Math.PI);
+                    ? VN(targetVelocity) : directionToTarget;
+                Vector3D toShooter = VN(shooterPosition - targetPosition);
+                double aspectAngle = At2(VX(targetForward, toShooter).Length(), VD(targetForward, toShooter)) * (180.0 / Math.PI);
 
-                Vector3D directionToTargetLocal = Vector3D.TransformNormal(targetPosition - shooterPosition, worldToCockpitMatrix);
+                Vector3D directionToTargetLocal = VTN(targetPosition - shooterPosition, worldToCockpitMatrix);
 
                 if (Math.Abs(directionToTargetLocal.Z) < MIN_Z_FOR_PROJECTION)
                     directionToTargetLocal.Z = -MIN_Z_FOR_PROJECTION;
@@ -262,7 +262,7 @@ namespace IngameScript
 
                 if (!isOnScreen) return;
 
-                float bracketSize = MathHelper.Clamp((float)(3000.0 / range), 20f, 80f);
+                float bracketSize = Cl((float)(3000.0 / range), 20f, 80f);
                 float bracketThickness = 2f;
                 float cornerLength = bracketSize * 0.3f;
 
@@ -303,12 +303,12 @@ namespace IngameScript
                 string rangeText = SpriteHelpers.FormatRange(range);
                 var rangeSprite = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = rangeText,
                     Position = new Vector2(targetScreenPos.X, textY),
                     RotationOrScale = textScale,
                     Color = bracketColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT
                 };
                 frame.Add(rangeSprite);
@@ -317,12 +317,12 @@ namespace IngameScript
                 string closureText = $"Vc:{Math.Abs(closureRate):F0} {closureLabel}";
                 var closureSprite = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = closureText,
                     Position = new Vector2(targetScreenPos.X, textY + 12f),
                     RotationOrScale = textScale,
                     Color = bracketColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT
                 };
                 frame.Add(closureSprite);
@@ -330,12 +330,12 @@ namespace IngameScript
                 string aspectText = $"AA:{aspectAngle:F0}\u00B0";
                 var aspectSprite = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = aspectText,
                     Position = new Vector2(targetScreenPos.X, textY + 24f),
                     RotationOrScale = textScale,
                     Color = bracketColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT
                 };
                 frame.Add(aspectSprite);
@@ -356,11 +356,11 @@ namespace IngameScript
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
 
-                float funnelWidthFactor = (float)MathHelper.Clamp(range / 2000.0, 0.05, 0.3);
+                float funnelWidthFactor = Cl((float)(range / 2000.0), 0.05f, 0.3f);
                 float funnelBaseWidth = surfaceSize.X * funnelWidthFactor;
 
                 Vector3D directionToIntercept = interceptPoint - shooterPosition;
-                Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+                Vector3D localDirectionToIntercept = VTN(directionToIntercept, worldToCockpitMatrix);
 
                 if (localDirectionToIntercept.Z >= 0) return;
 
@@ -392,12 +392,12 @@ namespace IngameScript
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = cueText,
                         Position = new Vector2(center.X, center.Y - 60f),
                         RotationOrScale = 1.0f,
                         Color = cueColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
                 }
@@ -410,10 +410,10 @@ namespace IngameScript
 
                 if (targetPosition != Vector3D.Zero)
                 {
-                    double range = Vector3D.Distance(shooterPosition, targetPosition);
+                    double range = VDi(shooterPosition, targetPosition);
                     Vector3D relativeVelocity = velocity - targetVelocity;
-                    Vector3D toTarget = Vector3D.Normalize(targetPosition - shooterPosition);
-                    double closureRate = -Vector3D.Dot(relativeVelocity, toTarget);
+                    Vector3D toTarget = VN(targetPosition - shooterPosition);
+                    double closureRate = -VD(relativeVelocity, toTarget);
 
                     if (range < 500 && closureRate > 100)
                         collisionWarning = true;
@@ -434,12 +434,12 @@ namespace IngameScript
                     string warningText = lowAltitudeWarning ? "PULL UP" : "BREAK AWAY";
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = warningText,
                         Position = new Vector2(center.X, center.Y + xSize/2 + 20f),
                         RotationOrScale = 1.2f,
                         Color = warningColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
                 }

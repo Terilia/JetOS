@@ -26,6 +26,7 @@ namespace IngameScript
 
             // Game tick counter for consistent timing (updated by SystemManager)
             public static long GameTicks = 0;
+            public static int IC, IP, IA;
 
             // Identity-based target selection
             public string selectedEnemyName = "";
@@ -73,7 +74,7 @@ namespace IngameScript
                         return EntityId == other.EntityId;
                     if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(other.Name))
                         return Name == other.Name;
-                    return Vector3D.Distance(Position, other.Position) < 50.0;
+                    return VDi(Position, other.Position) < 50.0;
                 }
 
                 public uint GetDisplayHistory()
@@ -176,7 +177,7 @@ namespace IngameScript
                     }
                 }
 
-                hudBlock = grid.GetBlockWithName("Fighter HUD");
+                hudBlock = grid.GetBlockWithName("Fighter HUD [HFPS]");
                 hud = hudBlock as IMyTextSurface;
                 grid.GetBlocksOfType(
                     tanks,
@@ -254,7 +255,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
-                        if (Vector3D.Distance(enemyList[i].Position, pos) < PROXIMITY_THRESHOLD)
+                        if (VDi(enemyList[i].Position, pos) < PROXIMITY_THRESHOLD)
                         {
                             existingIndex = i;
                             break;
@@ -350,7 +351,7 @@ namespace IngameScript
                 Vector3D cockpitPos = GetCockpitPosition();
                 for (int i = 0; i < enemyList.Count; i++)
                 {
-                    double distance = Vector3D.Distance(enemyList[i].Position, cockpitPos);
+                    double distance = VDi(enemyList[i].Position, cockpitPos);
                     _sortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
                 }
                 _sortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
@@ -516,7 +517,7 @@ namespace IngameScript
             /// </summary>
             public void SetThrustOverride(float percentage)
             {
-                percentage = MathHelper.Clamp(percentage, 0f, 1f);
+                percentage = Cl(percentage, 0f, 1f);
                 foreach (var thruster in _thrusters)
                 {
                     if (Math.Abs(thruster.ThrustOverridePercentage - percentage) > 0.001f)

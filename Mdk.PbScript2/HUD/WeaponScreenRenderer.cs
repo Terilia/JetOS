@@ -43,7 +43,7 @@ namespace IngameScript
                     else
                     {
                         MFDFrame.Txt(frame, "NO TGT", sw / 2f, secY + detailH / 2f - 12f, 1.0f,
-                            MFDTheme.DIM_TEXT, TextAlignment.CENTER);
+                            MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
                     secY += detailH + 8f;
@@ -61,7 +61,7 @@ namespace IngameScript
                     else
                     {
                         MFDFrame.Txt(frame, "NO CONTACTS", sw / 2f, secY + 10f, 0.6f,
-                            MFDTheme.DIM_TEXT, TextAlignment.CENTER);
+                            MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
                     // ── Missile TOF at bottom ──
@@ -73,7 +73,7 @@ namespace IngameScript
                         tofY += 5f;
 
                         MFDFrame.Txt(frame, "MSL IN FLIGHT", sw / 2f, tofY, 0.55f,
-                            MFDTheme.STATUS_RDY, TextAlignment.CENTER);
+                            MFDTheme.STATUS_RDY, MFDTheme.AC);
                         tofY += 20f;
 
                         DrawMissileTOFToScreen(frame, sw / 2f, tofY);
@@ -98,7 +98,7 @@ namespace IngameScript
                 if (rightW > 2f)
                     MFDFrame.Rect(frame, rightStart + rightW / 2f, y + 5f, rightW, 1f, MFDTheme.BORDER);
 
-                MFDFrame.Txt(frame, text, cx, y, 0.45f, MFDTheme.MID_TEXT, TextAlignment.CENTER);
+                MFDFrame.Txt(frame, text, cx, y, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
             private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
@@ -123,7 +123,7 @@ namespace IngameScript
                 float badgeX = rightX - badgeWidth / 2f;
                 float badgeY = textY + 4f;
                 SpriteHelpers.DrawRectangleOutline(frame, badgeX - badgeWidth / 2f, badgeY - badgeHeight / 2f, badgeWidth, badgeHeight, 1f, badgeColor);
-                MFDFrame.Txt(frame, badgeText, badgeX, badgeY - 7f, 0.45f, badgeColor, TextAlignment.CENTER);
+                MFDFrame.Txt(frame, badgeText, badgeX, badgeY - 7f, 0.45f, badgeColor, MFDTheme.AC);
 
                 // Divider under name
                 textY += 20f;
@@ -131,7 +131,7 @@ namespace IngameScript
                 textY += 5f;
 
                 // Row 2: Range + closure
-                double range = Vector3D.Distance(shooterPosition, contact.Position);
+                double range = VDi(shooterPosition, contact.Position);
                 string rangeText = range >= 1000 ? $"{range / 1000:F2} km" : $"{range:F0} m";
 
                 Vector3D toTarget = contact.Position - shooterPosition;
@@ -139,14 +139,14 @@ namespace IngameScript
                 Vector3D relVel = currentVelocity - contact.Velocity;
                 double closureRate = 0;
                 if (dist > 0.1)
-                    closureRate = Vector3D.Dot(relVel, toTarget / dist);
+                    closureRate = VD(relVel, toTarget / dist);
 
                 MFDFrame.Txt(frame, rangeText, textX, textY, 0.8f, MFDTheme.ACCENT);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
                 string closureText = $"{Math.Abs(closureRate):F0} {closureLabel}";
                 Color closureColor = closureRate > 10 ? MFDTheme.WARN : closureRate < -10 ? new Color(80, 110, 200) : MFDTheme.DIM_TEXT_MID;
-                MFDFrame.Txt(frame, closureText, rightX, textY, 0.65f, closureColor, TextAlignment.RIGHT);
+                MFDFrame.Txt(frame, closureText, rightX, textY, 0.65f, closureColor, MFDTheme.AR);
 
                 textY += 20f;
 
@@ -155,9 +155,9 @@ namespace IngameScript
                 double tgtSpeed = contact.Velocity.Length();
 
                 MFDFrame.Txt(frame, "BRG", textX, textY, 0.5f, MFDTheme.DIM_TEXT);
-                MFDFrame.Txt(frame, $"{bearing:F0}\u00B0", screenWidth / 2f - 8f, textY, 0.5f, MFDTheme.STATUS_VAL, TextAlignment.RIGHT);
+                MFDFrame.Txt(frame, $"{bearing:F0}\u00B0", screenWidth / 2f - 8f, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
                 MFDFrame.Txt(frame, "SPD", screenWidth / 2f + 8f, textY, 0.5f, MFDTheme.DIM_TEXT);
-                MFDFrame.Txt(frame, $"{tgtSpeed:F0} m/s", rightX, textY, 0.5f, MFDTheme.STATUS_VAL, TextAlignment.RIGHT);
+                MFDFrame.Txt(frame, $"{tgtSpeed:F0} m/s", rightX, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
 
                 textY += 16f;
 
@@ -244,10 +244,10 @@ namespace IngameScript
                     if (cName.Length > 12) cName = cName.Substring(0, 12);
                     MFDFrame.Txt(frame, cName, textX + 14f, textY, TEXT_SCALE, contactColor);
 
-                    double range = Vector3D.Distance(shooterPosition, contact.Position);
+                    double range = VDi(shooterPosition, contact.Position);
                     string rangeText = SpriteHelpers.FormatRange(range);
                     MFDFrame.Txt(frame, rangeText, screenWidth - margin - 50f, textY, TEXT_SCALE,
-                        contactColor, TextAlignment.RIGHT);
+                        contactColor, MFDTheme.AR);
 
                     float timelineX = screenWidth - margin - 45f;
                     float timelineW = 40f;
@@ -259,7 +259,7 @@ namespace IngameScript
                 if (enemies.Count > maxRows)
                 {
                     MFDFrame.Txt(frame, $"+{enemies.Count - maxRows} more", screenWidth / 2f, textY, 0.45f,
-                        MFDTheme.DIM_TEXT, TextAlignment.CENTER);
+                        MFDTheme.DIM_TEXT, MFDTheme.AC);
                 }
             }
 
@@ -276,7 +276,7 @@ namespace IngameScript
                 Vector3D gravity = myjet.CachedGravity;
                 Vector3D worldUp;
                 if (gravity.LengthSquared() > 1e-6)
-                    worldUp = -Vector3D.Normalize(gravity);
+                    worldUp = -VN(gravity);
                 else
                     worldUp = Vector3D.Up;
 
@@ -289,13 +289,13 @@ namespace IngameScript
                 if (forwardHorizontal.LengthSquared() < 1e-8) return 0;
                 forwardHorizontal.Normalize();
 
-                Vector3D rightHorizontal = Vector3D.Cross(forwardHorizontal, worldUp);
+                Vector3D rightHorizontal = VX(forwardHorizontal, worldUp);
 
-                double fwdComponent = Vector3D.Dot(toTargetHorizontal, forwardHorizontal);
-                double rightComponent = Vector3D.Dot(toTargetHorizontal, rightHorizontal);
+                double fwdComponent = VD(toTargetHorizontal, forwardHorizontal);
+                double rightComponent = VD(toTargetHorizontal, rightHorizontal);
 
-                double bearingRad = Math.Atan2(rightComponent, fwdComponent);
-                double bearingDeg = MathHelper.ToDegrees(bearingRad);
+                double bearingRad = At2(rightComponent, fwdComponent);
+                double bearingDeg = ToDeg(bearingRad);
                 if (bearingDeg < 0) bearingDeg += 360.0;
 
                 return bearingDeg;
@@ -321,7 +321,7 @@ namespace IngameScript
                         Color tofColor = timeRemaining < 3 ? MFDTheme.WARN : MFDTheme.STATUS_RDY;
 
                         MFDFrame.Txt(frame, tofText, centerX, startY + i * LINE_HEIGHT, TEXT_SCALE,
-                            tofColor, TextAlignment.CENTER);
+                            tofColor, MFDTheme.AC);
                     }
                 }
             }
@@ -352,12 +352,12 @@ namespace IngameScript
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = statusText,
                     Position = new Vector2(center.X, center.Y - coneRadius - 30f),
                     RotationOrScale = 0.6f,
                     Color = statusColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT_W
                 });
 
@@ -371,12 +371,12 @@ namespace IngameScript
                 {
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = "FIRE",
                         Position = new Vector2(center.X, center.Y + coneRadius + 20f),
                         RotationOrScale = 1.0f,
                         Color = Color.Red,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
 
@@ -385,12 +385,12 @@ namespace IngameScript
                     {
                         frame.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXTURE,
-                            Data = "Circle",
+                            Type = MFDTheme.TX,
+                            Data = TEXTURE_CIRCLE_SOLID,
                             Position = center,
                             Size = new Vector2(20f, 20f),
                             Color = Color.Red,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = MFDTheme.AC
                         });
                     }
                 }
@@ -398,12 +398,12 @@ namespace IngameScript
                 {
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = "TRACKING",
                         Position = new Vector2(center.X, center.Y + coneRadius + 20f),
                         RotationOrScale = 0.7f,
                         Color = Color.Yellow,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
                 }
@@ -411,12 +411,12 @@ namespace IngameScript
                 {
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = "SEARCHING",
                         Position = new Vector2(center.X, center.Y + coneRadius + 20f),
                         RotationOrScale = 0.6f,
                         Color = Color.Gray,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
                 }
@@ -449,33 +449,33 @@ namespace IngameScript
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
-                    Data = "Circle",
+                    Type = MFDTheme.TX,
+                    Data = TEXTURE_CIRCLE_SOLID,
                     Position = position,
                     Size = new Vector2(35f, 35f),
                     Color = bgColor,
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 });
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = label,
                     Position = position + new Vector2(0f, -18f),
                     RotationOrScale = 0.5f,
                     Color = textColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT_W
                 });
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = statusChar,
                     Position = position + new Vector2(0f, -5f),
                     RotationOrScale = 0.8f,
                     Color = textColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT_W
                 });
             }

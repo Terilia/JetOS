@@ -39,6 +39,12 @@ namespace IngameScript
             public static readonly string FONT          = "Monospace";
             public static readonly string FONT_W        = "White";
             public static readonly string SQ            = "SquareSimple";
+            public static readonly string NC            = "NYINAH CORP";
+            public const SpriteType TX = SpriteType.TEXTURE;
+            public const SpriteType TT = SpriteType.TEXT;
+            public const TextAlignment AC = TextAlignment.CENTER;
+            public const TextAlignment AL = TextAlignment.LEFT;
+            public const TextAlignment AR = TextAlignment.RIGHT;
         }
 
         class UIController
@@ -206,13 +212,13 @@ namespace IngameScript
                 R(ref frame, SW / 2f, y + HEADER_H + 0.5f, SW, ACCENT_H, MFDTheme.GOLD_LINE);
 
                 // Brand: NYINAH CORP + TACTICAL SYSTEM
-                T(ref frame, "NYINAH CORP", PAD_X, y + HEADER_H * 0.15f, TITLE_SCALE, MFDTheme.CORP_GOLD);
+                T(ref frame, MFDTheme.NC, PAD_X, y + HEADER_H * 0.15f, TITLE_SCALE, MFDTheme.CORP_GOLD);
                 float corpTextW = SW * 0.22f; // approx width of "NYINAH CORP" text
-                T(ref frame, "TACTICAL SYSTEM", PAD_X + corpTextW, y + HEADER_H * 0.22f, SMALL_SCALE, MFDTheme.MID_TEXT);
+                T(ref frame, "TACTICAL SYSTEM " + Jet.IC + "/" + Jet.IA + "/" + Jet.IP, PAD_X + corpTextW, y + HEADER_H * 0.22f, SMALL_SCALE, MFDTheme.MID_TEXT);
 
                 // Right: RDY . MFD-1
                 T(ref frame, "RDY", SW - PAD_X - SW * 0.08f, y + HEADER_H * 0.2f, SMALL_SCALE, MFDTheme.STATUS_RDY);
-                T(ref frame, "MFD-1", SW - PAD_X, y + HEADER_H * 0.2f, SMALL_SCALE, MFDTheme.DIM_TEXT_MID, TextAlignment.RIGHT);
+                T(ref frame, "MFD-1", SW - PAD_X, y + HEADER_H * 0.2f, SMALL_SCALE, MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
             }
 
             // ── Breadcrumb ──
@@ -251,7 +257,7 @@ namespace IngameScript
                     R(ref frame, rightStart + rightLineW / 2f, lineY, rightLineW, 1f, MFDTheme.BORDER);
 
                 // Center text
-                T(ref frame, text, centerX, y, SMALL_SCALE * 1.05f, MFDTheme.MID_TEXT, TextAlignment.CENTER);
+                T(ref frame, text, centerX, y, SMALL_SCALE * 1.05f, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
             // ── Selection indicator ──
@@ -306,7 +312,7 @@ namespace IngameScript
                 T(ref frame, navStr, PAD_X, y + FOOTER_H * 0.15f, TINY_SCALE, MFDTheme.DIM_TEXT);
 
                 // Corp watermark
-                T(ref frame, "NYINAH CORP", SW - PAD_X, y + FOOTER_H * 0.15f, TINY_SCALE, MFDTheme.GOLD_DIM, TextAlignment.RIGHT);
+                T(ref frame, MFDTheme.NC, SW - PAD_X, y + FOOTER_H * 0.15f, TINY_SCALE, MFDTheme.GOLD_DIM, MFDTheme.AR);
             }
 
             // ════════════════════════════════════════
@@ -333,14 +339,14 @@ namespace IngameScript
 
             private void R(ref MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ,
+                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
                     Position = new Vector2(cx, cy), Size = new Vector2(w, h),
-                    Color = c, Alignment = TextAlignment.CENTER });
+                    Color = c, Alignment = MFDTheme.AC });
             }
 
-            private void T(ref MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = TextAlignment.LEFT)
+            private void T(ref MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXT, Data = d,
+                f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
                     Position = new Vector2(x, y), RotationOrScale = s,
                     Color = c, Alignment = a, FontId = MFDTheme.FONT });
             }
@@ -353,7 +359,7 @@ namespace IngameScript
                 textSurface.FontColor = Color.Black;
                 textSurface.FontSize = 0.1f;
                 textSurface.TextPadding = 0f;
-                textSurface.Alignment = TextAlignment.CENTER;
+                textSurface.Alignment = MFDTheme.AC;
             }
         }
     }

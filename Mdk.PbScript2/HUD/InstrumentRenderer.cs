@@ -33,12 +33,12 @@ namespace IngameScript
 
                 var tapeLine = new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 };
                 frame.Add(tapeLine);
 
@@ -70,12 +70,12 @@ namespace IngameScript
 
                         var tickMark = new MySprite()
                         {
-                            Type = SpriteType.TEXTURE,
+                            Type = MFDTheme.TX,
                             Data = MFDTheme.SQ,
                             Position = new Vector2(tapeLineX + currentTickLength / 2f, yPos),
                             Size = new Vector2(currentTickLength, tapeWidth),
                             Color = HUD_PRIMARY,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = MFDTheme.AC
                         };
                         frame.Add(tickMark);
 
@@ -84,12 +84,12 @@ namespace IngameScript
                             string speedText = speedMark.ToString("F0");
                             var numberLabel = new MySprite()
                             {
-                                Type = SpriteType.TEXT,
+                                Type = MFDTheme.TT,
                                 Data = speedText,
                                 Position = new Vector2(tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f),
                                 RotationOrScale = 0.5f,
                                 Color = HUD_PRIMARY,
-                                Alignment = TextAlignment.LEFT,
+                                Alignment = MFDTheme.AL,
                                 FontId = FONT
                             };
                             frame.Add(numberLabel);
@@ -100,12 +100,12 @@ namespace IngameScript
                 // Semi-transparent background behind speed box
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130),
                     Size = new Vector2(digitalSpeedBoxWidth, digitalSpeedBoxHeight),
                     Color = new Color(0, 0, 0, 128),
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 });
 
                 SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
@@ -113,12 +113,12 @@ namespace IngameScript
                 string currentSpeedText = currentSpeedKph.ToString("F0");
                 var speedLabel = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = currentSpeedText,
                     Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f),
                     RotationOrScale = 0.8f,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = FONT
                 };
                 frame.Add(speedLabel);
@@ -127,23 +127,23 @@ namespace IngameScript
                 string machText = $"M {mach:F2}";
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = machText,
                     Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f),
                     RotationOrScale = 0.5f,
                     Color = HUD_SECONDARY,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = FONT
                 });
 
                 var caret = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = ">",
                     Position = new Vector2(digitalSpeedBoxX - 10f, centerY - 7.5f),
                     RotationOrScale = 0.5f,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.RIGHT,
+                    Alignment = MFDTheme.AR,
                     FontId = FONT
                 };
                 frame.Add(caret);
@@ -176,12 +176,12 @@ namespace IngameScript
 
                         var markerLine = new MySprite()
                         {
-                            Type = SpriteType.TEXTURE,
+                            Type = MFDTheme.TX,
                             Data = MFDTheme.SQ,
                             Position = new Vector2(markerX, compassY),
                             Size = new Vector2(2f, markerLineHeight),
                             Color = markerColor,
-                            Alignment = TextAlignment.CENTER
+                            Alignment = MFDTheme.AC
                         };
                         frame.Add(markerLine);
 
@@ -190,12 +190,12 @@ namespace IngameScript
 
                         var markerText = new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = label,
                             Position = new Vector2(markerX, compassY + compassHeight / 2f + 5f),
                             RotationOrScale = textScale,
                             Color = markerColor,
-                            Alignment = TextAlignment.CENTER,
+                            Alignment = MFDTheme.AC,
                             FontId = MFDTheme.FONT_W
                         };
                         frame.Add(markerText);
@@ -204,12 +204,12 @@ namespace IngameScript
 
                 var headingIndicator = new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = "Triangle",
                     Position = new Vector2(centerX, compassY - compassHeight / 2f - 6f),
                     Size = new Vector2(12f, 10f),
                     Color = HUD_EMPHASIS,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     RotationOrScale = (float)Math.PI
                 };
                 frame.Add(headingIndicator);
@@ -221,12 +221,12 @@ namespace IngameScript
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = new Vector2(centerX, headingBoxY + headingBoxHeight / 2f),
                     Size = new Vector2(headingBoxWidth, headingBoxHeight),
                     Color = new Color(0, 0, 0, 128),
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 });
                 SpriteHelpers.DrawRectangleOutline(frame, centerX - headingBoxWidth / 2f, headingBoxY,
                     headingBoxWidth, headingBoxHeight, 1f, HUD_PRIMARY);
@@ -234,12 +234,12 @@ namespace IngameScript
                 string headingText = ((int)((heading % 360 + 360) % 360)).ToString("D3");
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = headingText,
                     Position = new Vector2(centerX, headingBoxY + 1f),
                     RotationOrScale = 0.65f,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = FONT
                 });
             }
@@ -278,12 +278,12 @@ namespace IngameScript
 
                 var tapeLine = new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = new Vector2(tapeLineX, centerY),
                     Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 };
                 frame.Add(tapeLine);
 
@@ -310,12 +310,12 @@ namespace IngameScript
                         {
                             var tickMark = new MySprite()
                             {
-                                Type = SpriteType.TEXTURE,
+                                Type = MFDTheme.TX,
                                 Data = MFDTheme.SQ,
                                 Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
                                 Size = new Vector2(currentTickLength, tapeWidth),
                                 Color = HUD_PRIMARY,
-                                Alignment = TextAlignment.CENTER
+                                Alignment = MFDTheme.AC
                             };
                             frame.Add(tickMark);
                         }
@@ -325,12 +325,12 @@ namespace IngameScript
                             string altText = altMark.ToString("F0");
                             var numberLabel = new MySprite()
                             {
-                                Type = SpriteType.TEXT,
+                                Type = MFDTheme.TT,
                                 Data = altText,
                                 Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f),
                                 RotationOrScale = 0.5f,
                                 Color = HUD_PRIMARY,
-                                Alignment = TextAlignment.RIGHT,
+                                Alignment = MFDTheme.AR,
                                 FontId = FONT
                             };
                             frame.Add(numberLabel);
@@ -343,12 +343,12 @@ namespace IngameScript
                 float altBoxTopLeftY = centerY - digitalAltBoxHeight - 225 / 2f;
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = MFDTheme.SQ,
                     Position = new Vector2(altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f),
                     Size = new Vector2(digitalAltBoxWidth, digitalAltBoxHeight),
                     Color = new Color(0, 0, 0, 128),
-                    Alignment = TextAlignment.CENTER
+                    Alignment = MFDTheme.AC
                 });
 
                 SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
@@ -356,24 +356,24 @@ namespace IngameScript
                 string currentAltitudeText = currentAltitude.ToString("F0");
                 var altitudeLabel = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = currentAltitudeText,
                     Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140),
                     RotationOrScale = 0.8f,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = FONT
                 };
                 frame.Add(altitudeLabel);
 
                 var caret = new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = "<",
                     Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f),
                     RotationOrScale = 0.5f,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.LEFT,
+                    Alignment = MFDTheme.AL,
                     FontId = FONT
                 };
                 frame.Add(caret);
@@ -384,12 +384,12 @@ namespace IngameScript
                 string vviText = $"{vviArrow} {verticalVelocity:F0}";
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = vviText,
                     Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f),
                     RotationOrScale = 0.5f,
                     Color = vviColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = FONT
                 });
             }
@@ -403,24 +403,24 @@ namespace IngameScript
                 string gForceText = $"G: {gForces:F1}";
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = gForceText,
                     Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT),
                     RotationOrScale = TEXT_SCALE,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.LEFT,
+                    Alignment = MFDTheme.AL,
                     FontId = MFDTheme.FONT_W
                 });
 
                 string peakGText = $"Max G: {peakGForce:F1}";
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = peakGText,
                     Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT * 2),
                     RotationOrScale = TEXT_SCALE,
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.LEFT,
+                    Alignment = MFDTheme.AL,
                     FontId = MFDTheme.FONT_W
                 });
             }
@@ -474,13 +474,13 @@ namespace IngameScript
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = spriteType,
                         Position = new Vector2(INDEXER_X, indexerY),
                         Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
                         RotationOrScale = 0f,
                         Color = indexerColor,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     });
                 }
                 else if (aoa > OPTIMAL_AOA_MAX)
@@ -499,13 +499,13 @@ namespace IngameScript
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = spriteType,
                         Position = new Vector2(INDEXER_X, indexerY),
                         Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
                         RotationOrScale = MathHelper.Pi,
                         Color = indexerColor,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     });
                 }
                 else
@@ -514,12 +514,12 @@ namespace IngameScript
 
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
-                        Data = "Circle",
+                        Type = MFDTheme.TX,
+                        Data = TEXTURE_CIRCLE_SOLID,
                         Position = new Vector2(INDEXER_X, indexerY),
                         Size = new Vector2(SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f),
                         Color = indexerColor,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     });
                 }
 
@@ -538,12 +538,12 @@ namespace IngameScript
 
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = $"E{energySymbol}",
                     Position = new Vector2(INDEXER_X, indexerY + 25f),
                     RotationOrScale = 0.5f,
                     Color = energyColor,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT
                 });
             }
@@ -590,12 +590,12 @@ namespace IngameScript
                     // Warning text
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = warningText,
                         Position = new Vector2(center.X, textY),
                         RotationOrScale = textScale,
                         Color = warningColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT_W
                     });
 
@@ -603,12 +603,12 @@ namespace IngameScript
                     string aoaText = $"{currentAoA:F1}\u00B0";
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = aoaText,
                         Position = new Vector2(center.X, textY + 25f),
                         RotationOrScale = 0.7f,
                         Color = warningColor,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT
                     });
                 }
@@ -661,24 +661,24 @@ namespace IngameScript
 
                     var labelSprite = new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = labelText,
                         Position = new Vector2(labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
                         RotationOrScale = TEXT_SCALE,
                         Color = HUD_PRIMARY,
-                        Alignment = TextAlignment.LEFT,
+                        Alignment = MFDTheme.AL,
                         FontId = MFDTheme.FONT_W
                     };
                     frame.Add(labelSprite);
 
                     var valueSprite = new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = numericValue.ToString("F1"),
                         Position = new Vector2(numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
                         RotationOrScale = TEXT_SCALE,
                         Color = HUD_PRIMARY,
-                        Alignment = TextAlignment.RIGHT,
+                        Alignment = MFDTheme.AR,
                         FontId = MFDTheme.FONT_W
                     };
                     frame.Add(valueSprite);
@@ -728,7 +728,7 @@ namespace IngameScript
                 frame.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, lineThickness / 2),
                         Size = new Vector2(boxSize.X, lineThickness),
@@ -738,7 +738,7 @@ namespace IngameScript
                 frame.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, boxSize.Y - lineThickness / 2),
                         Size = new Vector2(boxSize.X, lineThickness),
@@ -748,7 +748,7 @@ namespace IngameScript
                 frame.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(lineThickness / 2, boxSize.Y / 2),
                         Size = new Vector2(lineThickness, boxSize.Y),
@@ -758,7 +758,7 @@ namespace IngameScript
                 frame.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(boxSize.X - lineThickness / 2, boxSize.Y / 2),
                         Size = new Vector2(lineThickness, boxSize.Y),
@@ -773,7 +773,7 @@ namespace IngameScript
                 frame.Add(
                     new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = boxTopLeft + new Vector2(0, (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSize.Y / 2) * 1.025f),
                         Size = new Vector2(boxSize.X, filledSize.Y * 1.05f),

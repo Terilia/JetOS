@@ -49,15 +49,15 @@ namespace IngameScript
                 Rect(frame, sw / 2f, hy + headerH + 0.5f, sw, 1f, MFDTheme.GOLD_LINE);
 
                 // Brand
-                Txt(frame, "NYINAH CORP", padX, hy + headerH * 0.15f, titleScale, MFDTheme.CORP_GOLD);
+                Txt(frame, MFDTheme.NC, padX, hy + headerH * 0.15f, titleScale, MFDTheme.CORP_GOLD);
                 float corpW = sw * 0.22f;
-                Txt(frame, "TACTICAL SYSTEM", padX + corpW, hy + headerH * 0.22f, smallScale, MFDTheme.MID_TEXT);
+                Txt(frame, "TACTICAL SYSTEM " + Jet.IC + "/" + Jet.IA + "/" + Jet.IP, padX + corpW, hy + headerH * 0.22f, smallScale, MFDTheme.MID_TEXT);
 
                 // Header right text
                 if (headerRight != null)
                 {
                     Txt(frame, headerRight, sw - padX, hy + headerH * 0.2f, smallScale,
-                        MFDTheme.DIM_TEXT_MID, TextAlignment.RIGHT);
+                        MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
                 }
 
                 // Footer
@@ -71,8 +71,8 @@ namespace IngameScript
                         padX, fy + footerH * 0.15f, tinyScale, MFDTheme.DIM_TEXT);
                 }
 
-                Txt(frame, "NYINAH CORP", sw - padX, fy + footerH * 0.15f,
-                    tinyScale, MFDTheme.GOLD_DIM, TextAlignment.RIGHT);
+                Txt(frame, MFDTheme.NC, sw - padX, fy + footerH * 0.15f,
+                    tinyScale, MFDTheme.GOLD_DIM, MFDTheme.AR);
 
                 // Screen border
                 Rect(frame, sw / 2f, 1f, sw, 2f, MFDTheme.BORDER);
@@ -94,15 +94,15 @@ namespace IngameScript
 
             public static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ,
+                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
                     Position = new Vector2(cx, cy), Size = new Vector2(w, h),
-                    Color = c, Alignment = TextAlignment.CENTER });
+                    Color = c, Alignment = MFDTheme.AC });
             }
 
             public static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c,
-                TextAlignment a = TextAlignment.LEFT)
+                TextAlignment a = MFDTheme.AL)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXT, Data = d,
+                f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
                     Position = new Vector2(x, y), RotationOrScale = s,
                     Color = c, Alignment = a, FontId = MFDTheme.FONT });
             }

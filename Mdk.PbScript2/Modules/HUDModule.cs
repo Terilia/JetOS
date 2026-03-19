@@ -147,6 +147,7 @@ namespace IngameScript
             internal const string TEXTURE_SQUARE = "SquareSimple";
             internal const string TEXTURE_CIRCLE = "CircleHollow";
             internal const string TEXTURE_TRIANGLE = "Triangle";
+            internal const string TEXTURE_CIRCLE_SOLID = "Circle";
 
             internal const float RADAR_BOX_SIZE_PX = 100f;
             internal const float RADAR_BORDER_MARGIN = 10f;
@@ -352,11 +353,15 @@ namespace IngameScript
                     // Targeting
                     if (selectedEnemy.HasValue)
                     {
-                        Vector3D activeTargetPos = selectedEnemy.Value.Position;
                         Vector3D activeTargetVel = selectedEnemy.Value.Velocity;
                         Vector3D activeTargetAccel = selectedEnemy.Value.Acceleration;
+                        // Compensate for 1-tick spawn delay: in the tick between calculation
+                        // and bullet spawn, both objects move. Adjust target by V_rel * dt
+                        // to reflect the shorter range at spawn time.
+                        Vector3D activeTargetPos = selectedEnemy.Value.Position
+                            + (activeTargetVel - currentVelocity) * (1.0 / 60.0);
                         double muzzleVelocity = 910;
-                        double range = Vector3D.Distance(shooterPosition, activeTargetPos);
+                        double range = VDi(shooterPosition, activeTargetPos);
 
                         Vector3D interceptPoint;
                         double timeToIntercept;
@@ -366,7 +371,7 @@ namespace IngameScript
                         if (hasIntercept)
                         {
                             Vector3D directionToIntercept = aimPoint - shooterPosition;
-                            Vector3D localDirectionToIntercept = Vector3D.TransformNormal(directionToIntercept, worldToCockpitMatrix);
+                            Vector3D localDirectionToIntercept = VTN(directionToIntercept, worldToCockpitMatrix);
 
                             bool isAimingAtPip = false;
                             if (localDirectionToIntercept.Z < 0)
@@ -422,14 +427,14 @@ namespace IngameScript
 
                 gravity = myjet.CachedGravity;
                 inGravity = gravity.LengthSquared() > 0;
-                gravityDirection = inGravity ? Vector3D.Normalize(gravity) : Vector3D.Zero;
+                gravityDirection = inGravity ? VN(gravity) : Vector3D.Zero;
 
                 if (inGravity)
                 {
-                    pitch = Math.Asin(Vector3D.Dot(forwardVector, gravityDirection)) * (180 / Math.PI);
-                    roll = Math.Atan2(
-                        Vector3D.Dot(leftVector, gravityDirection),
-                        Vector3D.Dot(upVector, gravityDirection)
+                    pitch = Math.Asin(VD(forwardVector, gravityDirection)) * (180 / Math.PI);
+                    roll = At2(
+                        VD(leftVector, gravityDirection),
+                        VD(upVector, gravityDirection)
                     ) * (180 / Math.PI);
                 }
 
@@ -440,7 +445,7 @@ namespace IngameScript
 
                 // VVI: vertical component of velocity (positive = climbing)
                 if (inGravity)
-                    verticalVelocityMps = Vector3D.Dot(currentVelocity, -gravityDirection);
+                    verticalVelocityMps = VD(currentVelocity, -gravityDirection);
                 else
                     verticalVelocityMps = currentVelocity.Y;
                 deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
@@ -691,12 +696,12 @@ namespace IngameScript
                 if (velocity.LengthSquared() < 0.01)
                     return 0;
 
-                Vector3D velocityDirection = Vector3D.Normalize(velocity);
+                Vector3D velocityDirection = VN(velocity);
 
                 double angleOfAttack =
-                    Math.Atan2(
-                        Vector3D.Dot(velocityDirection, upVector),
-                        Vector3D.Dot(velocityDirection, forwardVector)
+                    At2(
+                        VD(velocityDirection, upVector),
+                        VD(velocityDirection, forwardVector)
                     ) * (180 / Math.PI);
 
                 return angleOfAttack;

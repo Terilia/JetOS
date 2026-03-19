@@ -16,13 +16,20 @@ namespace IngameScript
             private int categoryIndex = 0;
             private int parameterIndex = 0;
 
+            const string C_W = "Warnings";
+            const string C_GC = "Gun Control";
+            const string C_HT = "HUD Toggles";
+            const string C_RA = "Reset All";
+            const string S_SEL = "SELECT to save";
+            const string S_BCK = "BACK to cancel";
+
             private string[] categories = new string[]
             {
-                "Warnings",
-                "Gun Control",
-                "HUD Toggles",
+                C_W,
+                C_GC,
+                C_HT,
                 "HUD Theme",
-                "Reset All"
+                C_RA
             };
 
             // Configuration storage
@@ -76,27 +83,27 @@ namespace IngameScript
             private void InitializeConfigs()
             {
                 // WARNINGS
-                AddConfig("Warnings", "altitude_warning", "Altitude Warning", 380f, 100f, 1000f, 10f, "m");
-                AddConfig("Warnings", "speed_warning", "Speed Warning", 360f, 100f, 600f, 10f, "kts");
-                AddConfig("Warnings", "bingo_fuel", "Bingo Fuel", 0.20f, 0.05f, 0.50f, 0.05f, "%");
-                AddConfig("Warnings", "low_fuel", "Low Fuel", 0.35f, 0.10f, 0.60f, 0.05f, "%");
+                AddConfig(C_W, "altitude_warning", "Altitude Warning", 150f, 100f, 1000f, 10f, "m");
+                AddConfig(C_W, "speed_warning", "Speed Warning", 360f, 100f, 600f, 10f, "kts");
+                AddConfig(C_W, "bingo_fuel", "Bingo Fuel", 0.20f, 0.05f, 0.50f, 0.05f, "%");
+                AddConfig(C_W, "low_fuel", "Low Fuel", 0.35f, 0.10f, 0.60f, 0.05f, "%");
 
                 // GUN CONTROL
-                AddConfig("Gun Control", "gun_kp", "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
-                AddConfig("Gun Control", "gun_max_rpm", "Max RPM", 30f, 5f, 60f, 5f, "RPM");
-                AddConfig("Gun Control", "gun_lock_threshold", "Lock Threshold", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
-                AddConfig("Gun Control", "gun_max_range", "Max Range", 6000f, 1000f, 15000f, 500f, "m");
-                AddConfig("Gun Control", "gun_muzzle_velocity", "Muzzle Velocity", 1100f, 200f, 2000f, 50f, "m/s");
+                AddConfig(C_GC, "gun_kp", "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
+                AddConfig(C_GC, "gun_max_rpm", "Max RPM", 30f, 5f, 60f, 5f, "RPM");
+                AddConfig(C_GC, "gun_lock_threshold", "Lock Threshold", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
+                AddConfig(C_GC, "gun_max_range", "Max Range", 6000f, 1000f, 15000f, 500f, "m");
+                AddConfig(C_GC, "gun_muzzle_velocity", "Muzzle Velocity", 1100f, 200f, 2000f, 50f, "m/s");
 
                 // HUD TOGGLES (1=on, 0=off)
-                AddConfig("HUD Toggles", "hud_radar", "Radar Minimap", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_gun_funnel", "Gun Funnel", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_target_brackets", "Target Brackets", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_gforce", "G-Force", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_aoa", "AOA Indexer", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_fpm", "Flight Path Marker", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_compass", "Compass", 1f, 0f, 1f, 1f);
-                AddConfig("HUD Toggles", "hud_breakaway", "Breakaway Warning", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_radar", "Radar Minimap", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_gun_funnel", "Gun Funnel", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_target_brackets", "Target Brackets", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_gforce", "G-Force", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_aoa", "AOA Indexer", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_fpm", "Flight Path Marker", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_compass", "Compass", 1f, 0f, 1f, 1f);
+                AddConfig(C_HT, "hud_breakaway", "Breakaway Warning", 1f, 0f, 1f, 1f);
 
                 // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
                 AddConfig("HUD Theme", "hud_theme", "Color Theme", 0f, 0f, 3f, 1f);
@@ -180,7 +187,7 @@ namespace IngameScript
 
                     case MenuLevel.ParameterList:
                         string selectedCategory = categories[categoryIndex];
-                        if (selectedCategory == "Reset All")
+                        if (selectedCategory == C_RA)
                         {
                             return new string[] { "Reset All to Defaults", "Back" };
                         }
@@ -230,8 +237,8 @@ namespace IngameScript
                                     "",
                                     "0-Green 1-Blue 2-Amber 3-White",
                                     "",
-                                    "SELECT to save",
-                                    "BACK to cancel"
+                                    S_SEL,
+                                    S_BCK
                                 };
                             }
                             if (param.MaxValue == 1f && param.MinValue == 0f && param.StepSize == 1f)
@@ -244,8 +251,8 @@ namespace IngameScript
                                     "^ / V  Toggle",
                                     $"  Current: {toggle}",
                                     "",
-                                    "SELECT to save",
-                                    "BACK to cancel"
+                                    S_SEL,
+                                    S_BCK
                                 };
                             }
                             return new string[]
@@ -259,8 +266,8 @@ namespace IngameScript
                                 $"Default: {param.DefaultValue:F2}{param.Unit}",
                                 $"Range: {param.MinValue:F2} - {param.MaxValue:F2}{param.Unit}",
                                 "",
-                                "SELECT to save",
-                                "BACK to cancel"
+                                S_SEL,
+                                S_BCK
                             };
                         }
                         break;
@@ -287,7 +294,7 @@ namespace IngameScript
                 switch (currentLevel)
                 {
                     case MenuLevel.Category:
-                        if (categories[index] == "Reset All")
+                        if (categories[index] == C_RA)
                         {
                             foreach (var kvp in allConfigs)
                                 kvp.Value.Reset();

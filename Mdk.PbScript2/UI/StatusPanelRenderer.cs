@@ -8,574 +8,682 @@ namespace IngameScript
     {
         static class StatusPanelRenderer
         {
-            // Mini engine schematic colors
-            static readonly Color C_ENG_BODY = new Color(20, 35, 20);
-            static readonly Color C_ENG_LINE = new Color(40, 70, 40);
+            // ── LCG random ──
+            static uint rngState = 0xDEAD;
+            static uint Rng()
+            {
+                rngState = rngState * 1103515245 + 12345;
+                return (rngState >> 16) & 0x7FFF;
+            }
 
-            // Afterburner visual delay
-            const int AB_VISUAL_DELAY = 2;
-            static int abActiveTicks = 0;
-            static bool lastAbState = false;
+            // ── Slideshow controller ──
+            const int SLIDE_COUNT = 5;
+            static int activeSlide;
+            static int slideTick;
+            static int transitionTick;
+            static bool satOffline;
+            static int offlineTick;
 
-            // Smoothed velocity for flame animation (EMA)
-            static double smoothedFlameVelocity = 0;
+            // ── Slide 0: Sat recon state ──
+            const int MV = 400, MR = 16, MM = 7;
+            static float[] vPX = new float[MV], vPY = new float[MV];
+            static int[] rS = new int[MR], rN = new int[MR], rL = new int[MR];
+            static int rCnt, vCnt;
+            static float[] mX = new float[MM], mY = new float[MM];
+            static int[] mT = new int[MM];
+            static string[] mNm = new string[MM], mIn = new string[MM], mIn2 = new string[MM];
+            static int mCnt;
+            static string satName, satCoord;
+            static int lastOp = -1, nameIdx;
+            static uint mapSeed;
+            static float camX, camY, camZoom, camTgtX, camTgtY, camTgtZ;
+            static int camState, camMarker, camDwell;
 
-            // Maneuver drift: velocity history for turn detection
-            const int VEL_HISTORY_SIZE = 30;
-            static Vector3D[] velHistory = new Vector3D[VEL_HISTORY_SIZE];
-            static int velHistoryIdx = 0;
-            static int velHistoryCount = 0;
-            static float smoothedYawDrift = 0f;
-            static float smoothedPitchDrift = 0f;
+            // ── Slide 1: SIGINT state ──
+            static int[] sigW0 = new int[22], sigW1 = new int[22];
+            static int sigPhase, sigTimer, sigFrag;
 
-            // Golden ratio for particle spacing
-            const float PHI = 1.6180339887f;
+            // ── Slide 2: Countdown state ──
+            static int cdSec, cdSub, cdCodeIdx, cdFlash;
 
+            // ── Slide 3: Exfil state ──
+            static int exFile, exPhase, exPurge;
+            static float[] exProg = new float[4];
+            static int[] exFIdx = new int[4]; // file name indices (stored at init)
+            static float exSpeed;              // download speed (stored at init)
+            static int exTgtIdx;               // target index (stored at init)
+
+            // ── Slide 4: Asset state ──
+            static string[] astName = new string[6];
+            static int[] astStat = new int[6]; // 0=active,1=compromised,2=dark
+            static int astTimer, astTarget;
+
+            // ── String tables ──
+            static readonly string[] OPS = { "OP NIGHTFALL", "SECTOR 7-A", "ZONE BRAVO",
+                "RECON ALPHA", "AREA 12-C", "OP DARKWATER", "ZONE ECHO", "OP RED COAST",
+                "SECTOR 3-F", "RECON DELTA", "OP IRON TIDE", "AREA 9-K" };
+            static readonly string[] NAMES = { "ALPHA", "BRAVO", "CHARLIE", "DELTA", "ECHO",
+                "FOXTROT", "GOLF", "HOTEL", "KILO", "LIMA", "OSCAR", "PAPA", "SIERRA", "TANGO" };
+            static readonly string[] INTEL_S = { "2x SAM-6", "AA BTY", "3x MLRS", "C2 NODE",
+                "RADAR", "HQ+COMMS", "SUPPLY DEP", "FUEL DUMP", "AMMO CACHE", "AIRSTRIP",
+                "DOCK", "BUNKER", "MOTOR POOL", "EW SUITE", "2x PATROL" };
+            static readonly string[] SIG_FREQ = { "138.200 MHz", "7.415 kHz", "243.000 MHz",
+                "462.575 MHz", "121.500 MHz", "156.800 MHz" };
+            static readonly string[] SIG_FRAG = { "CONFIRM ASSET ENRT", "PKG SECURED",
+                "GRID REF 4-7", "WINDOW 0200-0400Z", "DENY DENY DENY", "EXTRACTION NEG",
+                "AUTH CODE WHISKEY", "TARGET ACQUIRED", "ABORT ABORT", "BACKUP FREQ 7.4" };
+            static readonly string[] CD_NAMES = { "SILENT THUNDER", "BROKEN ARROW", "IRON CURTAIN",
+                "DARK WINTER", "RED PHOENIX", "GHOST VEIL", "COLD HAMMER", "NIGHT SHADE" };
+            static readonly string[] EX_FILES = { "sat_telemetry.db", "comms_log.tar",
+                "personnel.csv", "patrol_rte.gpx", "radar_cfg.bin", "crypto.aes",
+                "drone_vid.h264", "access.dat" };
+            static readonly string[] EX_TGTS = { "CENTCOM-EAST", "NAVAL-OPS-7",
+                "AIR-CTRL-N", "SIGINT-HUB-3", "LOGNET-PRIME" };
+            static readonly string[] AST_NAMES = { "VIPER", "JACKAL", "CONDOR", "SPARROW",
+                "COBRA", "FALCON", "MANTIS", "RAPTOR", "HOUND", "SPECTER", "TALON", "WRAITH" };
+
+            static readonly Color SBG = new Color(5, 8, 5);
+            static readonly Color CST = new Color(22, 55, 32);
+            static readonly Color ELV = new Color(16, 42, 26);
+            static readonly Color PKC = new Color(30, 65, 40);
+            static readonly Color AMBER = new Color(140, 100, 35);
+            static readonly Color MGREEN = new Color(45, 120, 55);
+
+            // ════════════════════════════════════════
+            // PUBLIC ENTRY POINT
+            // ════════════════════════════════════════
             public static void Render(MySpriteDrawFrame frame, RectangleF area, Jet jet, HUDModule hud, int tick)
             {
                 if (jet == null || jet._cockpit == null) return;
-
-                float x = area.Position.X;
-                float y = area.Position.Y;
-                float w = area.Width;
-                float areaH = area.Height;
-                float gap = 6f;
-
-                float resH = 36f;
-                int resCount = 0;
-                if (jet.tanks.Count > 0) resCount++;
-                if (jet.batteries.Count > 0) resCount++;
-
-                float resTotal = resCount * (resH + gap);
-                float maxPropH = areaH - resTotal;
-                float propH = maxPropH * 0.75f;
-                if (propH < 50f) propH = 50f;
-
-                float thr = hud != null ? hud.throttlecontrol : 0f;
-                bool abRaw = hud != null && hud.hydrogenswitch;
-
-                if (abRaw)
-                {
-                    if (!lastAbState) abActiveTicks = 0;
-                    abActiveTicks++;
-                }
-                else
-                {
-                    abActiveTicks = 0;
-                }
-                lastAbState = abRaw;
-                bool abVisual = abRaw && abActiveTicks > AB_VISUAL_DELAY;
-
-                double rawVel = jet.GetVelocity();
-                smoothedFlameVelocity = smoothedFlameVelocity * 0.95 + rawVel * 0.05;
-
-                // Compute maneuver drift from velocity history
-                if (jet._cockpit != null)
-                {
-                    Vector3D currentVel = jet._cockpit.GetShipVelocities().LinearVelocity;
-                    MatrixD cm = jet._cockpit.WorldMatrix;
-
-                    velHistory[velHistoryIdx] = currentVel;
-                    velHistoryIdx = (velHistoryIdx + 1) % VEL_HISTORY_SIZE;
-                    if (velHistoryCount < VEL_HISTORY_SIZE) velHistoryCount++;
-
-                    if (velHistoryCount >= VEL_HISTORY_SIZE)
-                    {
-                        Vector3D oldVel = velHistory[velHistoryIdx];
-                        Vector3D deltaVel = currentVel - oldVel;
-
-                        float lateralG = -(float)Vector3D.Dot(deltaVel, cm.Right);
-                        float verticalG = -(float)Vector3D.Dot(deltaVel, cm.Up);
-
-                        float targetYaw = lateralG * 2.5f;
-                        float targetPitch = verticalG * 1.5f;
-
-                        smoothedYawDrift = smoothedYawDrift * 0.85f + targetYaw * 0.15f;
-                        smoothedPitchDrift = smoothedPitchDrift * 0.85f + targetPitch * 0.15f;
-
-                        smoothedYawDrift = MathHelper.Clamp(smoothedYawDrift, -12f, 12f);
-                        smoothedPitchDrift = MathHelper.Clamp(smoothedPitchDrift, -8f, 8f);
-                    }
-                }
-
-                DrawPropulsionCard(frame, x, y, w, propH, jet, thr, abVisual, tick, smoothedFlameVelocity);
-                y += propH + gap;
+                float x = area.Position.X, y = area.Position.Y;
+                float w = area.Width, areaH = area.Height;
+                float gap = 6f, resH = 36f;
 
                 double fuelPct, fuelSec;
                 jet.GetFuelStatus(out fuelPct, out fuelSec);
                 if (jet.tanks.Count > 0)
-                {
-                    DrawResourceCard(frame, x, y, w, resH, "H2 FUEL",
-                        (float)fuelPct, FormatTime(fuelSec));
-                    y += resH + gap;
-                }
+                { DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)fuelPct, FmtTime(fuelSec)); y += resH + gap; }
 
                 float curMWh, maxMWh, netDrain;
                 jet.GetBatteryStatus(out curMWh, out maxMWh, out netDrain);
                 if (jet.batteries.Count > 0)
                 {
-                    float battPct = maxMWh > 0 ? curMWh / maxMWh : 0f;
-                    string battTime = "---";
-                    if (netDrain > 0.001f)
-                    {
-                        double hrs = curMWh / netDrain;
-                        battTime = FormatTime(hrs * 3600);
-                    }
-                    else if (netDrain < -0.001f)
-                    {
-                        battTime = "CHRG";
-                    }
-                    DrawResourceCard(frame, x, y, w, resH, "BATTERY", battPct, battTime);
+                    float bp = maxMWh > 0 ? curMWh / maxMWh : 0f;
+                    string bt = netDrain > 0.001f ? FmtTime(curMWh / netDrain * 3600) : netDrain < -0.001f ? "CHRG" : "---";
+                    DrawResCard(frame, x, y, w, resH, "BATTERY", bp, bt); y += resH + gap;
+                }
+
+                float engH = 90f, remaining = area.Position.Y + areaH - y;
+                if (remaining > engH + gap + 50f)
+                { DrawEngCard(frame, x, y, w, engH, jet); y += engH + gap; }
+
+                float satH = area.Position.Y + areaH - y;
+                if (satH > 50f)
+                    DrawSlideshow(frame, x, y, w, satH, tick, jet);
+            }
+
+            // ════════════════════════════════════════
+            // SLIDESHOW CONTROLLER
+            // ════════════════════════════════════════
+            static void DrawSlideshow(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick, Jet jet)
+            {
+                bool flying = jet.GetVelocity() > 5.0;
+                if (flying && !satOffline) { satOffline = true; offlineTick = 0; }
+                else if (!flying && satOffline) { satOffline = false; offlineTick = 0; }
+                if (satOffline) offlineTick++;
+
+                // Transition black frame
+                if (transitionTick > 0)
+                {
+                    Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
+                    SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                    transitionTick--;
+                    if (transitionTick == 0) InitSlide(activeSlide);
+                    return;
+                }
+
+                slideTick++;
+                bool done = false;
+
+                switch (activeSlide)
+                {
+                    case 0: done = DrawSatSlide(frame, x, y, w, h, tick); break;
+                    case 1: done = DrawSigintSlide(frame, x, y, w, h, tick); break;
+                    case 2: done = DrawCountdownSlide(frame, x, y, w, h, tick); break;
+                    case 3: done = DrawExfilSlide(frame, x, y, w, h, tick); break;
+                    case 4: done = DrawAssetSlide(frame, x, y, w, h, tick); break;
+                }
+
+                if (satOffline) DrawOffline(frame, x, y, w, h);
+
+                if (!satOffline && done)
+                {
+                    activeSlide = (activeSlide + 1) % SLIDE_COUNT;
+                    slideTick = 0;
+                    transitionTick = 3;
                 }
             }
 
-            static void DrawPropulsionCard(MySpriteDrawFrame frame, float x, float y, float w, float h,
-                Jet jet, float thr, bool ab, int tick, double velocity)
+            static void InitSlide(int slide)
             {
-                Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
-
-                Txt(frame, "PROPULSION", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT, TextAlignment.CENTER);
-
-                float colW = (w - 14f) / 2f;
-                float colTop = y + 14f;
-                float colH = h - 18f;
-
-                DrawEngineCol(frame, x + 4f, colTop, colW, colH, jet.leftEngines, jet.leftAB, "ENG L", thr, ab, tick, velocity);
-                DrawEngineCol(frame, x + w - colW - 4f, colTop, colW, colH, jet.rightEngines, jet.rightAB, "ENG R", thr, ab, tick, velocity);
-            }
-
-            // ── 3D turbine disc projected from side view ──
-            static void DrawTurbineDisc(MySpriteDrawFrame frame, float schX, float cy, float radius,
-                int numBlades, float rotAngle, float bladeChord,
-                int bladeR, int bladeG, int bladeB, int bladeA,
-                int hubR, int hubG, int hubB, bool damaged)
-            {
-                if (damaged) return;
-                float hubRad = radius * 0.18f;
-
-                // Sort blades by depth: draw back blades, then hub, then front blades
-                // Back blades (sinA < 0)
-                for (int b = 0; b < numBlades; b++)
+                slideTick = 0;
+                switch (slide)
                 {
-                    float bAngle = rotAngle + (float)b / numBlades * MathHelper.TwoPi;
-                    float cosA = (float)Math.Cos(bAngle);
-                    float sinA = (float)Math.Sin(bAngle);
-                    if (sinA >= 0) continue; // front blade, skip for now
-
-                    float tipX = cosA * radius;
-                    float hubTipX = cosA * hubRad;
-                    float apparentH = 0.8f + Math.Abs(sinA) * bladeChord * 1.5f;
-                    float depthAlpha = 0.3f + (sinA + 1f) * 0.35f;
-                    int alpha = (int)(bladeA * depthAlpha);
-                    float bladeLen = Math.Abs(tipX - hubTipX);
-                    float bladeCX = schX + (tipX + hubTipX) / 2f;
-                    if (bladeLen > 0.3f)
-                        Rect(frame, bladeCX, cy, bladeLen, apparentH,
-                            new Color(Math.Max(0, bladeR - 15), Math.Max(0, bladeG - 15), Math.Max(0, bladeB - 10), alpha));
-                }
-
-                // Hub
-                Rect(frame, schX, cy, hubRad * 1.6f, hubRad * 1.6f, new Color(hubR, hubG, hubB, 140));
-                Rect(frame, schX, cy, hubRad * 0.6f, hubRad * 0.6f, new Color(Math.Min(255, hubR + 20), Math.Min(255, hubG + 20), Math.Min(255, hubB + 15), 100));
-
-                // Front blades (sinA >= 0)
-                for (int b = 0; b < numBlades; b++)
-                {
-                    float bAngle = rotAngle + (float)b / numBlades * MathHelper.TwoPi;
-                    float cosA = (float)Math.Cos(bAngle);
-                    float sinA = (float)Math.Sin(bAngle);
-                    if (sinA < 0) continue;
-
-                    float tipX = cosA * radius;
-                    float hubTipX = cosA * hubRad;
-                    float apparentH = 0.8f + Math.Abs(sinA) * bladeChord * 1.5f;
-                    float depthAlpha = 0.3f + (sinA + 1f) * 0.35f;
-                    int alpha = (int)(bladeA * depthAlpha);
-                    float bladeLen = Math.Abs(tipX - hubTipX);
-                    float bladeCX = schX + (tipX + hubTipX) / 2f;
-                    if (bladeLen > 0.3f)
-                        Rect(frame, bladeCX, cy, bladeLen, apparentH,
-                            new Color(bladeR, bladeG, bladeB, alpha));
+                    case 0: GenMap(); break;
+                    case 1:
+                        for (int i = 0; i < 22; i++) { sigW0[i] = 1; sigW1[i] = 1; }
+                        sigPhase = 0; sigTimer = 60 + (int)(Rng() % 60); sigFrag = 0;
+                        break;
+                    case 2:
+                        cdSec = 180 + (int)(Rng() % 120); cdSub = 0;
+                        cdCodeIdx = (int)(Rng() % (uint)CD_NAMES.Length); cdFlash = 0;
+                        break;
+                    case 3:
+                        exFile = 0; exPhase = 0; exPurge = 0;
+                        exSpeed = 0.006f + (Rng() % 8) * 0.001f;
+                        exTgtIdx = (int)(Rng() % (uint)EX_TGTS.Length);
+                        for (int i = 0; i < 4; i++) { exProg[i] = 0f; exFIdx[i] = (int)(Rng() % (uint)EX_FILES.Length); }
+                        break;
+                    case 4:
+                        for (int i = 0; i < 6; i++)
+                        { astName[i] = AST_NAMES[(int)(Rng() % (uint)AST_NAMES.Length)] + "-" + (Rng() % 9 + 1); astStat[i] = 0; }
+                        astTimer = 180 + (int)(Rng() % 180); astTarget = (int)(Rng() % 6);
+                        break;
                 }
             }
 
-            static void DrawEngineCol(MySpriteDrawFrame frame, float x, float y, float w, float availH,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> eng,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> abEng,
-                string label, float thr, bool ab, int tick, double velocity)
+            static void DrawOffline(MySpriteDrawFrame frame, float x, float y, float w, float h)
             {
-                int fn, tot; Jet.GetEngineHealth(eng, out fn, out tot);
-                float curKN, maxKN; Jet.GetEngineThrust(eng, out curKN, out maxKN);
-                float abCur, abMax; Jet.GetEngineThrust(abEng, out abCur, out abMax);
-                float totalMax = maxKN + abMax;
-                float totalCur = curKN + abCur;
-                float thrustPct = totalMax > 0 ? totalCur / totalMax : 0f;
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, new Color(2, 3, 2));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+            }
 
-                Color hpC = fn >= tot ? MFDTheme.ACCENT : MFDTheme.WARN;
+            // ════════════════════════════════════════
+            // SLIDE 0: SAT RECON MAP
+            // ════════════════════════════════════════
+            static bool DrawSatSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
+            {
+                float vpCX = x + w / 2f, vpCY = y + h / 2f + 4f;
+                float vL = x, vR = x + w, vT = y, vB = y + h;
+                if (rCnt == 0) GenMap();
 
-                // ── Label + health ──
-                Txt(frame, label, x, y, 0.35f, MFDTheme.MID_TEXT, TextAlignment.LEFT);
-                Txt(frame, $"{fn}/{tot}", x + w, y, 0.32f, hpC, TextAlignment.RIGHT);
-
-                // ── Engine schematic layout ──
-                float schTop = y + 13f;
-                float schH = (availH - 30f) * 0.75f;
-                if (schH < 10f) schH = 10f;
-                float schW = 18f;
-                float schX = x + w / 2f;
-                float seed = label == "ENG L" ? 0f : 1.7f;
-
-                // ── Intake funnel ──
-                float intakeH = schH * 0.08f;
-                float intakeW = schW * 1.3f;
-                Rect(frame, schX, schTop + intakeH / 2f, intakeW, intakeH, C_ENG_BODY);
-                Rect(frame, schX, schTop, intakeW, 0.5f, C_ENG_LINE);
-
-                // ── Compressor body ──
-                float bodyTop = schTop + intakeH;
-                float bodyH = schH * 0.45f;
-                Rect(frame, schX, bodyTop + bodyH / 2f, schW, bodyH, C_ENG_BODY);
-                int segs = Math.Max(Math.Min(tot, 5), 2);
-                float segH = bodyH / segs;
-                for (int s = 1; s < segs; s++)
-                    Rect(frame, schX, bodyTop + s * segH, schW - 2f, 0.5f, C_ENG_LINE);
-
-                // Health: damaged segments blink
-                for (int s = 0; s < segs; s++)
+                if (!satOffline)
                 {
-                    bool dmg = (s * tot / segs) >= fn;
-                    if (dmg && (tick / 10) % 2 == 0)
-                        Rect(frame, schX, bodyTop + s * segH + segH / 2f, schW - 2f, segH - 1f, new Color(60, 20, 15));
-                }
-                SpriteHelpers.DrawRectangleOutline(frame, schX - schW / 2f, bodyTop, schW, bodyH, 0.5f, C_ENG_LINE);
-
-                // ── Combustion chamber ──
-                float combTop = bodyTop + bodyH;
-                float combH = schH * 0.15f;
-                float combW = schW + 2f;
-                int glowR = (int)(C_ENG_BODY.R + (55 - C_ENG_BODY.R) * thrustPct);
-                int glowG = (int)(C_ENG_BODY.G + (40 - C_ENG_BODY.G) * thrustPct);
-                int glowB = (int)(C_ENG_BODY.B + (15 - C_ENG_BODY.B) * thrustPct);
-                Rect(frame, schX, combTop + combH / 2f, combW, combH, new Color(glowR, glowG, Math.Max(0, glowB)));
-                SpriteHelpers.DrawRectangleOutline(frame, schX - combW / 2f, combTop, combW, combH, 0.5f, C_ENG_LINE);
-
-                // ── Central shaft ──
-                float shaftTop = schTop + intakeH * 0.3f;
-                float shaftBot = combTop + combH * 0.9f;
-                Rect(frame, schX, (shaftTop + shaftBot) / 2f, 1.5f, shaftBot - shaftTop, new Color(35, 55, 35, 100));
-                Rect(frame, schX, (shaftTop + shaftBot) / 2f, 0.5f, shaftBot - shaftTop, new Color(55, 80, 55, 70));
-
-                // ── 3D Compressor blade discs ──
-                float spinSpeed = 0.04f + thrustPct * 0.22f;
-                float stageRadius = (schW - 4f) / 2f;
-                for (int s = 0; s < segs; s++)
-                {
-                    bool dmg = (s * tot / segs) >= fn;
-                    float stageCY = bodyTop + s * segH + segH / 2f;
-                    int numBlades = 12 + s * 4;
-                    int direction = (s % 2 == 0) ? 1 : -1;
-                    float chord = 2.5f - s * 0.3f;
-                    float rot = tick * spinSpeed * direction + s * 0.9f + seed;
-                    DrawTurbineDisc(frame, schX, stageCY, stageRadius, numBlades, rot, chord,
-                        70, 120, 70, 180, 45, 75, 45, dmg);
-                }
-
-                // ── 3D Turbine discs in combustion chamber ──
-                float turbRadius = (combW - 4f) / 2f;
-                float turbSpinSpeed = spinSpeed * 0.7f;
-                for (int ts = 0; ts < 2; ts++)
-                {
-                    float turbCY = combTop + combH * (0.3f + ts * 0.4f);
-                    float heat = 1f - ts * 0.3f;
-                    int hR = (int)(80 + thrustPct * 70 * heat);
-                    int hG = (int)(65 + thrustPct * 30 * heat);
-                    int dir = (ts % 2 == 0) ? 1 : -1;
-                    float rot = tick * turbSpinSpeed * dir + ts * 1.5f + seed + 3f;
-                    DrawTurbineDisc(frame, schX, turbCY, turbRadius, 8, rot, 2.0f,
-                        hR, hG, 40, 160, Math.Max(0, hR - 20), Math.Max(0, hG - 15), 30, false);
-                }
-
-                // ── Nozzle ──
-                float nozzTop = combTop + combH;
-                float nozzH = schH * 0.12f;
-                float nozzWTop = schW;
-                float nozzWBot = schW * 0.5f;
-                for (int i = 0; i < 3; i++)
-                {
-                    float nt = (float)i / 3f;
-                    float slW = MathHelper.Lerp(nozzWTop, nozzWBot, nt);
-                    float slY = nozzTop + nozzH * nt + nozzH / 6f;
-                    Rect(frame, schX, slY, slW, nozzH / 3f, new Color(15, 22, 15));
-                }
-
-                // ═══ Air particles: approach → funnel → spiral through stages → combustion ═══
-                float velFactor = (float)MathHelper.Clamp(velocity / 100.0, 0.0, 1.0);
-                float flowBotY = combTop + combH;
-                float approachTopY = schTop - 20f;
-                float flowTotalH = flowBotY - approachTopY;
-                int numParticles = 48;
-
-                // Air always flows forward — minimum idle speed prevents stall/reversal
-                {
-                    float pSpeed = Math.Max(0.003f, 0.003f + thrustPct * 0.018f);
-
-                    for (int p = 0; p < numParticles; p++)
+                    camDwell--;
+                    if (camDwell <= 0)
                     {
-                        float rawPhase = (tick * pSpeed + p * PHI) % 1f;
-                        float warpedPhase = rawPhase * rawPhase * (3f - 2f * rawPhase);
-                        float py = approachTopY + warpedPhase * flowTotalH;
-
-                        float px;
-                        float pDepth;
-
-                        if (py < schTop)
+                        if (camState == 0)
                         {
-                            // APPROACH: scattered above, funnel toward intake
-                            float approachT = MathHelper.Clamp((schTop - py) / 20f, 0f, 1f);
-                            float laneAngle = p * PHI * 3.7f;
-                            float lane = (float)Math.Sin(laneAngle) * 0.9f;
-                            float entryOffset = (float)Math.Cos(laneAngle * 1.3f + 0.7f) * 0.4f;
-                            float farX = schX + (lane + entryOffset) * schW * 1.8f * 0.5f;
-                            float intakeSlot = lane * intakeW * 0.35f;
-                            float nearX = schX + intakeSlot;
-                            px = MathHelper.Lerp(nearX, farX, approachT * approachT);
-                            pDepth = 0.5f;
+                            camState = 1; camMarker = 0;
+                            if (mCnt > 0) { camTgtX = mX[0]; camTgtY = mY[0]; camTgtZ = 3.0f + (Rng() % 20) * 0.15f; }
+                            camDwell = 280;
                         }
                         else
                         {
-                            // INSIDE ENGINE: spiral with blade rotation
-                            float relY = py - bodyTop;
-                            int stageIdx = (int)(relY / segH);
-                            bool inCompressor = (relY >= 0 && stageIdx < segs);
-
-                            float spiralAngle;
-                            if (inCompressor)
-                            {
-                                int dir = (stageIdx % 2 == 0) ? 1 : -1;
-                                float stageSpeedMul = 1f + stageIdx * 0.25f;
-                                float stageRot = tick * spinSpeed * stageSpeedMul * dir + stageIdx * 0.9f + seed;
-                                spiralAngle = stageRot + p * (MathHelper.TwoPi / numParticles);
-                            }
-                            else
-                            {
-                                spiralAngle = tick * spinSpeed * 1.5f + p * 1.3f + warpedPhase * 5f;
-                            }
-
-                            float maxR = (schW - 3f) / 2f;
-                            float depthProgress = MathHelper.Clamp((py - bodyTop) / (flowBotY - bodyTop), 0f, 1f);
-                            float compressionFactor = 1f - depthProgress * 0.6f;
-                            float radiusWobble = 0.6f + (float)Math.Sin(p * 2.7f + tick * 0.05f) * 0.2f;
-                            float spiralR = maxR * radiusWobble * compressionFactor;
-
-                            // Maneuver drift affects air inside
-                            float driftInfluence = depthProgress * 0.6f;
-                            px = schX + (float)Math.Cos(spiralAngle) * spiralR + smoothedYawDrift * driftInfluence;
-                            pDepth = (float)Math.Sin(spiralAngle);
-                        }
-
-                        // Size: grows with compression
-                        bool insideEng = py >= bodyTop;
-                        float stageDepth = insideEng ? MathHelper.Clamp((py - bodyTop) / (flowBotY - bodyTop), 0f, 1f) : 0f;
-                        float compressionSize = 1f + stageDepth * 0.8f;
-                        float pW = (1.0f + (pDepth + 1f) * 0.4f + (p % 2) * 0.3f) * compressionSize;
-                        float pH = (1.2f + velFactor * 1.0f) * compressionSize;
-
-                        // Alpha
-                        float edgeFade;
-                        if (warpedPhase < 0.1f) edgeFade = warpedPhase / 0.1f;
-                        else if (warpedPhase > 0.85f) edgeFade = (1f - warpedPhase) / 0.15f;
-                        else edgeFade = 1f;
-                        float depthBright = 0.5f + (pDepth + 1f) * 0.25f;
-                        int pAlpha = (int)((0.2f + thrustPct * 0.8f) * 130f * edgeFade * depthBright);
-
-                        if (pAlpha > 4)
-                        {
-                            float heatProgress = Math.Max(0f, (warpedPhase - 0.15f) / 0.85f);
-                            int pR = (int)(55 + heatProgress * 45);
-                            int pG = (int)(130 + (p % 3) * 15 - heatProgress * 25);
-                            int pB = (int)(55 + heatProgress * 15);
-                            Rect(frame, px, py, pW, pH, new Color(pR, pG, pB, pAlpha));
+                            camMarker++;
+                            if (camMarker >= mCnt) return true; // slide done
+                            camTgtX = mX[camMarker]; camTgtY = mY[camMarker];
+                            camTgtZ = 3.0f + (Rng() % 20) * 0.15f;
+                            camDwell = 240 + (int)(Rng() % 80);
                         }
                     }
+                    float dx = camTgtX - camX, dy = camTgtY - camY;
+                    float spd = (float)Math.Sqrt(dx * dx + dy * dy) > 5f ? 0.04f : 0.025f;
+                    camX += dx * spd; camY += dy * spd;
+                    camZoom += (camTgtZ - camZoom) * 0.02f;
                 }
 
-                // ═══ Exhaust plume ═══
-                float exhaTop = nozzTop + nozzH;
-                float maxPlumeH = schH * 0.3f;
-                float nozzExitW = nozzWBot * 0.8f;
+                float sc = Math.Min(w, h) / 110f * camZoom;
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
 
-                int flameStage = 0;
-                if (ab && abCur > 0.1f) flameStage = 2;
-                else if (thrustPct > 0.70f) flameStage = 1;
+                // Grid
+                Color gridC = new Color(8, 14, 8, 16);
+                for (float gv = (float)Math.Floor((camY - h / sc * 0.6f) / 20f) * 20f; gv <= camY + h / sc * 0.6f; gv += 20f)
+                { float gy = vpCY + (gv - camY) * sc; if (gy > vT + 1 && gy < vB - 1) Rect(frame, x + w / 2f, gy, w, 0.5f, gridC); }
+                for (float gv = (float)Math.Floor((camX - w / sc * 0.6f) / 20f) * 20f; gv <= camX + w / sc * 0.6f; gv += 20f)
+                { float gx = vpCX + (gv - camX) * sc; if (gx > vL + 1 && gx < vR - 1) Rect(frame, gx, y + h / 2f, 0.5f, h, gridC); }
 
-                if (thrustPct > 0.01f)
+                // Contours
+                Color[] lvlC = { CST, ELV, PKC }; float[] lvlW = { 1.0f, 0.7f, 0.5f };
+                for (int lv = 0; lv < 3; lv++)
+                    for (int ri = 0; ri < rCnt; ri++)
+                    {
+                        if (rL[ri] != lv) continue;
+                        int s = rS[ri], n = rN[ri];
+                        for (int p = 0; p < n; p++)
+                        {
+                            int i0 = s + p, i1 = s + (p + 1) % n;
+                            float x0 = vpCX + (vPX[i0] - camX) * sc, y0 = vpCY + (vPY[i0] - camY) * sc;
+                            float x1 = vpCX + (vPX[i1] - camX) * sc, y1 = vpCY + (vPY[i1] - camY) * sc;
+                            if ((x0 < vL && x1 < vL) || (x0 > vR && x1 > vR) || (y0 < vT && y1 < vT) || (y0 > vB && y1 > vB)) continue;
+                            SpriteHelpers.AddLineSprite(frame, new Vector2(x0, y0), new Vector2(x1, y1), lvlW[lv], lvlC[lv]);
+                        }
+                    }
+
+                if (!satOffline) Rect(frame, x + w / 2f, y + 14f + ((tick * 0.5f) % (h - 14f)), w, 1f, new Color(10, 20, 12, 16));
+
+                // Threat rings
+                for (int i = 0; i < mCnt; i++)
                 {
-                    float driftX = smoothedYawDrift;
-                    float driftY = smoothedPitchDrift;
-
-                    // Plume height scales linearly with thrust — no sudden jumps between stages
-                    // AB gets extra length, but the base is always proportional
-                    float basePlumeH = maxPlumeH * thrustPct * (1f + velFactor * 0.25f);
-                    if (flameStage == 2) basePlumeH *= 1.3f; // AB stretch
-                    int tongues = thrustPct > 0.5f ? 3 : 2;
-                    int slices = flameStage == 2 ? 10 : (thrustPct > 0.4f ? 12 : 8);
-
-                    // Outer glow envelope
-                    for (int sl = 0; sl < 6; sl++)
+                    if (mT[i] != 1) continue;
+                    float sx = vpCX + (mX[i] - camX) * sc, sy = vpCY + (mY[i] - camY) * sc;
+                    float tr = 16f * sc / camZoom;
+                    if (sx + tr < vL || sx - tr > vR || sy + tr < vT || sy - tr > vB) continue;
+                    for (int p = 0; p < 12; p += 2)
                     {
-                        float gt = (float)sl / 5f;
-                        float gs1 = (float)Math.Sin(tick * 0.23 + sl * 1.7 + seed);
-                        float gY = exhaTop + basePlumeH * gt * 0.8f + 1f + driftY * gt * gt;
-                        float gX = schX + driftX * gt * gt + gs1 * 0.5f;
-                        float gW = nozzExitW * (1.2f - gt * 0.8f) + gs1 * 0.5f;
-                        gW *= 1f - velFactor * 0.15f * gt;
-                        int gA = (int)(30 * (1f - gt * gt));
-                        if (gA < 3) continue;
-                        Color gc = flameStage == 2
-                            ? new Color((int)MathHelper.Lerp(120, 60, gt), (int)MathHelper.Lerp(70, 30, gt), 10, gA)
-                            : new Color(20, (int)MathHelper.Lerp(50, 25, gt), (int)MathHelper.Lerp(90, 40, gt), gA);
-                        Rect(frame, gX, gY, gW, basePlumeH / 5f, gc);
+                        float a0 = p * 6.2832f / 12, a1 = (p + 1) * 6.2832f / 12;
+                        SpriteHelpers.AddLineSprite(frame, new Vector2(sx + (float)Cs(a0) * tr, sy + (float)Sn(a0) * tr),
+                            new Vector2(sx + (float)Cs(a1) * tr, sy + (float)Sn(a1) * tr), 0.6f, new Color(140, 100, 35, 50));
                     }
-
-                    // Flame tongues
-                    for (int tongue = 0; tongue < tongues; tongue++)
-                    {
-                        float tseed = seed + tongue * 2.17f;
-                        float tongueBaseX = 0f;
-                        if (tongues == 3) tongueBaseX = (tongue - 1) * nozzExitW * 0.2f;
-                        else if (tongues == 2) tongueBaseX = (tongue - 0.5f) * nozzExitW * 0.15f;
-                        float tongueLenMul = tongue == tongues / 2 ? 1f : 0.75f + (float)Math.Sin(tick * 0.13 + tseed) * 0.1f;
-
-                        for (int sl = 0; sl < slices; sl++)
-                        {
-                            float t = (float)sl / (slices - 1);
-                            float s1 = (float)Math.Sin(tick * 0.41 + sl * 0.9 + tseed);
-                            float s2 = (float)Math.Sin(tick * 0.67 + sl * 1.3 + tseed * 1.4);
-                            float s3 = (float)Math.Sin(tick * 0.23 + sl * 2.1 + tseed * 0.7);
-
-                            float tw = nozzExitW * 0.35f * (1f - t * 0.85f);
-                            tw *= 1f - velFactor * 0.2f * t;
-                            tw += tw * s2 * 0.15f;
-                            tw = Math.Max(tw, 0.3f);
-
-                            float slH = basePlumeH * tongueLenMul / slices * 1.3f;
-                            slH += slH * s1 * 0.08f;
-                            slH = Math.Max(slH, 0.3f);
-
-                            float wobbleDamp = 1f - velFactor * 0.5f;
-                            float wx = tongueBaseX + s3 * tw * 0.4f * wobbleDamp + s1 * 1.2f * wobbleDamp;
-                            wx += driftX * t * t;
-
-                            float slY = exhaTop + basePlumeH * tongueLenMul * t * 0.85f + slH * 0.3f;
-                            slY += s1 * 1.5f + driftY * t * t;
-                            float slX = schX + wx;
-
-                            int cR, cG, cB, cA;
-                            switch (flameStage)
-                            {
-                                case 2:
-                                    cR = (int)MathHelper.Lerp(255, 140, t); cG = (int)MathHelper.Lerp(220, 50, t);
-                                    cB = (int)MathHelper.Lerp(130, 10, t); cA = (int)MathHelper.Lerp(200, 30, t * t);
-                                    if (t < 0.2f) { cR = Math.Min(255, cR + (int)(s2 * 20)); cG = Math.Min(255, cG + (int)(s2 * 15)); }
-                                    break;
-                                case 1:
-                                    if (t < 0.12f) { cR = (int)MathHelper.Lerp(210, 140, t / 0.12f); cG = (int)MathHelper.Lerp(235, 190, t / 0.12f); cB = 255; cA = 210; }
-                                    else if (t < 0.45f) { float mt = (t - 0.12f) / 0.33f; cR = (int)MathHelper.Lerp(140, 40, mt); cG = Math.Min(255, (int)MathHelper.Lerp(190, 110, mt) + (int)(s2 * 8)); cB = Math.Min(255, (int)MathHelper.Lerp(255, 220, mt) + (int)(s1 * 6)); cA = (int)MathHelper.Lerp(200, 150, mt); }
-                                    else { float mt = (t - 0.45f) / 0.55f; cR = (int)MathHelper.Lerp(40, 15, mt); cG = (int)MathHelper.Lerp(110, 50, mt); cB = (int)MathHelper.Lerp(220, 110, mt); cA = (int)MathHelper.Lerp(150, 20, mt * mt); }
-                                    break;
-                                default:
-                                    cR = (int)MathHelper.Lerp(50, 15, t); cG = (int)MathHelper.Lerp(100, 40, t);
-                                    cB = (int)MathHelper.Lerp(180, 80, t); cA = (int)MathHelper.Lerp(120, 15, t * t);
-                                    break;
-                            }
-                            Rect(frame, slX, slY, tw, slH, new Color(cR, cG, cB, cA));
-                        }
-                    }
-
-                    // Hot core
-                    for (int c = 0; c < 4; c++)
-                    {
-                        float ct = (float)c / 3f;
-                        float cs1 = (float)Math.Sin(tick * 0.5 + c * 1.3 + seed);
-                        float coreY = exhaTop + basePlumeH * ct * 0.5f + 1f + driftY * ct * ct;
-                        float coreX = schX + driftX * ct * ct + cs1 * 0.3f;
-                        float coreW = nozzExitW * 0.15f * (1f - ct * 0.6f);
-                        float coreH = basePlumeH * 0.15f;
-                        int coreA = (int)(180 * (1f - ct));
-                        Color coreC = flameStage == 2 ? new Color(255, 240, 180, coreA)
-                                    : flameStage == 1 ? new Color(200, 230, 255, coreA)
-                                    : new Color(100, 150, 220, (int)(coreA * 0.5f));
-                        Rect(frame, coreX, coreY, coreW, coreH, coreC);
-                    }
-
-                    // Nozzle glow
-                    float glowPulse = (float)Math.Sin(tick * 0.37 + seed) * 0.1f;
-                    float glowSize = nozzExitW * (1.0f + glowPulse);
-                    Color glowC = flameStage == 2 ? new Color(200, 150, 40, 110)
-                                : flameStage == 1 ? new Color(120, 170, 230, 90)
-                                : new Color(50, 90, 160, 50);
-                    Rect(frame, schX, exhaTop + 1f, glowSize, 2.5f, glowC);
                 }
 
-                // ── Thrust bar ──
-                float barY = y + availH - 14f;
-                float barH2 = 3f;
-                Rect(frame, x + w / 2f, barY + barH2 / 2f, w, barH2, MFDTheme.BAR_TRACK);
-                SpriteHelpers.DrawRectangleOutline(frame, x, barY, w, barH2, 0.5f, MFDTheme.BORDER);
-                float fillW = w * thrustPct;
-                if (fillW > 0.5f)
-                    Rect(frame, x + fillW / 2f, barY + barH2 / 2f, fillW, barH2, MFDTheme.BAR_FILL);
+                // Markers
+                float tsc = Cl(camZoom * 0.12f, 0.16f, 0.5f);
+                for (int i = 0; i < mCnt; i++)
+                {
+                    float sx = vpCX + (mX[i] - camX) * sc, sy = vpCY + (mY[i] - camY) * sc;
+                    if (sx < vL - 20 || sx > vR + 20 || sy < vT - 10 || sy > vB + 10) continue;
+                    Color mc = mT[i] == 1 ? AMBER : MGREEN;
+                    Txt(frame, "+", sx, sy - tsc * 8f, tsc * 1.2f, mc, MFDTheme.AC);
+                    Txt(frame, mNm[i] ?? "", sx, sy + tsc * 12f, tsc, mc, MFDTheme.AC);
+                    if (camState == 1 && camMarker == i)
+                    {
+                        Color ic = new Color(mc.R, mc.G, mc.B, 180);
+                        if (mIn[i] != null) Txt(frame, mIn[i], sx, sy + tsc * 42f, tsc * 0.8f, ic, MFDTheme.AC);
+                        if (mIn2[i] != null) Txt(frame, mIn2[i], sx, sy + tsc * 66f, tsc * 0.8f, ic, MFDTheme.AC);
+                    }
+                }
 
-                string thrTxt = totalMax > 0 ? $"{totalCur:F0}/{totalMax:F0}kN" : "---";
-                Txt(frame, thrTxt, x + w, barY + barH2 + 1f, 0.28f, MFDTheme.STATUS_VAL, TextAlignment.RIGHT);
+                // Edge masks + border + header
+                float mp = 5f;
+                Rect(frame, x + w / 2f, vT - mp / 2f + 0.5f, w + 2f, mp, SBG);
+                Rect(frame, x + w / 2f, vB + mp / 2f - 0.5f, w + 2f, mp, SBG);
+                Rect(frame, vL - mp / 2f + 0.5f, y + h / 2f, mp, h + 2f, SBG);
+                Rect(frame, vR + mp / 2f - 0.5f, y + h / 2f, mp, h + 2f, SBG);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                Txt(frame, satName ?? "", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
+                Txt(frame, satCoord ?? "", x + w - 4f, y + 2f, 0.18f, new Color(18, 36, 20), MFDTheme.AR);
+                return false;
             }
 
-            static void DrawResourceCard(MySpriteDrawFrame frame, float x, float y, float w, float h,
-                string title, float pct, string timeStr)
+            // ════════════════════════════════════════
+            // SLIDE 1: SIGINT INTERCEPT
+            // ════════════════════════════════════════
+            static bool DrawSigintSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                Txt(frame, "SIGINT INTERCEPT", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
+                bool recOn = (tick / 30) % 2 == 0;
+                Txt(frame, recOn ? "●REC" : " REC", x + w - 4f, y + 2f, 0.2f,
+                    recOn ? new Color(180, 50, 40) : MFDTheme.DIM_TEXT, MFDTheme.AR);
+                Txt(frame, SIG_FREQ[(slideTick / 900) % SIG_FREQ.Length], x + 4f, y + 12f, 0.2f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+
+                if (!satOffline)
+                {
+                    // Scroll waveforms every 3 ticks
+                    if (slideTick % 3 == 0)
+                    {
+                        for (int i = 0; i < 21; i++) { sigW0[i] = sigW0[i + 1]; sigW1[i] = sigW1[i + 1]; }
+                        bool burst = sigPhase == 1;
+                        sigW0[21] = burst ? (int)(Rng() % 13) + 3 : (int)(Rng() % 2) + 1;
+                        sigW1[21] = burst ? (int)(Rng() % 11) + 2 : (int)(Rng() % 2) + 1;
+                    }
+                    sigTimer--;
+                    if (sigTimer <= 0)
+                    {
+                        if (sigPhase == 0) { sigPhase = 1; sigTimer = 90 + (int)(Rng() % 60); }
+                        else { sigPhase = 0; sigTimer = 60 + (int)(Rng() % 90); sigFrag = (sigFrag + 1) % SIG_FRAG.Length; }
+                    }
+                }
+
+                // Draw waveforms (bars grow upward from baseline)
+                float barW = (w - 10f) / 22f;
+                float base0 = y + 40f, base1 = y + 62f;
+                // Baseline separator lines
+                Rect(frame, x + w / 2f, base0 + 1f, w - 10f, 0.5f, MFDTheme.BORDER);
+                Rect(frame, x + w / 2f, base1 + 1f, w - 10f, 0.5f, MFDTheme.BORDER);
+                Txt(frame, "CH1", x + 4f, y + 22f, 0.16f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                Txt(frame, "CH2", x + 4f, y + 44f, 0.16f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                for (int i = 0; i < 22; i++)
+                {
+                    float bx = x + 5f + i * barW + barW / 2f;
+                    float bh0 = sigW0[i] * 1.3f, bh1 = sigW1[i] * 1.1f;
+                    Color bc = sigPhase == 1 ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT;
+                    Rect(frame, bx, base0 - bh0 / 2f, barW - 1f, bh0, bc);
+                    Rect(frame, bx, base1 - bh1 / 2f, barW - 1f, bh1, new Color(bc.R, (int)(bc.G * 0.7f), bc.B, bc.A));
+                }
+
+                // Decoded fragment
+                float fragY = y + h * 0.62f;
+                if (sigFrag > 0 || sigPhase == 1)
+                {
+                    int fi = sigPhase == 1 ? sigFrag : Math.Max(0, sigFrag - 1);
+                    Txt(frame, "\"" + SIG_FRAG[fi % SIG_FRAG.Length] + "\"", x + w / 2f, fragY, 0.26f, MFDTheme.NORMAL_TEXT, MFDTheme.AC);
+                }
+                else
+                    Txt(frame, "[MONITORING...]", x + w / 2f, fragY, 0.22f, MFDTheme.DIM_TEXT, MFDTheme.AC);
+
+                // Signal strength bar (single, simpler)
+                float mY = y + h - 12f;
+                Txt(frame, "SIG:", x + 4f, mY - 3f, 0.18f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                float mW = w - 36f, mBx = x + 30f;
+                float mFill = sigPhase == 1 ? 0.7f + (Rng() % 20) * 0.015f : 0.08f + (Rng() % 10) * 0.005f;
+                Rect(frame, mBx + mW / 2f, mY, mW, 3f, new Color(6, 10, 6));
+                float fmw = mW * Cl(mFill, 0f, 1f);
+                if (fmw > 0.5f) Rect(frame, mBx + fmw / 2f, mY, fmw, 3f, sigPhase == 1 ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT);
+
+                return slideTick >= 900;
+            }
+
+            // ════════════════════════════════════════
+            // SLIDE 2: COUNTDOWN TIMER
+            // ════════════════════════════════════════
+            static bool DrawCountdownSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
+
+                // Pulsing border when low
+                int ba = cdSec < 30 ? (int)(120 + 100 * Sn(tick * 0.15)) : 80;
+                Color bc = cdSec < 30 ? new Color(140, 60, 20, ba) : new Color(14, 26, 16);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, bc);
+
+                Txt(frame, "OPERATION", x + w / 2f, y + 6f, 0.22f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
+                Txt(frame, CD_NAMES[cdCodeIdx % CD_NAMES.Length], x + w / 2f, y + 18f, 0.32f, MFDTheme.CORP_GOLD, MFDTheme.AC);
+
+                if (!satOffline)
+                {
+                    cdSub++;
+                    if (cdSub >= 60) { cdSub = 0; cdSec--; }
+                    if (cdSec <= 0)
+                    {
+                        cdFlash = 30; cdSec = 180 + (int)(Rng() % 120);
+                        cdCodeIdx = (int)(Rng() % (uint)CD_NAMES.Length);
+                    }
+                    if (cdFlash > 0) cdFlash--;
+                }
+
+                // Flash effect on zero
+                if (cdFlash > 20)
+                    Rect(frame, x + w / 2f, y + h / 2f, w, h, new Color(140, 100, 35, (cdFlash - 20) * 15));
+
+                // Big countdown with blinking colon
+                string sep = (cdSub < 30) ? ":" : " ";
+                string timeStr = $"T-{cdSec / 60:D2}{sep}{cdSec % 60:D2}";
+                Txt(frame, timeStr, x + w / 2f, y + h * 0.32f, 0.55f, MFDTheme.BRIGHT_TEXT, MFDTheme.AC);
+
+                // Classification + status
+                Txt(frame, "// CLASSIFIED //", x + w / 2f, y + h * 0.58f, 0.2f, new Color(80, 40, 20), MFDTheme.AC);
+                Txt(frame, "MISSION CLOCK ACTIVE", x + w / 2f, y + h - 14f, 0.18f, MFDTheme.DIM_TEXT, MFDTheme.AC);
+
+                // Seconds indicator dots
+                int dotCount = cdSub / 10; // 0-5 dots filling up each second
+                for (int d = 0; d < 6; d++)
+                {
+                    Color dc = d < dotCount ? MFDTheme.ACCENT : new Color(10, 18, 10);
+                    Rect(frame, x + w * 0.3f + d * 6f, y + h * 0.72f, 3f, 3f, dc);
+                }
+
+                return slideTick >= 720;
+            }
+
+            // ════════════════════════════════════════
+            // SLIDE 3: DATA EXFILTRATION
+            // ════════════════════════════════════════
+            static bool DrawExfilSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                Txt(frame, "DATA EXFIL", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
+                Txt(frame, "TGT: " + EX_TGTS[exTgtIdx % EX_TGTS.Length], x + 4f, y + 13f, 0.2f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+
+                if (!satOffline && exPhase == 0)
+                {
+                    exProg[exFile] += exSpeed;
+                    if (exProg[exFile] >= 1f)
+                    {
+                        exProg[exFile] = 1f; exFile++;
+                        if (exFile >= 4) { exPhase = 1; exPurge = 0; }
+                    }
+                }
+                if (exPhase == 1 && !satOffline) exPurge++;
+
+                float rowH = (h - 38f) / 5f;
+                float rowY = y + 26f;
+                // Pick 4 file names deterministically from seed
+                for (int i = 0; i < 4; i++)
+                {
+                    float ry = rowY + i * rowH;
+                    bool done2 = exProg[i] >= 1f;
+                    bool active = i == exFile && exPhase == 0;
+                    Color tc = done2 ? MFDTheme.DIM_TEXT : active ? MFDTheme.NORMAL_TEXT : new Color(30, 50, 30);
+                    Txt(frame, EX_FILES[exFIdx[i]], x + 4f, ry, 0.22f, tc, MFDTheme.AL);
+
+                    if (done2)
+                        Txt(frame, "OK", x + w - 4f, ry, 0.22f, MFDTheme.ACCENT, MFDTheme.AR);
+                    else if (active)
+                    {
+                        // Percentage
+                        Txt(frame, $"{(int)(exProg[i] * 100)}%", x + w - 4f, ry, 0.2f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                        // Progress bar
+                        float barX2 = x + 4f, barW2 = w - 8f, barY2 = ry + 11f;
+                        Rect(frame, barX2 + barW2 / 2f, barY2, barW2, 2f, new Color(8, 14, 8));
+                        float fw = barW2 * Cl(exProg[i], 0f, 1f);
+                        if (fw > 0.5f) Rect(frame, barX2 + fw / 2f, barY2, fw, 2f, MFDTheme.ACCENT);
+                    }
+                }
+
+                // Status line
+                float statusY = rowY + 4 * rowH + 4f;
+                if (exPhase == 1)
+                {
+                    string ps = exPurge > 120 ? "EXFIL COMPLETE" : "PURGING TRACES" + new string('.', (exPurge / 20) % 4);
+                    Txt(frame, ps, x + w / 2f, statusY, 0.22f, exPurge > 120 ? MFDTheme.ACCENT : AMBER, MFDTheme.AC);
+                }
+                else
+                    Txt(frame, $"{exFile}/4 FILES", x + w / 2f, statusY, 0.2f, MFDTheme.DIM_TEXT, MFDTheme.AC);
+
+                return slideTick >= 900;
+            }
+
+            // ════════════════════════════════════════
+            // SLIDE 4: ASSET TRACKER
+            // ════════════════════════════════════════
+            static bool DrawAssetSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                Txt(frame, "ASSET STATUS", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
+
+                if (!satOffline)
+                {
+                    astTimer--;
+                    if (astTimer <= 0)
+                    {
+                        int t = astTarget;
+                        if (astStat[t] == 0) { astStat[t] = 1; astTimer = 90; }
+                        else if (astStat[t] == 1) { astStat[t] = 2; astTimer = 120; }
+                        else
+                        {
+                            astName[t] = AST_NAMES[(int)(Rng() % (uint)AST_NAMES.Length)] + "-" + (Rng() % 9 + 1);
+                            astStat[t] = 0;
+                            astTarget = (int)(Rng() % 6);
+                            astTimer = 180 + (int)(Rng() % 240);
+                        }
+                    }
+                }
+
+                float rowH = (h - 28f) / 7f;
+                int opCount = 0;
+                for (int i = 0; i < 6; i++)
+                {
+                    float ry = y + 16f + i * rowH;
+                    string dot, status;
+                    Color dc, tc;
+                    if (astStat[i] == 0) { dot = "●"; dc = MFDTheme.ACCENT; tc = MFDTheme.NORMAL_TEXT; status = "ACTIVE"; opCount++; }
+                    else if (astStat[i] == 1)
+                    {
+                        bool blink = (tick / 15) % 2 == 0;
+                        dot = "●"; dc = blink ? new Color(180, 50, 40) : new Color(80, 25, 20);
+                        tc = AMBER; status = "COMP";
+                    }
+                    else { dot = "○"; dc = new Color(20, 30, 20); tc = new Color(20, 30, 20); status = "DARK"; }
+
+                    Txt(frame, dot, x + 4f, ry, 0.24f, dc, MFDTheme.AL);
+                    Txt(frame, astName[i] ?? "---", x + 18f, ry, 0.24f, tc, MFDTheme.AL);
+                    Txt(frame, status, x + w - 4f, ry, 0.2f, tc, MFDTheme.AR);
+                    // Row separator
+                    Rect(frame, x + w / 2f, ry + rowH - 1f, w - 8f, 0.5f, new Color(10, 18, 10));
+                }
+
+                Txt(frame, $"{opCount}/6 OPERATIONAL", x + w / 2f, y + h - 12f, 0.22f,
+                    opCount >= 5 ? MFDTheme.ACCENT : opCount >= 3 ? AMBER : new Color(180, 50, 40), MFDTheme.AC);
+
+                return slideTick >= 720;
+            }
+
+            // ════════════════════════════════════════
+            // NOISE (5-octave value noise for coastlines)
+            // ════════════════════════════════════════
+            static float NHash(int ix, int iy, uint s)
+            {
+                uint h2 = (uint)ix * 374761393u + (uint)iy * 668265263u + s;
+                h2 = (h2 ^ (h2 >> 13)) * 1274126177u;
+                return ((h2 ^ (h2 >> 16)) & 0xFFFFu) / 65535f;
+            }
+
+            static float VNoise(float x, float y, uint s)
+            {
+                int ix = (int)Math.Floor(x), iy = (int)Math.Floor(y);
+                float fx = x - ix, fy = y - iy;
+                fx = fx * fx * (3f - 2f * fx); fy = fy * fy * (3f - 2f * fy);
+                float a = NHash(ix, iy, s), b = NHash(ix + 1, iy, s);
+                float c = NHash(ix, iy + 1, s), d = NHash(ix + 1, iy + 1, s);
+                return (a + (b - a) * fx) * (1f - fy) + (c + (d - c) * fx) * fy;
+            }
+
+            static float FNoise(float x, float y, uint s)
+            {
+                return VNoise(x, y, s) * 0.4f + VNoise(x * 2f, y * 2f, s + 31u) * 0.25f
+                    + VNoise(x * 4f, y * 4f, s + 67u) * 0.15f + VNoise(x * 8f, y * 8f, s + 113u) * 0.12f
+                    + VNoise(x * 16f, y * 16f, s + 151u) * 0.08f;
+            }
+
+            // ════════════════════════════════════════
+            // ISLAND GENERATION
+            // ════════════════════════════════════════
+            static void AddRing(float cx, float cy, float baseR, float spine, float aspect, int pts, int lvl)
+            {
+                if (rCnt >= MR || vCnt + pts > MV) return;
+                rS[rCnt] = vCnt; rN[rCnt] = pts; rL[rCnt] = lvl;
+                for (int p = 0; p < pts; p++)
+                {
+                    float a = p * 6.2832f / pts;
+                    float sX = cx + (float)Cs(a) * baseR * 0.5f, sY = cy + (float)Sn(a) * baseR * 0.5f;
+                    float r = baseR * (0.4f + FNoise(sX * 0.11f, sY * 0.11f, mapSeed + (uint)lvl * 137u) * 0.85f);
+                    r *= (1f + (1f - aspect) * (float)Cs(2.0 * (a - spine)));
+                    if (r < 1.5f) r = 1.5f;
+                    vPX[vCnt] = cx + (float)Cs(a) * r; vPY[vCnt] = cy + (float)Sn(a) * r; vCnt++;
+                }
+                rCnt++;
+            }
+
+            static void GenMap()
+            {
+                rCnt = 0; vCnt = 0; mCnt = 0;
+                int oi; do { oi = (int)(Rng() % (uint)OPS.Length); } while (oi == lastOp);
+                lastOp = oi; satName = OPS[oi];
+                satCoord = $"{Rng() % 70 + 10:D2}N {Rng() % 160 + 10:D3}E";
+                mapSeed = Rng() * 1000u + Rng();
+                int islands = (int)(Rng() % 2) + 1;
+                for (int isl = 0; isl < islands; isl++)
+                {
+                    float clx = (int)(Rng() % 50) - 25, cly = (int)(Rng() % 35) - 17;
+                    float spine = ((int)(Rng() % 628) - 314) * 0.01f, aspect = 0.5f + (Rng() % 35) * 0.01f;
+                    float cR = 16f + (Rng() % 14);
+                    AddRing(clx, cly, cR * 1.15f, spine, aspect, 32, 0);
+                    AddRing(clx, cly, cR, spine, aspect, 36, 0);
+                    AddRing(clx, cly, cR * 0.65f, spine, aspect, 28, 1);
+                    AddRing(clx, cly, cR * 0.4f, spine, aspect, 20, 1);
+                    AddRing(clx, cly, cR * 0.2f, spine, aspect, 14, 2);
+                    if (Rng() % 2 == 0)
+                    {
+                        float oA = (Rng() % 628) * 0.01f, oD = cR * 1.5f + 5f + (Rng() % 10);
+                        AddRing(clx + (float)Cs(oA) * oD, cly + (float)Sn(oA) * oD, 4f + (Rng() % 5), (Rng() % 628) * 0.01f, 0.7f, 18, 0);
+                    }
+                }
+                int nm = (int)(Rng() % 3) + 4;
+                for (int m = 0; m < nm && mCnt < MM; m++)
+                {
+                    int bi = (int)(Rng() % (uint)Math.Max(1, vCnt));
+                    mX[mCnt] = vPX[bi] + (int)(Rng() % 6) - 3; mY[mCnt] = vPY[bi] + (int)(Rng() % 4) - 2;
+                    mT[mCnt] = m < 2 ? 1 : (int)(Rng() % 2);
+                    mNm[mCnt] = NAMES[nameIdx % NAMES.Length]; nameIdx++;
+                    mIn[mCnt] = INTEL_S[(int)(Rng() % (uint)INTEL_S.Length)];
+                    mIn2[mCnt] = INTEL_S[(int)(Rng() % (uint)INTEL_S.Length)]; mCnt++;
+                }
+                camX = 0; camY = 0; camZoom = 0.85f; camTgtX = 0; camTgtY = 0; camTgtZ = 0.85f;
+                camState = 0; camMarker = 0; camDwell = 120;
+            }
+
+            // ════════════════════════════════════════
+            // ENGINE + RESOURCE CARDS
+            // ════════════════════════════════════════
+            static void DrawEngCard(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
-
-                Txt(frame, title, x + 4f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, TextAlignment.LEFT);
-                string pctStr = $"{(int)(pct * 100)}%";
-                Txt(frame, pctStr, x + w - 4f, y + 1f, 0.38f, MFDTheme.STATUS_VAL, TextAlignment.RIGHT);
-
-                float barY = y + 14f;
-                float barW = w - 8f;
-                float barH = 4f;
-                float barX = x + 4f;
-                Rect(frame, barX + barW / 2f, barY + barH / 2f, barW, barH, MFDTheme.BAR_TRACK);
-                SpriteHelpers.DrawRectangleOutline(frame, barX, barY, barW, barH, 0.5f, MFDTheme.BORDER);
-                float fillW = barW * MathHelper.Clamp(pct, 0f, 1f);
-                if (fillW > 0.5f)
-                    Rect(frame, barX + fillW / 2f, barY + barH / 2f, fillW, barH, MFDTheme.BAR_FILL);
-
-                Txt(frame, "REMAIN", barX, barY + barH + 2f, 0.28f, MFDTheme.DIM_TEXT, TextAlignment.LEFT);
-                Txt(frame, timeStr, barX + barW, barY + barH + 2f, 0.28f, MFDTheme.STATUS_VAL, TextAlignment.RIGHT);
+                Txt(frame, "THRUST", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
+                float midX = x + w / 2f, colW = (w - 16f) / 2f, top = y + 16f, colH = h - 20f;
+                DrawEngCol(frame, x + 4f, top, colW, colH, jet.leftEngines, jet.leftAB, "ENG L");
+                DrawEngCol(frame, midX + 4f, top, colW, colH, jet.rightEngines, jet.rightAB, "ENG R");
             }
 
-            static string FormatTime(double totalSeconds)
+            static void DrawEngCol(MySpriteDrawFrame frame, float x, float y, float w, float colH,
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> eng,
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> ab, string label)
             {
-                if (totalSeconds <= 0) return "---";
-                int mins = (int)(totalSeconds / 60);
-                int secs = (int)(totalSeconds % 60);
-                return $"{mins:D2}:{secs:D2}";
+                int fn, tot; Jet.GetEngineHealth(eng, out fn, out tot);
+                float curKN, maxKN; Jet.GetEngineThrust(eng, out curKN, out maxKN);
+                float abCur, abMax; Jet.GetEngineThrust(ab, out abCur, out abMax);
+                float tMax = maxKN + abMax, tCur = curKN + abCur;
+                float pct = tMax > 0 ? tCur / tMax : 0f; bool dmg = fn < tot;
+                Txt(frame, label, x, y, 0.32f, MFDTheme.MID_TEXT, MFDTheme.AL);
+                Txt(frame, $"{fn}/{tot}", x + w, y, 0.3f, dmg ? MFDTheme.WARN : MFDTheme.ACCENT, MFDTheme.AR);
+                float bx = x + 2f, bw = w - 4f, bt = y + 14f, bh = colH - 28f;
+                if (bh < 6f) bh = 6f;
+                Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
+                SpriteHelpers.DrawRectangleOutline(frame, bx, bt, bw, bh, 0.5f, MFDTheme.BORDER);
+                if (dmg && fn > 0) { float ch = bh * Cl((float)fn / tot, 0f, 1f); Rect(frame, bx + bw / 2f, bt + bh - ch / 2f, bw, ch, new Color(12, 22, 12)); if (ch > 1f && ch < bh - 1f) Rect(frame, bx + bw / 2f, bt + bh - ch, bw + 2f, 1f, MFDTheme.WARN); }
+                else if (!dmg) Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, new Color(12, 22, 12));
+                float fh = bh * Cl(pct, 0f, 1f);
+                if (fh > 0.5f) Rect(frame, bx + bw / 2f, bt + bh - fh / 2f, bw, fh, abCur > 0.1f ? MFDTheme.WARN : MFDTheme.BAR_FILL);
+                Txt(frame, tMax > 0 ? $"{tCur:F0}/{tMax:F0}" : "---", x + w / 2f, bt + bh + 1f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AC);
+                if (tMax > 0) Txt(frame, "kN", x + w / 2f, bt + bh + 11f, 0.24f, MFDTheme.DIM_TEXT, MFDTheme.AC);
             }
+
+            static void DrawResCard(MySpriteDrawFrame frame, float x, float y, float w, float h, string title, float pct, string timeStr)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
+                Txt(frame, title, x + 4f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
+                Txt(frame, $"{(int)(pct * 100)}%", x + w - 4f, y + 1f, 0.38f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                float by = y + 14f, bw = w - 8f, bh = 4f, bx = x + 4f;
+                Rect(frame, bx + bw / 2f, by + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
+                SpriteHelpers.DrawRectangleOutline(frame, bx, by, bw, bh, 0.5f, MFDTheme.BORDER);
+                float fw = bw * Cl(pct, 0f, 1f);
+                if (fw > 0.5f) Rect(frame, bx + fw / 2f, by + bh / 2f, fw, bh, MFDTheme.BAR_FILL);
+                Txt(frame, "REMAIN", bx, by + bh + 2f, 0.28f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                Txt(frame, timeStr, bx + bw, by + bh + 2f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+            }
+
+            static string FmtTime(double s) { return s <= 0 ? "---" : $"{(int)(s / 60):D2}:{(int)(s % 60):D2}"; }
 
             static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
-            {
-                f.Add(new MySprite { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ,
-                    Position = new Vector2(cx, cy), Size = new Vector2(w, h),
-                    Color = c, Alignment = TextAlignment.CENTER });
-            }
+            { f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = new Vector2(cx, cy), Size = new Vector2(w, h), Color = c, Alignment = MFDTheme.AC }); }
 
-            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = TextAlignment.LEFT)
-            {
-                f.Add(new MySprite { Type = SpriteType.TEXT, Data = d,
-                    Position = new Vector2(x, y), RotationOrScale = s,
-                    Color = c, Alignment = a, FontId = MFDTheme.FONT });
-            }
+            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
+            { f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT }); }
         }
     }
 }

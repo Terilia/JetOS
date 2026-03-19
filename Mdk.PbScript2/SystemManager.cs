@@ -39,7 +39,7 @@ namespace IngameScript
             {
                 _myJet = new Jet(program.GridTerminalSystem);
                 var cockpit =
-                    program.GridTerminalSystem.GetBlockWithName("JetOS") as IMyTextSurfaceProvider;
+                    program.GridTerminalSystem.GetBlockWithName("JetOS [HFPS]") as IMyTextSurfaceProvider;
                 if (cockpit != null && cockpit.SurfaceCount >= 3)
                 {
                     lcdMain = cockpit.GetSurface(0);
@@ -57,7 +57,7 @@ namespace IngameScript
                     lcdWeapons.FontColor = new Color(25, 217, 140, 255);
                     lcdWeapons.FontSize = 0.1f;
                     lcdWeapons.TextPadding = 0f;
-                    lcdWeapons.Alignment = TextAlignment.CENTER;
+                    lcdWeapons.Alignment = MFDTheme.AC;
 
                     for (int i = 0; i < 3; i++)
                     {
@@ -163,6 +163,10 @@ namespace IngameScript
                 double velocityKnots = velocity * 1.94384;
                 double altitude = _myJet.GetAltitude();
 
+                // DISABLED: boot screen excluded from build to save compiled size
+                // if (StartupSequence.Tick(_myJet, velocity, argument, lcdMain, lcdExtra, lcdWeapons))
+                //     return;
+
                 // Altitude warning with hysteresis
                 float altWarn = GetConfigValue("altitude_warning");
                 float spdWarn = GetConfigValue("speed_warning");
@@ -227,6 +231,9 @@ namespace IngameScript
                 // RadarControlModule and AirtoAir sound requests were delayed
                 // by one tick (they'd be processed next tick instead of this one).
                 SoundManager.Tick(currentTick);
+                Jet.IC = parentProgram.Runtime.CurrentInstructionCount;
+                if (Jet.IC > Jet.IP) Jet.IP = Jet.IC;
+                Jet.IA = (Jet.IA * 59 + Jet.IC) / 60;
             }
 
             private static void HandleSpecialFunctionInputs(string argument)

@@ -52,31 +52,31 @@ namespace IngameScript
                 if (gravity.LengthSquared() < 0.01)
                     worldUp = cockpit.WorldMatrix.Up;
                 else
-                    worldUp = Vector3D.Normalize(-gravity);
+                    worldUp = VN(-gravity);
 
                 Vector3D shipForward = cockpit.WorldMatrix.Forward;
-                Vector3D yawForward = shipForward - Vector3D.Dot(shipForward, worldUp) * worldUp;
+                Vector3D yawForward = shipForward - VD(shipForward, worldUp) * worldUp;
 
                 if (yawForward.LengthSquared() < 0.01)
                 {
                     // Pointing straight up/down — fall back to right vector
                     Vector3D shipRight = cockpit.WorldMatrix.Right;
-                    Vector3D rightFlat = shipRight - Vector3D.Dot(shipRight, worldUp) * worldUp;
+                    Vector3D rightFlat = shipRight - VD(shipRight, worldUp) * worldUp;
                     if (rightFlat.LengthSquared() > 0.01)
-                        yawForward = Vector3D.Cross(worldUp, Vector3D.Normalize(rightFlat));
+                        yawForward = VX(worldUp, VN(rightFlat));
                     else
                         yawForward = shipForward; // Last resort
                 }
-                yawForward = Vector3D.Normalize(yawForward);
+                yawForward = VN(yawForward);
 
                 // Yaw-right perpendicular to yaw-forward on the horizontal plane
                 // Cross(forward, up) = right in SE's coordinate system.
                 // Cross(up, forward) would give LEFT (inverted radar).
-                Vector3D yawRight = Vector3D.Cross(yawForward, worldUp);
+                Vector3D yawRight = VX(yawForward, worldUp);
                 if (yawRight.LengthSquared() < 0.01)
                     yawRight = cockpit.WorldMatrix.Right;
                 else
-                    yawRight = Vector3D.Normalize(yawRight);
+                    yawRight = VN(yawRight);
 
                 // --- Determine auto-scale range from radar contacts ---
                 float maxDist = 0f;
@@ -84,7 +84,7 @@ namespace IngameScript
 
                 for (int i = 0; i < enemies.Count; i++)
                 {
-                    float dist = (float)Vector3D.Distance(enemies[i].Position, cockpitPos);
+                    float dist = (float)VDi(enemies[i].Position, cockpitPos);
                     if (dist > maxDist)
                         maxDist = dist;
                 }
@@ -109,12 +109,12 @@ namespace IngameScript
                     string ringLabel = SpriteHelpers.FormatRange(ringRange);
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = ringLabel,
                         Position = radarCenter + new Vector2(0, -ringPx - 5f),
                         RotationOrScale = 0.3f,
                         Color = new Color(HUD_SECONDARY, 0.5f),
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT
                     });
                 }
@@ -123,24 +123,24 @@ namespace IngameScript
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXT,
+                    Type = MFDTheme.TT,
                     Data = outerLabel,
                     Position = new Vector2(radarCenter.X, radarOrigin.Y - 8f),
                     RotationOrScale = 0.28f,
                     Color = new Color(HUD_SECONDARY, 0.5f),
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     FontId = MFDTheme.FONT
                 });
 
                 // Player arrow (always center, pointing up)
                 frame.Add(new MySprite()
                 {
-                    Type = SpriteType.TEXTURE,
+                    Type = MFDTheme.TX,
                     Data = TEXTURE_TRIANGLE,
                     Position = radarCenter,
                     Size = new Vector2(radarRadius * 0.15f, radarRadius * 0.15f),
                     Color = HUD_PRIMARY,
-                    Alignment = TextAlignment.CENTER,
+                    Alignment = MFDTheme.AC,
                     RotationOrScale = 0 // Points up
                 });
 
@@ -157,8 +157,8 @@ namespace IngameScript
                     // Project onto horizontal plane relative to ship heading:
                     //   dotRight  = how far right of us (positive = right on screen)
                     //   dotForward = how far ahead of us (positive = ahead = UP on screen)
-                    float dotRight = (float)Vector3D.Dot(toTarget, yawRight);
-                    float dotForward = (float)Vector3D.Dot(toTarget, yawForward);
+                    float dotRight = (float)VD(toTarget, yawRight);
+                    float dotForward = (float)VD(toTarget, yawForward);
 
                     // Screen mapping: X = right, Y = up (forward).
                     // Screen Y is inverted (positive Y = down), so negate forward for screen Y.
@@ -181,7 +181,7 @@ namespace IngameScript
 
                     // Color by threat level
                     Vector3D relVel = enemy.Velocity - cockpitVel;
-                    double closingSpeed = -Vector3D.Dot(Vector3D.Normalize(toTarget), relVel);
+                    double closingSpeed = -VD(VN(toTarget), relVel);
                     double timeToClosest = closingSpeed > 0 ? dist / closingSpeed : double.MaxValue;
 
                     Color contactColor;
@@ -202,13 +202,13 @@ namespace IngameScript
                     // Selected target: diamond, others: square
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = MFDTheme.SQ,
                         Position = pos,
                         Size = new Vector2(iconSize, iconSize),
                         RotationOrScale = isSelected ? MathHelper.PiOver4 : 0f,
                         Color = contactColor,
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     });
 
                     // Bearing line for dangerous/imminent threats
@@ -223,12 +223,12 @@ namespace IngameScript
                         string rangeText = dist >= 1000 ? $"{dist / 1000:F1}" : $"{dist:F0}";
                         frame.Add(new MySprite()
                         {
-                            Type = SpriteType.TEXT,
+                            Type = MFDTheme.TT,
                             Data = rangeText,
                             Position = pos + new Vector2(7f, -4f),
                             RotationOrScale = 0.28f,
                             Color = contactColor,
-                            Alignment = TextAlignment.LEFT,
+                            Alignment = MFDTheme.AL,
                             FontId = MFDTheme.FONT
                         });
                     }
@@ -239,12 +239,12 @@ namespace IngameScript
                 {
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXT,
+                        Type = MFDTheme.TT,
                         Data = $"TGT: {enemies.Count}",
                         Position = new Vector2(radarCenter.X, radarOrigin.Y + radarSize.Y + 5f),
                         RotationOrScale = 0.4f,
                         Color = HUD_PRIMARY,
-                        Alignment = TextAlignment.CENTER,
+                        Alignment = MFDTheme.AC,
                         FontId = MFDTheme.FONT
                     });
                 }
@@ -272,8 +272,8 @@ namespace IngameScript
                     float a1 = (i / (float)SEGMENTS) * MathHelper.TwoPi;
                     float a2 = ((i + 1) / (float)SEGMENTS) * MathHelper.TwoPi;
 
-                    Vector2 p1 = center + new Vector2((float)Math.Cos(a1) * radius, (float)Math.Sin(a1) * radius);
-                    Vector2 p2 = center + new Vector2((float)Math.Cos(a2) * radius, (float)Math.Sin(a2) * radius);
+                    Vector2 p1 = center + new Vector2((float)Cs(a1) * radius, (float)Sn(a1) * radius);
+                    Vector2 p2 = center + new Vector2((float)Cs(a2) * radius, (float)Sn(a2) * radius);
 
                     SpriteHelpers.AddLineSprite(frame, p1, p2, 1f, color);
                 }
@@ -310,7 +310,7 @@ namespace IngameScript
                 foreach (var wingmanPos in _wingmanPositionBuffer)
                 {
                     Vector3D directionToWingman = wingmanPos - shooterPosition;
-                    Vector3D localDirection = Vector3D.TransformNormal(directionToWingman, worldToCockpitMatrix);
+                    Vector3D localDirection = VTN(directionToWingman, worldToCockpitMatrix);
 
                     if (localDirection.Z >= 0) continue;
 
@@ -320,12 +320,12 @@ namespace IngameScript
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
                     frame.Add(new MySprite()
                     {
-                        Type = SpriteType.TEXTURE,
+                        Type = MFDTheme.TX,
                         Data = "Triangle",
                         Position = ghostPos,
                         Size = new Vector2(15f, 15f),
                         Color = new Color(HUD_RADAR_FRIENDLY, 0.7f),
-                        Alignment = TextAlignment.CENTER
+                        Alignment = MFDTheme.AC
                     });
                 }
             }

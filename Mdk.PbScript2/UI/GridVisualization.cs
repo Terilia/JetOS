@@ -136,6 +136,7 @@ namespace IngameScript
                         {
                             var b = gridBlocks[i];
                             int x = b.Position.X - gridMinX, z = b.Position.Z - gridMinZ;
+                            if (x < 0 || x >= gridW || z < 0 || z >= gridH) continue;
                             gridOcc[x, z] = true;
                             var slim = b.CubeGrid.GetCubeBlock(b.Position);
                             if (slim != null)
@@ -151,6 +152,7 @@ namespace IngameScript
                         break;
 
                     case 3: // Phase 3: Generate sprites
+                        if (gridOcc == null || gridW <= 0 || gridH <= 0) { rebuildPhase = 0; break; }
                         cachedSprites.Clear();
 
                         float gL = 55f, gR = cachedArea.Width - 40f;
@@ -183,9 +185,9 @@ namespace IngameScript
                                 Vector2 dp = topLeft + new Vector2((gridW - 1 - x) * cs + cs / 2f, (gridH - 1 - z) * cs + cs / 2f);
                                 cachedSprites.Add(new MySprite
                                 {
-                                    Type = SpriteType.TEXTURE, Data = MFDTheme.SQ,
+                                    Type = MFDTheme.TX, Data = MFDTheme.SQ,
                                     Position = dp, Size = new Vector2(cs * 5f, cs * 2f),
-                                    Color = c, Alignment = TextAlignment.CENTER
+                                    Color = c, Alignment = MFDTheme.AC
                                 });
                             }
                         }
@@ -206,7 +208,7 @@ namespace IngameScript
             static void DrawMslPips(MySpriteDrawFrame f, List<IMyShipMergeBlock> bays)
             {
                 if (bays == null || bays.Count == 0) return;
-                Txt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, TextAlignment.LEFT);
+                Txt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 for (int i = 0; i < bays.Count; i++)
                 {
                     float px = 12f + i * 18f, py = 26f;
@@ -242,17 +244,17 @@ namespace IngameScript
                 float gy = y + lh * 5 + 4f;
                 int ammo = jet.GetTotalGunAmmo();
                 Color gc = ammo <= 0 ? new Color(180, 50, 40) : ammo < 500 ? MFDTheme.WARN : MFDTheme.ACCENT;
-                Txt(f, "GUN", rx - 100f, gy, 0.35f, MFDTheme.DIM_TEXT, TextAlignment.LEFT);
+                Txt(f, "GUN", rx - 100f, gy, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 float bx = rx - 60f;
                 Box(f, bx + 20f, gy + 6f, 40f, 8f, MFDTheme.BAR_TRACK);
                 float pct = Math.Min(ammo / 2400f, 1f);
                 if (pct > 0.01f) Box(f, bx + 20f * pct, gy + 6f, 40f * pct, 8f, gc);
-                Txt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, TextAlignment.RIGHT);
+                Txt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
             }
 
             static void FVal(MySpriteDrawFrame f, float rx, float y, string lbl, string val, Color vc)
             {
-                Txt(f, $"{lbl} {val}", rx, y, 0.45f, vc, TextAlignment.RIGHT);
+                Txt(f, $"{lbl} {val}", rx, y, 0.45f, vc, MFDTheme.AR);
             }
 
             static void DrawFuelBar(MySpriteDrawFrame f, RectangleF area, List<IMyGasTank> tanks,
@@ -283,7 +285,7 @@ namespace IngameScript
                 {
                     double tr = pct * 600;
                     Txt(f, $"{(int)(tr / 60):D2}:{(int)(tr % 60):D2}", bx + 11f, top + bh / 2f - 8f, 0.35f,
-                        MFDTheme.DIM_TEXT_MID, TextAlignment.LEFT);
+                        MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 }
                 Txt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, fc);
             }
@@ -305,7 +307,7 @@ namespace IngameScript
                 Box(f, mx, cy, 12f, 1f, MFDTheme.DIM_TEXT);
 
                 float half = bh / 2f;
-                float gc = (float)MathHelper.Clamp(g, -3, 9);
+                float gc = (float)Cl(g, -3, 9);
                 Color fColor = g > 7 ? new Color(180, 50, 40) : g > 5 ? MFDTheme.WARN
                     : g < -1 ? new Color(80, 110, 200) : MFDTheme.ACCENT;
 
@@ -326,14 +328,14 @@ namespace IngameScript
                 Txt(f, $"pk {pk:F1}", mx, top + bh + 36f, 0.3f, MFDTheme.DIM_TEXT);
             }
 
-            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = TextAlignment.CENTER)
+            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT });
+                f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT });
             }
 
             static void Box(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
             {
-                f.Add(new MySprite { Type = SpriteType.TEXTURE, Data = MFDTheme.SQ, Position = new Vector2(x, y), Size = new Vector2(w, h), Color = c, Alignment = TextAlignment.CENTER });
+                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = new Vector2(x, y), Size = new Vector2(w, h), Color = c, Alignment = MFDTheme.AC });
             }
         }
     }
