@@ -36,9 +36,7 @@ namespace IngameScript
             internal static readonly Color HUD_INFO = Color.White;
 
             // --- Layout Constants ---
-            private const float SPEED_TAPE_CENTER_Y_FACTOR = 2.25f;
             private const float INFO_BOX_Y_OFFSET_FACTOR = 1.85f;
-            private const float ALTITUDE_TAPE_CENTER_Y_FACTOR = 2.0f;
             internal const float THROTTLE_HYDROGEN_THRESHOLD = 0.8f;
 
             // --- Physics Constants ---
@@ -57,7 +55,7 @@ namespace IngameScript
             internal List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
             private List<IMyThrust> thrusters = new List<IMyThrust>();
             internal List<IMyGasTank> tanks = new List<IMyGasTank>();
-            private List<IMyDoor> airbreaks = new List<IMyDoor>();
+            private List<IMyDoor> airbrakes = new List<IMyDoor>();
             internal Jet myjet;
             internal RadarControlModule radarControl;
 
@@ -81,7 +79,7 @@ namespace IngameScript
             internal double smoothedAltitude = 0;
             internal double smoothedGForces = 0;
             internal double smoothedAoA = 0;
-            internal double smoothedThrottle = 0;
+            internal double throttlePercent = 0;
             internal double verticalVelocityMps = 0;
 
             // Running sums for efficient smoothing
@@ -127,18 +125,8 @@ namespace IngameScript
             }
             internal List<MissileTrackingData> activeMissiles = new List<MissileTrackingData>();
 
-            // HUD Mode System
-            private enum HUDMode { AirToAir, AirToGround, Navigation }
-            private HUDMode currentHUDMode = HUDMode.AirToAir;
-
-
-
             // Radar sweep animation
             internal int radarSweepTick = 0;
-
-            // Fuel state tracking (read from config)
-            internal double BINGO_FUEL_PERCENT => SystemManager.GetConfigValue("bingo_fuel");
-            internal double LOW_FUEL_PERCENT => SystemManager.GetConfigValue("low_fuel");
 
 
             // --- Shared Constants for renderers ---
@@ -163,7 +151,6 @@ namespace IngameScript
             internal const int STALL_LEVEL_STALL = 3;
 
             // --- Tape constants ---
-            internal TimeSpan historyDuration = TimeSpan.FromSeconds(1);
             internal const float TAPE_HEIGHT_PIXELS = 200f;
             internal const float ALTITUDE_UNITS_PER_TAPE_HEIGHT = 1000f;
             internal const float PIXELS_PER_ALTITUDE_UNIT = TAPE_HEIGHT_PIXELS / ALTITUDE_UNITS_PER_TAPE_HEIGHT;
@@ -246,28 +233,13 @@ namespace IngameScript
                 hud.ScriptBackgroundColor = new Color(0, 0, 0, 0);
                 hud.ScriptForegroundColor = Color.White;
 
-                ParentProgram.GridTerminalSystem.GetBlocksOfType(airbreaks, b => b.IsSameConstructAs(ParentProgram.Me));
+                ParentProgram.GridTerminalSystem.GetBlocksOfType(airbrakes, b => b.IsSameConstructAs(ParentProgram.Me));
                 name = "HUD Control";
             }
 
             // =============================================
             // MODULE INTERFACE
             // =============================================
-
-            public override string GetHotkeys()
-            {
-                string modeText = currentHUDMode == HUDMode.AirToAir ? "A/A" :
-                                 currentHUDMode == HUDMode.AirToGround ? "A/G" : "NAV";
-                return $"5: HUD Mode [{modeText}]";
-            }
-
-            public override void HandleSpecialFunction(int functionNumber)
-            {
-                if (functionNumber == 5)
-                {
-                    currentHUDMode = (HUDMode)(((int)currentHUDMode + 1) % 3);
-                }
-            }
 
             public override string[] GetOptions() => new string[] { "Back to Main Menu" };
             public override void ExecuteOption(int index) { if (index == 0) SystemManager.ReturnToMainMenu(); }
@@ -329,7 +301,7 @@ namespace IngameScript
 
                     // Instruments
                     DrawLeftInfoBox(frame, smoothedVelocity, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, pixelsPerDegree, new LabelValue("T", myjet.offset));
-                    DrawFlightInfo(frame, smoothedThrottle);
+                    DrawFlightInfo(frame, throttlePercent);
                     DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
                     if (SystemManager.GetConfigValue("hud_compass") > 0.5f)
                         DrawCompass(frame, heading);
@@ -384,7 +356,7 @@ namespace IngameScript
 
                             if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
                                 DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, HUD_WARNING, HUD_EMPHASIS, Color.HotPink, HUD_INFO);
+                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, HUD_INFO);
                             if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
                                 DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
@@ -536,12 +508,12 @@ namespace IngameScript
                 bool shouldOpenAirbrakes = jumpthrottle > 0.5;
                 if (shouldOpenAirbrakes != airbrakesOpen)
                 {
-                    for (int i = 0; i < airbreaks.Count; i++)
+                    for (int i = 0; i < airbrakes.Count; i++)
                     {
                         if (shouldOpenAirbrakes)
-                            airbreaks[i].OpenDoor();
+                            airbrakes[i].OpenDoor();
                         else
-                            airbreaks[i].CloseDoor();
+                            airbrakes[i].CloseDoor();
                     }
                     airbrakesOpen = shouldOpenAirbrakes;
                 }
@@ -660,7 +632,7 @@ namespace IngameScript
                 aoaSum += aoa;
                 smoothedAoA = aoaSum / aoaHistory.Count;
 
-                smoothedThrottle = throttle * 100;
+                throttlePercent = throttle * 100;
             }
 
             private void AdjustStabilizers(double aoa, Jet myjet)

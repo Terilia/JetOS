@@ -98,16 +98,7 @@ namespace IngameScript
                 }
                 if (isOnScreen)
                 {
-                    var pipSprite = new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = TEXTURE_CIRCLE,
-                        Position = pipScreenPos,
-                        Size = new Vector2(dynamicPipSize, dynamicPipSize),
-                        Color = pipColor,
-                        Alignment = MFDTheme.AC
-                    };
-                    frame.Add(pipSprite);
+                    SpriteHelpers.Sp(frame, TEXTURE_CIRCLE, pipScreenPos.X, pipScreenPos.Y, dynamicPipSize, dynamicPipSize, pipColor);
 
                     // Draw time-to-intercept (TTI) near the lead pip
                     if (timeToIntercept > 0 && timeToIntercept < 30)
@@ -115,47 +106,24 @@ namespace IngameScript
                         string ttiText = $"{timeToIntercept:F1}s";
                         Color ttiColor = timeToIntercept < 2 ? HUD_WARNING : (timeToIntercept < 5 ? HUD_EMPHASIS : HUD_PRIMARY);
 
-                        frame.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = ttiText,
-                            Position = pipScreenPos + new Vector2(dynamicPipSize / 2 + 8f, -8f),
-                            RotationOrScale = 0.5f,
-                            Color = ttiColor,
-                            Alignment = MFDTheme.AL,
-                            FontId = MFDTheme.FONT
-                        });
+                        SpriteHelpers.Tt(frame, ttiText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y - 8f, 0.5f, ttiColor, MFDTheme.AL);
 
                         // Draw range to intercept point
                         string rangeText = SpriteHelpers.FormatRange(distanceToIntercept);
-
-                        frame.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = rangeText,
-                            Position = pipScreenPos + new Vector2(dynamicPipSize / 2 + 8f, 4f),
-                            RotationOrScale = 0.45f,
-                            Color = ttiColor,
-                            Alignment = MFDTheme.AL,
-                            FontId = MFDTheme.FONT
-                        });
+                        SpriteHelpers.Tt(frame, rangeText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y + 4f, 0.45f, ttiColor, MFDTheme.AL);
                     }
 
                     Vector3D directionToTarget = targetPosition - shooterPosition;
                     Vector3D localDirectionToTarget = VTN(directionToTarget, worldToCockpitMatrix);
 
-                    Vector2 currentTargetScreenPos = Vector2.Zero; // Initialize
-
                     if (localDirectionToTarget.Z < -MIN_Z_FOR_PROJECTION)
                     {
-                        currentTargetScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToTarget, center, surfaceSize);
+                        Vector2 currentTargetScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToTarget, center, surfaceSize);
+                        float halfMark = targetMarkerSize / 2f;
+                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
                     }
-
-                    // FIX: Removed redundant isOnScreen check (already inside isOnScreen block)
-                    float halfMark = targetMarkerSize / 2f;
-                    SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow);
-                    SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow);
-                    SpriteHelpers.AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
                 }
                 else
                 {
@@ -192,32 +160,14 @@ namespace IngameScript
 
 
                     float arrowRotation = (float)At2(direction.Y, direction.X);
-                    var arrowSprite = new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = TEXTURE_TRIANGLE,
-                        Position = edgePoint,
-                        Size = new Vector2(arrowHeadSize, arrowHeadSize),
-                        Color = offScreenColor,
-                        RotationOrScale = arrowRotation + (float)Math.PI / 2f,
-                        Alignment = MFDTheme.AC
-                    };
-                    frame.Add(arrowSprite);
+                    SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, edgePoint.X, edgePoint.Y, arrowHeadSize, arrowHeadSize, offScreenColor, arrowRotation + (float)Math.PI / 2f);
 
                     // Range label next to off-screen arrow
                     double offscreenRange = VDi(shooterPosition, targetPosition);
                     string offscreenRangeText = SpriteHelpers.FormatRange(offscreenRange);
                     Vector2 perpDir = new Vector2(-direction.Y, direction.X);
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = offscreenRangeText,
-                        Position = edgePoint + perpDir * 14f - direction * 10f,
-                        RotationOrScale = 0.45f,
-                        Color = offScreenColor,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT
-                    });
+                    Vector2 labelPos = edgePoint + perpDir * 14f - direction * 10f;
+                    SpriteHelpers.Tt(frame, offscreenRangeText, labelPos.X, labelPos.Y, 0.45f, offScreenColor);
                 }
             }
 
@@ -301,44 +251,14 @@ namespace IngameScript
                 float textScale = 0.5f;
 
                 string rangeText = SpriteHelpers.FormatRange(range);
-                var rangeSprite = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = rangeText,
-                    Position = new Vector2(targetScreenPos.X, textY),
-                    RotationOrScale = textScale,
-                    Color = bracketColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT
-                };
-                frame.Add(rangeSprite);
+                SpriteHelpers.Tt(frame, rangeText, targetScreenPos.X, textY, textScale, bracketColor);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
                 string closureText = $"Vc:{Math.Abs(closureRate):F0} {closureLabel}";
-                var closureSprite = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = closureText,
-                    Position = new Vector2(targetScreenPos.X, textY + 12f),
-                    RotationOrScale = textScale,
-                    Color = bracketColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT
-                };
-                frame.Add(closureSprite);
+                SpriteHelpers.Tt(frame, closureText, targetScreenPos.X, textY + 12f, textScale, bracketColor);
 
                 string aspectText = $"AA:{aspectAngle:F0}\u00B0";
-                var aspectSprite = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = aspectText,
-                    Position = new Vector2(targetScreenPos.X, textY + 24f),
-                    RotationOrScale = textScale,
-                    Color = bracketColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT
-                };
-                frame.Add(aspectSprite);
+                SpriteHelpers.Tt(frame, aspectText, targetScreenPos.X, textY + 24f, textScale, bracketColor);
             }
 
             private void DrawGunFunnel(
@@ -389,23 +309,13 @@ namespace IngameScript
                 {
                     string cueText = range < 1500 ? "SHOOT" : "IN RANGE";
                     Color cueColor = range < 1500 ? HUD_WARNING : HUD_EMPHASIS;
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = cueText,
-                        Position = new Vector2(center.X, center.Y - 60f),
-                        RotationOrScale = 1.0f,
-                        Color = cueColor,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, cueText, center.X, center.Y - 60f, 1.0f, cueColor, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 
             private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
             {
-                bool lowAltitudeWarning = altitude < 100 && velocity.Y < -5;
+                bool lowAltitudeWarning = altitude < 100 && verticalVelocityMps < -5;
                 bool collisionWarning = false;
 
                 if (targetPosition != Vector3D.Zero)
@@ -432,16 +342,7 @@ namespace IngameScript
                     SpriteHelpers.AddLineSprite(frame, center - new Vector2(xSize/2, -xSize/2), center + new Vector2(xSize/2, -xSize/2), lineThickness, warningColor);
 
                     string warningText = lowAltitudeWarning ? "PULL UP" : "BREAK AWAY";
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = warningText,
-                        Position = new Vector2(center.X, center.Y + xSize/2 + 20f),
-                        RotationOrScale = 1.2f,
-                        Color = warningColor,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, warningText, center.X, center.Y + xSize/2 + 20f, 1.2f, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 

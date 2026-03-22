@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JetOS Avionics Theme Designer</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050505;--panel:#0a0a0a;--panel2:#111;--border:#1a1a1a;--border2:#252525;
+  --text-dim:#555;--text:#999;--text-bright:#ccc;
+  --accent:#00cc66;--accent-dim:rgba(0,204,102,0.12);--accent-glow:rgba(0,204,102,0.25);
+  --gold:#8a7a50;--gold-dim:#373120;
+  --warn:#cc6600;--danger:#cc3333;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:'Share Tech Mono',Consolas,'Courier New',monospace;font-size:13px}
+::selection{background:var(--accent);color:#000}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#333}
+
+#app{display:grid;grid-template-rows:48px 1fr;grid-template-columns:330px 1fr;height:100vh}
+header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;background:var(--panel);border-bottom:1px solid var(--border);z-index:10}
+header h1{font-size:14px;letter-spacing:3px;color:var(--text-bright);text-transform:uppercase;font-weight:normal}
+header h1 span{color:var(--accent);font-weight:bold}
+header .badge{font-size:10px;color:var(--gold);letter-spacing:2px;opacity:0.7}
+
+.sidebar{grid-row:2;overflow-y:auto;background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column}
+.sidebar-scroll{flex:1;overflow-y:auto;padding-bottom:80px}
+
+.section{border-bottom:1px solid var(--border)}
+.section-header{display:flex;align-items:center;padding:10px 16px;cursor:pointer;
+  transition:background 0.15s;user-select:none;gap:8px}
+.section-header:hover{background:var(--accent-dim)}
+.section-header .arrow{color:var(--accent);font-size:10px;width:12px;transition:transform 0.2s}
+.section-header.open .arrow{transform:rotate(90deg)}
+.section-header .label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text-bright)}
+.section-header .bar{flex:1;height:1px;background:var(--border)}
+.section-body{max-height:0;overflow:hidden;transition:max-height 0.3s ease}
+.section-body.open{max-height:1000px}
+.section-content{padding:8px 16px 16px}
+
+.control{margin-bottom:12px}
+.control-label{display:block;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--text-dim);margin-bottom:6px}
+
+.btn-group{display:flex;gap:2px;flex-wrap:wrap}
+.btn-group button{flex:1;min-width:0;padding:6px 4px;background:var(--bg);border:1px solid var(--border);
+  color:var(--text-dim);font-family:inherit;font-size:11px;cursor:pointer;transition:all 0.15s;
+  text-transform:uppercase;letter-spacing:0.5px}
+.btn-group button:first-child{border-radius:3px 0 0 3px}
+.btn-group button:last-child{border-radius:0 3px 3px 0}
+.btn-group button.active{background:var(--accent-dim);color:var(--accent);border-color:var(--accent);
+  box-shadow:inset 0 0 8px var(--accent-glow)}
+.btn-group button:hover:not(.active){background:var(--panel2);color:var(--text)}
+
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:4px 0;cursor:pointer}
+.toggle .name{font-size:11px;color:var(--text)}
+.toggle input{display:none}
+.toggle .sw{width:32px;height:16px;background:var(--border);border-radius:8px;position:relative;
+  transition:background 0.2s;flex-shrink:0}
+.toggle .sw::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;
+  background:var(--text-dim);border-radius:50%;transition:all 0.2s}
+.toggle input:checked+.sw{background:var(--accent-dim)}
+.toggle input:checked+.sw::after{left:18px;background:var(--accent)}
+
+.slider-wrap{display:flex;align-items:center;gap:8px}
+.slider-wrap input[type=range]{flex:1;-webkit-appearance:none;height:4px;background:var(--border);
+  border-radius:2px;outline:none}
+.slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  background:var(--accent);border-radius:50%;cursor:pointer;box-shadow:0 0 6px var(--accent-glow)}
+.slider-wrap .val{font-size:11px;color:var(--accent);min-width:32px;text-align:right}
+
+.color-row{display:flex;align-items:center;gap:8px}
+.color-row input[type=color]{width:28px;height:22px;border:1px solid var(--border);background:var(--bg);
+  cursor:pointer;border-radius:2px;padding:1px}
+.color-row .hex{font-size:11px;color:var(--text-dim)}
+.color-row button{font-size:9px;padding:2px 6px;background:none;border:1px solid var(--border);
+  color:var(--text-dim);cursor:pointer;font-family:inherit;border-radius:2px}
+.color-row button:hover{border-color:var(--accent);color:var(--accent)}
+
+.preview-area{grid-row:2;display:flex;flex-direction:column;background:#020202;overflow:hidden}
+.screen-tabs{display:flex;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0}
+.screen-tab{flex:1;padding:10px;text-align:center;font-size:11px;letter-spacing:1.5px;
+  text-transform:uppercase;cursor:pointer;color:var(--text-dim);border-right:1px solid var(--border);
+  transition:all 0.15s;position:relative}
+.screen-tab:last-child{border-right:none}
+.screen-tab:hover{color:var(--text);background:var(--accent-dim)}
+.screen-tab.active{color:var(--accent);background:rgba(0,0,0,0.5)}
+.screen-tab.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}
+.screen-tab .sub{font-size:9px;color:var(--text-dim);display:block;margin-top:2px}
+
+.canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;position:relative}
+.canvas-wrap canvas{max-width:100%;max-height:100%;image-rendering:auto;
+  border:1px solid var(--border);box-shadow:0 0 30px rgba(0,0,0,0.8)}
+.canvas-label{position:absolute;bottom:8px;right:20px;font-size:9px;color:var(--text-dim);letter-spacing:1px}
+
+.export-bar{position:fixed;bottom:0;left:0;width:330px;padding:12px 16px;
+  background:linear-gradient(transparent,var(--panel) 30%);z-index:5}
+.export-btn{width:100%;padding:10px;background:var(--accent-dim);border:1px solid var(--accent);
+  color:var(--accent);font-family:inherit;font-size:12px;letter-spacing:2px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.2s;border-radius:3px}
+.export-btn:hover{background:var(--accent);color:#000;box-shadow:0 0 20px var(--accent-glow)}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;
+  align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:4px;width:560px;
+  max-height:80vh;display:flex;flex-direction:column}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;
+  border-bottom:1px solid var(--border)}
+.modal-header h2{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--text-bright);font-weight:normal}
+.modal-header button{background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;font-family:inherit}
+.modal-header button:hover{color:var(--accent)}
+.modal-body{flex:1;overflow-y:auto;padding:16px 20px}
+.modal-body textarea{width:100%;min-height:300px;background:var(--bg);border:1px solid var(--border);
+  color:var(--text-bright);font-family:inherit;font-size:11px;padding:12px;resize:vertical;
+  border-radius:2px;line-height:1.6}
+.modal-footer{padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.modal-footer button{padding:8px 20px;font-family:inherit;font-size:11px;letter-spacing:1px;
+  text-transform:uppercase;cursor:pointer;border-radius:3px;border:1px solid var(--border);
+  background:var(--bg);color:var(--text);transition:all 0.15s}
+.modal-footer button.primary{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.modal-footer button.primary:hover{background:var(--accent);color:#000}
+.modal-footer button:hover{border-color:var(--text-dim)}
+.copied{color:var(--accent) !important}
+
+.divider{height:1px;background:var(--border);margin:8px 0}
+.sub-label{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin:10px 0 6px;text-transform:uppercase;
+  padding-top:4px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1><span>JetOS</span> Avionics Theme Designer</h1>
+    <div class="badge">NYINAH CORP INTERNAL</div>
+  </header>
+
+  <div class="sidebar">
+    <div class="sidebar-scroll" id="options"></div>
+    <div class="export-bar">
+      <button class="export-btn" onclick="showExport()">EXPORT CONFIGURATION</button>
+    </div>
+  </div>
+
+  <div class="preview-area">
+    <div class="screen-tabs" id="screenTabs"></div>
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+      <div class="canvas-label" id="cvLabel">800 × 450</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="exportModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Configuration Export</h2>
+      <button onclick="closeExport()">×</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="exportText" readonly></textarea>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeExport()">CLOSE</button>
+      <button class="primary" id="copyBtn" onclick="copyExport()">COPY TO CLIPBOARD</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// THEMES
+// ══════════════════════════════════════════════════════════════
+const THEMES = {
+  green: {
+    name: 'GREEN PHOSPHOR',
+    toolAccent: '#00cc66',
+    hud: {primary:'#00ff00',secondary:'#009900',horizon:'#55ff55',emphasis:'#ffff00',warning:'#ff0000',friendly:'#006600'},
+    mfd: {bg:'#050805',panelBg:'#080e08',headerBg:'#0a120a',border:'#182818',borderLt:'#141e14',
+      dimText:'#2a4a2a',dimTextMid:'#3a5a3a',midText:'#4a7a4a',normalText:'#5a9a5a',brightText:'#90d090',
+      accent:'#40a040',gold:'#8a7a50',goldDim:'#373120',goldLine:'#3a3520',
+      selFill:'#0e1c0e',selBorder:'#1a301a',barTrack:'#060a06',barFill:'#309030',
+      statusRdy:'#50a050',statusVal:'#509050',warn:'#c0a030',corner:'#2a4a2a'}
+  },
+  cyan: {
+    name: 'CYAN DIGITAL',
+    toolAccent: '#00bbdd',
+    hud: {primary:'#00ddff',secondary:'#007799',horizon:'#44ccee',emphasis:'#ffcc00',warning:'#ff3333',friendly:'#004466'},
+    mfd: {bg:'#04080a',panelBg:'#060c10',headerBg:'#081016',border:'#142430',borderLt:'#101c24',
+      dimText:'#204050',dimTextMid:'#305868',midText:'#407888',normalText:'#5098a8',brightText:'#80d0e0',
+      accent:'#2898b8',gold:'#8a7a50',goldDim:'#373120',goldLine:'#3a3520',
+      selFill:'#0a161c',selBorder:'#142830',barTrack:'#040810',barFill:'#2080a0',
+      statusRdy:'#3098b0',statusVal:'#3090a8',warn:'#c09030',corner:'#285060'}
+  },
+  amber: {
+    name: 'AMBER TACTICAL',
+    toolAccent: '#cc8800',
+    hud: {primary:'#ffaa00',secondary:'#886600',horizon:'#ddaa44',emphasis:'#ff4444',warning:'#ff0000',friendly:'#554400'},
+    mfd: {bg:'#0a0805',panelBg:'#100c07',headerBg:'#140e09',border:'#302418',borderLt:'#241c12',
+      dimText:'#504024',dimTextMid:'#685030',midText:'#886840',normalText:'#a88850',brightText:'#d8b870',
+      accent:'#b08830',gold:'#8a7a50',goldDim:'#373120',goldLine:'#3a3520',
+      selFill:'#1c140a',selBorder:'#302414',barTrack:'#0a0806',barFill:'#907020',
+      statusRdy:'#a08830',statusVal:'#988028',warn:'#c04030',corner:'#605030'}
+  },
+  blue: {
+    name: 'BLUE NAVAL',
+    toolAccent: '#4488ff',
+    hud: {primary:'#4488ff',secondary:'#224499',horizon:'#5599ff',emphasis:'#ffcc00',warning:'#ff3333',friendly:'#1a2266'},
+    mfd: {bg:'#04040c',panelBg:'#060810',headerBg:'#080c18',border:'#141830',borderLt:'#101424',
+      dimText:'#283050',dimTextMid:'#384468',midText:'#486088',normalText:'#5878a8',brightText:'#88b0e0',
+      accent:'#3268b8',gold:'#8a7a50',goldDim:'#373120',goldLine:'#3a3520',
+      selFill:'#0a0e1c',selBorder:'#141c34',barTrack:'#040610',barFill:'#2050a0',
+      statusRdy:'#4070b0',statusVal:'#3868a8',warn:'#c09030',corner:'#304060'}
+  },
+  white: {
+    name: 'WHITE CLEAN',
+    toolAccent: '#aaaaaa',
+    hud: {primary:'#dddddd',secondary:'#777777',horizon:'#bbbbbb',emphasis:'#ffcc00',warning:'#ff3333',friendly:'#444444'},
+    mfd: {bg:'#080808',panelBg:'#0e0e0e',headerBg:'#121212',border:'#282828',borderLt:'#1e1e1e',
+      dimText:'#404040',dimTextMid:'#505050',midText:'#686868',normalText:'#888888',brightText:'#c0c0c0',
+      accent:'#909090',gold:'#8a7a50',goldDim:'#373120',goldLine:'#3a3520',
+      selFill:'#141414',selBorder:'#282828',barTrack:'#0a0a0a',barFill:'#707070',
+      statusRdy:'#808080',statusVal:'#787878',warn:'#c09030',corner:'#484848'}
+  }
+};
+
+// ══════════════════════════════════════════════════════════════
+// CONFIG STATE
+// ══════════════════════════════════════════════════════════════
+const cfg = {
+  theme: 'green',
+  customPrimary: null,
+  customAccent: null,
+  screen: 'hud',
+  hud: {
+    speedStyle: 'hybrid', altStyle: 'hybrid', compassStyle: 'strip',
+    throttleStyle: 'bar', radarSize: 'medium', radarPos: 'br',
+    gDisplay: 'text', lineWeight: 2, fontScale: 1.0,
+    showBank: true, showAoA: true, showEnergy: true, showMach: true,
+    showFPM: true, showTarget: true, showFuel: false, showMslCount: false,
+    showRwr: false
+  },
+  mfd: {
+    branding: 'nyinah', corners: true, goldAccent: true, footerNav: true,
+    scanlines: false, s1Content: 'grid', showFuelBar: true, showGMeter: true,
+    showFlightData: true
+  }
+};
+
+const sim = {
+  speed:456, alt:2480, heading:274, pitch:3.2, roll:12, g:2.3, peakG:5.1,
+  mach:0.37, throttle:0.75, aoa:5.2, fuel:0.68, vvi:-12, ammo:1800, maxAmmo:2400,
+  targets:[
+    {name:'HOSTILE-1',range:2400,brg:285,spd:120,vc:45,hot:true,sel:true},
+    {name:'BANDIT-2',range:5800,brg:310,spd:85,vc:-20,hot:false,sel:false},
+    {name:'UNKNOWN-3',range:8200,brg:195,spd:60,vc:5,hot:false,sel:false}
+  ],
+  missiles:[{bay:1,tof:4.2}]
+};
+
+let animTick = 0;
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+// ══════════════════════════════════════════════════════════════
+// THEME HELPERS
+// ══════════════════════════════════════════════════════════════
+function T() { return THEMES[cfg.theme]; }
+function hc(k) { return cfg.customPrimary && k==='primary' ? cfg.customPrimary : T().hud[k]; }
+function mc(k) { return cfg.customAccent && k==='accent' ? cfg.customAccent : T().mfd[k]; }
+
+function updateToolAccent() {
+  const a = cfg.customAccent || T().toolAccent;
+  document.documentElement.style.setProperty('--accent', a);
+  const r=parseInt(a.slice(1,3),16),g=parseInt(a.slice(3,5),16),b=parseInt(a.slice(5,7),16);
+  document.documentElement.style.setProperty('--accent-dim', `rgba(${r},${g},${b},0.12)`);
+  document.documentElement.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.25)`);
+}
+
+// ══════════════════════════════════════════════════════════════
+// BUILD OPTIONS UI
+// ══════════════════════════════════════════════════════════════
+function buildOptions() {
+  const el = document.getElementById('options');
+  el.innerHTML = '';
+
+  // PALETTE
+  const palSec = addSection(el, 'PALETTE', true);
+  addBtnGroup(palSec, 'Theme', ['green','cyan','amber','blue','white'],
+    ['GRN','CYN','AMB','BLU','WHT'], cfg.theme, v => { cfg.theme=v; updateToolAccent(); render(); });
+  addDivider(palSec);
+  addColorPicker(palSec, 'Custom Primary', cfg.customPrimary||T().hud.primary,
+    v => { cfg.customPrimary=v; render(); }, () => { cfg.customPrimary=null; render(); });
+  addColorPicker(palSec, 'Custom Accent', cfg.customAccent||T().mfd.accent,
+    v => { cfg.customAccent=v; updateToolAccent(); render(); }, () => { cfg.customAccent=null; updateToolAccent(); render(); });
+
+  // HUD LAYOUT
+  const hudSec = addSection(el, 'HUD LAYOUT', true);
+  addBtnGroup(hudSec, 'Speed Display', ['tape','digital','hybrid'], ['TAPE','DGTL','HYBR'],
+    cfg.hud.speedStyle, v => { cfg.hud.speedStyle=v; render(); });
+  addBtnGroup(hudSec, 'Altitude Display', ['tape','digital','hybrid'], ['TAPE','DGTL','HYBR'],
+    cfg.hud.altStyle, v => { cfg.hud.altStyle=v; render(); });
+  addBtnGroup(hudSec, 'Compass', ['strip','minimal'], ['STRIP','MIN'],
+    cfg.hud.compassStyle, v => { cfg.hud.compassStyle=v; render(); });
+  addBtnGroup(hudSec, 'Throttle', ['box','bar'], ['BOX','BAR'],
+    cfg.hud.throttleStyle, v => { cfg.hud.throttleStyle=v; render(); });
+  addBtnGroup(hudSec, 'Radar Size', ['small','medium','large','off'], ['S','M','L','OFF'],
+    cfg.hud.radarSize, v => { cfg.hud.radarSize=v; render(); });
+  addBtnGroup(hudSec, 'Radar Position', ['br','bl'], ['B-R','B-L'],
+    cfg.hud.radarPos, v => { cfg.hud.radarPos=v; render(); });
+  addBtnGroup(hudSec, 'G-Force', ['text','gauge','off'], ['TXT','GAU','OFF'],
+    cfg.hud.gDisplay, v => { cfg.hud.gDisplay=v; render(); });
+
+  // HUD ELEMENTS
+  const elSec = addSection(el, 'HUD ELEMENTS');
+  addToggle(elSec, 'Bank Angle Markers', cfg.hud.showBank, v => { cfg.hud.showBank=v; render(); });
+  addToggle(elSec, 'AoA Indexer', cfg.hud.showAoA, v => { cfg.hud.showAoA=v; render(); });
+  addToggle(elSec, 'Energy Cue', cfg.hud.showEnergy, v => { cfg.hud.showEnergy=v; render(); });
+  addToggle(elSec, 'Mach Number', cfg.hud.showMach, v => { cfg.hud.showMach=v; render(); });
+  addToggle(elSec, 'Flight Path Marker', cfg.hud.showFPM, v => { cfg.hud.showFPM=v; render(); });
+  addToggle(elSec, 'Target Brackets', cfg.hud.showTarget, v => { cfg.hud.showTarget=v; render(); });
+  addSubLabel(elSec, 'Additional Elements');
+  addToggle(elSec, 'Fuel Percentage', cfg.hud.showFuel, v => { cfg.hud.showFuel=v; render(); });
+  addToggle(elSec, 'Missile Count', cfg.hud.showMslCount, v => { cfg.hud.showMslCount=v; render(); });
+  addToggle(elSec, 'RWR Compass Rose', cfg.hud.showRwr, v => { cfg.hud.showRwr=v; render(); });
+
+  // HUD STYLE
+  const stSec = addSection(el, 'HUD STYLE');
+  addSlider(stSec, 'Line Weight', cfg.hud.lineWeight, 1, 4, 0.5, 'px',
+    v => { cfg.hud.lineWeight=v; render(); });
+  addSlider(stSec, 'Font Scale', cfg.hud.fontScale, 0.6, 1.6, 0.1, 'x',
+    v => { cfg.hud.fontScale=v; render(); });
+
+  // MFD CHROME
+  const mfdSec = addSection(el, 'MFD CHROME');
+  addBtnGroup(mfdSec, 'Branding', ['nyinah','none'], ['NYINAH','NONE'],
+    cfg.mfd.branding, v => { cfg.mfd.branding=v; render(); });
+  addToggle(mfdSec, 'Corner Brackets', cfg.mfd.corners, v => { cfg.mfd.corners=v; render(); });
+  addToggle(mfdSec, 'Gold Accent Line', cfg.mfd.goldAccent, v => { cfg.mfd.goldAccent=v; render(); });
+  addToggle(mfdSec, 'Footer Nav Hints', cfg.mfd.footerNav, v => { cfg.mfd.footerNav=v; render(); });
+  addToggle(mfdSec, 'CRT Scanlines', cfg.mfd.scanlines, v => { cfg.mfd.scanlines=v; render(); });
+
+  // MFD CONTENT
+  const mcSec = addSection(el, 'MFD-1 CONTENT');
+  addBtnGroup(mcSec, 'Primary View', ['grid','tactical','loadout'], ['GRID','TACT','LDOUT'],
+    cfg.mfd.s1Content, v => { cfg.mfd.s1Content=v; render(); });
+  addToggle(mcSec, 'Fuel Bar', cfg.mfd.showFuelBar, v => { cfg.mfd.showFuelBar=v; render(); });
+  addToggle(mcSec, 'G-Meter', cfg.mfd.showGMeter, v => { cfg.mfd.showGMeter=v; render(); });
+  addToggle(mcSec, 'Flight Data Readouts', cfg.mfd.showFlightData, v => { cfg.mfd.showFlightData=v; render(); });
+}
+
+function addSection(parent, title, startOpen=false) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  const hdr = document.createElement('div');
+  hdr.className = 'section-header' + (startOpen ? ' open' : '');
+  hdr.innerHTML = `<span class="arrow">▶</span><span class="label">${title}</span><span class="bar"></span>`;
+  const body = document.createElement('div');
+  body.className = 'section-body' + (startOpen ? ' open' : '');
+  const content = document.createElement('div');
+  content.className = 'section-content';
+  body.appendChild(content);
+  hdr.onclick = () => { hdr.classList.toggle('open'); body.classList.toggle('open'); };
+  sec.appendChild(hdr);
+  sec.appendChild(body);
+  parent.appendChild(sec);
+  return content;
+}
+
+function addBtnGroup(parent, label, values, labels, current, onChange) {
+  const d = document.createElement('div');
+  d.className = 'control';
+  d.innerHTML = `<span class="control-label">${label}</span>`;
+  const grp = document.createElement('div');
+  grp.className = 'btn-group';
+  values.forEach((v, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = labels[i];
+    if (v === current) btn.classList.add('active');
+    btn.onclick = () => {
+      grp.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      onChange(v);
+    };
+    grp.appendChild(btn);
+  });
+  d.appendChild(grp);
+  parent.appendChild(d);
+}
+
+function addToggle(parent, label, checked, onChange) {
+  const d = document.createElement('label');
+  d.className = 'toggle';
+  d.innerHTML = `<span class="name">${label}</span><input type="checkbox" ${checked?'checked':''}><span class="sw"></span>`;
+  d.querySelector('input').onchange = e => onChange(e.target.checked);
+  parent.appendChild(d);
+}
+
+function addSlider(parent, label, value, min, max, step, unit, onChange) {
+  const d = document.createElement('div');
+  d.className = 'control';
+  d.innerHTML = `<span class="control-label">${label}</span>`;
+  const wrap = document.createElement('div');
+  wrap.className = 'slider-wrap';
+  const inp = document.createElement('input');
+  inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = value;
+  const val = document.createElement('span');
+  val.className = 'val';
+  val.textContent = value + unit;
+  inp.oninput = () => { val.textContent = (+inp.value).toFixed(1) + unit; onChange(+inp.value); };
+  wrap.appendChild(inp);
+  wrap.appendChild(val);
+  d.appendChild(wrap);
+  parent.appendChild(d);
+}
+
+function addColorPicker(parent, label, value, onChange, onReset) {
+  const d = document.createElement('div');
+  d.className = 'control';
+  d.innerHTML = `<span class="control-label">${label}</span>`;
+  const row = document.createElement('div');
+  row.className = 'color-row';
+  const inp = document.createElement('input');
+  inp.type = 'color'; inp.value = value;
+  const hex = document.createElement('span');
+  hex.className = 'hex'; hex.textContent = value;
+  const rst = document.createElement('button');
+  rst.textContent = 'RESET';
+  inp.oninput = () => { hex.textContent = inp.value; onChange(inp.value); };
+  rst.onclick = () => { inp.value = T().hud.primary; hex.textContent = 'default'; onReset(); };
+  row.appendChild(inp); row.appendChild(hex); row.appendChild(rst);
+  d.appendChild(row);
+  parent.appendChild(d);
+}
+
+function addDivider(parent) {
+  const d = document.createElement('div'); d.className = 'divider'; parent.appendChild(d);
+}
+function addSubLabel(parent, text) {
+  const d = document.createElement('div'); d.className = 'sub-label'; d.textContent = text; parent.appendChild(d);
+}
+
+// ══════════════════════════════════════════════════════════════
+// SCREEN TABS
+// ══════════════════════════════════════════════════════════════
+const screens = [
+  {id:'hud', name:'HUD', sub:'Fighter Display'},
+  {id:'mfd0', name:'MFD-0', sub:'Main Menu'},
+  {id:'mfd1', name:'MFD-1', sub:'Status'},
+  {id:'mfd2', name:'MFD-2', sub:'Weapons'}
+];
+
+function buildScreenTabs() {
+  const el = document.getElementById('screenTabs');
+  screens.forEach(s => {
+    const tab = document.createElement('div');
+    tab.className = 'screen-tab' + (s.id===cfg.screen?' active':'');
+    tab.innerHTML = `${s.name}<span class="sub">${s.sub}</span>`;
+    tab.onclick = () => {
+      cfg.screen = s.id;
+      el.querySelectorAll('.screen-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      setupCanvas();
+      render();
+    };
+    el.appendChild(tab);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ══════════════════════════════════════════════════════════════
+function setupCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  let w, h;
+  if (cfg.screen === 'hud') { w = 800; h = 450; }
+  else { w = 520; h = 520; }
+  cv.width = w * dpr;
+  cv.height = h * dpr;
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  document.getElementById('cvLabel').textContent = `${w} × ${h}`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// CANVAS DRAWING HELPERS
+// ══════════════════════════════════════════════════════════════
+function dRect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function dRectC(cx, cy, w, h, c) { ctx.fillStyle = c; ctx.fillRect(cx-w/2, cy-h/2, w, h); }
+function dLine(x1, y1, x2, y2, c, lw) {
+  ctx.strokeStyle = c; ctx.lineWidth = lw||1;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+function dText(text, x, y, size, c, align, font) {
+  ctx.fillStyle = c; ctx.font = `${size}px ${font||"'Share Tech Mono',monospace"}`;
+  ctx.textAlign = align||'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+}
+function dTextTop(text, x, y, size, c, align, font) {
+  ctx.fillStyle = c; ctx.font = `${size}px ${font||"'Share Tech Mono',monospace"}`;
+  ctx.textAlign = align||'left'; ctx.textBaseline = 'top'; ctx.fillText(text, x, y);
+}
+function dRectOutline(x, y, w, h, c, lw) {
+  ctx.strokeStyle = c; ctx.lineWidth = lw||1;
+  ctx.strokeRect(x+0.5, y+0.5, w-1, h-1);
+}
+function dCircle(cx, cy, r, c, lw) {
+  ctx.strokeStyle = c; ctx.lineWidth = lw||1;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+}
+function dCircleFill(cx, cy, r, c) {
+  ctx.fillStyle = c; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+}
+function dTriangle(cx, cy, size, c, rot) {
+  ctx.fillStyle = c; ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot||0);
+  ctx.beginPath(); ctx.moveTo(0, -size/2); ctx.lineTo(size/2, size/2); ctx.lineTo(-size/2, size/2);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function dDashedLine(x1,y1,x2,y2,c,lw,dash) {
+  ctx.strokeStyle=c;ctx.lineWidth=lw;ctx.setLineDash(dash||[4,4]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.setLineDash([]);
+}
+
+// ══════════════════════════════════════════════════════════════
+// RENDER DISPATCH
+// ══════════════════════════════════════════════════════════════
+function render() {
+  const W = cfg.screen==='hud' ? 800 : 520;
+  const H = cfg.screen==='hud' ? 450 : 520;
+  ctx.clearRect(0, 0, W, H);
+
+  if (cfg.screen === 'hud') renderHUD(W, H);
+  else if (cfg.screen === 'mfd0') renderMFD0(W, H);
+  else if (cfg.screen === 'mfd1') renderMFD1(W, H);
+  else if (cfg.screen === 'mfd2') renderMFD2(W, H);
+}
+
+// ══════════════════════════════════════════════════════════════
+// HUD RENDERER
+// ══════════════════════════════════════════════════════════════
+function renderHUD(W, H) {
+  const lw = cfg.hud.lineWeight;
+  const fs = cfg.hud.fontScale;
+  const pc = hc('primary');
+  const sc = hc('secondary');
+  const hz = hc('horizon');
+  const em = hc('emphasis');
+  const wn = hc('warning');
+  const cx = W/2, cy = H/2;
+  const ppd = H/35; // pixels per degree
+
+  // Background
+  dRect(0, 0, W, H, '#000000');
+
+  // ── Compass ──
+  if (cfg.hud.compassStyle !== 'none') {
+    const compY = 35;
+    const compW = W * 0.85;
+    const viewAngle = 90;
+    const hScale = compW / viewAngle;
+
+    for (let m = 0; m < 360; m += 10) {
+      let delta = ((m - sim.heading + 540) % 360) - 180;
+      if (Math.abs(delta) > viewAngle/2) continue;
+      const mx = cx + delta * hScale;
+      const isMajor = m % 90 === 0;
+      const isMed = m % 30 === 0;
+      const tickH = isMajor ? 14 : isMed ? 10 : 6;
+      const tc = isMajor ? em : isMed ? pc : sc;
+      dLine(mx, compY - tickH/2, mx, compY + tickH/2, tc, lw * 0.7);
+      if (isMajor) {
+        const dirs = {0:'N',90:'E',180:'S',270:'W'};
+        dText(dirs[m]||'', mx, compY + 18*fs, 13*fs, em, 'center');
+      } else if (isMed) {
+        dText(m.toString(), mx, compY + 16*fs, 10*fs, sc, 'center');
+      }
+    }
+    // Heading indicator triangle
+    dTriangle(cx, compY - 12, 10, em, Math.PI);
+
+    if (cfg.hud.compassStyle === 'strip') {
+      // Digital heading box
+      const hbW = 46*fs, hbH = 20*fs, hbY = compY + 28*fs;
+      dRectC(cx, hbY, hbW, hbH, 'rgba(0,0,0,0.6)');
+      dRectOutline(cx-hbW/2, hbY-hbH/2, hbW, hbH, pc, lw*0.6);
+      dText(sim.heading.toString().padStart(3,'0'), cx, hbY, 13*fs, pc, 'center');
+    }
+  }
+
+  // ── Pitch ladder + horizon (rotated by roll) ──
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-sim.roll * Math.PI / 180);
+
+  const horizonY = sim.pitch * ppd;
+
+  // Horizon lines
+  dLine(-W*0.18, horizonY, -35, horizonY, hz, lw + 1.5);
+  dLine(35, horizonY, W*0.18, horizonY, hz, lw + 1.5);
+
+  // Pitch ladder
+  for (let i = -20; i <= 20; i += 5) {
+    if (i === 0) continue;
+    const lineY = (sim.pitch - i) * ppd;
+    if (Math.abs(lineY) > H * 0.55) continue;
+    const lineW = 70;
+    const isAbove = i > 0;
+
+    if (isAbove) {
+      // Solid lines for nose-up
+      dLine(-lineW, lineY, -18, lineY, pc, lw);
+      dLine(18, lineY, lineW, lineY, pc, lw);
+    } else {
+      // Dashed lines for nose-down
+      dDashedLine(-lineW, lineY, -18, lineY, pc, lw, [6, 4]);
+      dDashedLine(18, lineY, lineW, lineY, pc, lw, [6, 4]);
+    }
+
+    // Degree labels
+    const lbl = Math.abs(i).toString();
+    dText(lbl, -lineW - 14, lineY, 10*fs, pc, 'right');
+    dText(lbl, lineW + 14, lineY, 10*fs, pc, 'left');
+  }
+
+  ctx.restore();
+
+  // ── Bank angle markers ──
+  if (cfg.hud.showBank) {
+    const bankAngles = [15, 30, 45, 60, -15, -30, -45, -60];
+    const bankR = ppd * 16;
+    const rollRad = -sim.roll * Math.PI / 180;
+    bankAngles.forEach(a => {
+      const aRad = a * Math.PI / 180;
+      const tx = Math.sin(aRad) * bankR;
+      const ty = -Math.cos(aRad) * bankR;
+      const rx = tx * Math.cos(rollRad) - ty * Math.sin(rollRad);
+      const ry = tx * Math.sin(rollRad) + ty * Math.cos(rollRad);
+      const isMajor = Math.abs(a) % 30 === 0;
+      const tLen = isMajor ? 7 : 4;
+      const tc = isMajor ? em : sc;
+      const totalRot = aRad + rollRad;
+      ctx.save();
+      ctx.translate(cx + rx, cy + ry);
+      ctx.rotate(totalRot);
+      dRect(-lw*0.4, -tLen/2, lw*0.8, tLen, tc);
+      ctx.restore();
+    });
+  }
+
+  // ── Aircraft symbol ──
+  const wSpan = 32, inner = 9, dip = 5;
+  dLine(cx - wSpan, cy, cx - inner, cy, em, lw + 0.5);
+  dLine(cx - inner, cy, cx, cy + dip, em, lw + 0.5);
+  dLine(cx, cy + dip, cx + inner, cy, em, lw + 0.5);
+  dLine(cx + inner, cy, cx + wSpan, cy, em, lw + 0.5);
+
+  // ── Flight path marker ──
+  if (cfg.hud.showFPM) {
+    const fpmX = cx - 20, fpmY = cy + 8;
+    dCircle(fpmX, fpmY, 8, '#ffffff', lw);
+    dLine(fpmX - 20, fpmY, fpmX - 8, fpmY, '#ffffff', lw);
+    dLine(fpmX + 8, fpmY, fpmX + 20, fpmY, '#ffffff', lw);
+    dLine(fpmX, fpmY - 8, fpmX, fpmY - 14, '#ffffff', lw);
+  }
+
+  // ── Speed indicator ──
+  const spdStyle = cfg.hud.speedStyle;
+  if (spdStyle === 'tape' || spdStyle === 'hybrid') {
+    const tapeX = 12;
+    const tapeH = H * 0.6;
+    const tapeTop = cy - tapeH/2;
+    const tapePPU = tapeH / 400; // 400 kph visible
+    dLine(tapeX, tapeTop, tapeX, tapeTop + tapeH, pc, lw * 0.7);
+
+    for (let s = Math.floor((sim.speed-200)/50)*50; s <= sim.speed+200; s += 50) {
+      if (s < 0) continue;
+      const sy = cy + (sim.speed - s) * tapePPU;
+      if (sy < tapeTop || sy > tapeTop + tapeH) continue;
+      const isMajor = s % 100 === 0;
+      const tickLen = isMajor ? 14 : 8;
+      dLine(tapeX, sy, tapeX + tickLen, sy, pc, lw * 0.6);
+      if (isMajor) dText(s.toString(), tapeX + tickLen + 6, sy, 10*fs, pc, 'left');
+    }
+    // Caret
+    dText('>', tapeX - 4, cy, 10*fs, pc, 'right');
+  }
+  if (spdStyle === 'digital' || spdStyle === 'hybrid') {
+    const sbW = 68*fs, sbH = 26*fs;
+    const sbX = spdStyle==='hybrid' ? 28 : 20;
+    const sbY = cy - 100;
+    dRectC(sbX + sbW/2, sbY, sbW, sbH, 'rgba(0,0,0,0.6)');
+    dRectOutline(sbX, sbY-sbH/2, sbW, sbH, pc, lw * 0.7);
+    dText(sim.speed.toString(), sbX + sbW/2, sbY, 16*fs, pc, 'center');
+    if (cfg.hud.showMach) {
+      dText('M ' + sim.mach.toFixed(2), sbX + sbW/2, sbY + sbH/2 + 10*fs, 10*fs, sc, 'center');
+    }
+  }
+
+  // ── Altitude indicator ──
+  const altStyle = cfg.hud.altStyle;
+  if (altStyle === 'tape' || altStyle === 'hybrid') {
+    const tapeX = W - 12;
+    const tapeH = H * 0.6;
+    const tapeTop = cy - tapeH/2;
+    const tapePPU = tapeH / 2000;
+    dLine(tapeX, tapeTop, tapeX, tapeTop + tapeH, pc, lw * 0.7);
+
+    for (let a = Math.floor((sim.alt-1000)/200)*200; a <= sim.alt+1000; a += 200) {
+      const ay = cy + (sim.alt - a) * tapePPU;
+      if (ay < tapeTop || ay > tapeTop + tapeH) continue;
+      const isMajor = a % 500 === 0;
+      const tickLen = isMajor ? 14 : 8;
+      dLine(tapeX, ay, tapeX - tickLen, ay, pc, lw * 0.6);
+      if (isMajor) dText(a.toString(), tapeX - tickLen - 6, ay, 10*fs, pc, 'right');
+    }
+    dText('<', tapeX + 6, cy, 10*fs, pc, 'left');
+  }
+  if (altStyle === 'digital' || altStyle === 'hybrid') {
+    const abW = 72*fs, abH = 26*fs;
+    const abX = W - (altStyle==='hybrid' ? 28 : 20) - abW;
+    const abY = cy - 100;
+    dRectC(abX + abW/2, abY, abW, abH, 'rgba(0,0,0,0.6)');
+    dRectOutline(abX, abY-abH/2, abW, abH, pc, lw * 0.7);
+    dText(sim.alt.toString(), abX + abW/2, abY, 16*fs, pc, 'center');
+    // VVI
+    const vviColor = Math.abs(sim.vvi) > 20 ? em : pc;
+    const vviArrow = sim.vvi > 1 ? '\u25B2' : sim.vvi < -1 ? '\u25BC' : '\u25C6';
+    dText(vviArrow + ' ' + sim.vvi.toFixed(0), abX + abW/2, abY + abH/2 + 10*fs, 10*fs, vviColor, 'center');
+  }
+
+  // ── AoA Indexer ──
+  if (cfg.hud.showAoA) {
+    const ix = 85, iy = cy;
+    if (sim.aoa < 8) {
+      dTriangle(ix, iy, 14, pc, 0); // Below optimal — up arrow
+    } else if (sim.aoa > 15) {
+      dTriangle(ix, iy, 14, em, Math.PI); // Above optimal — down arrow
+    } else {
+      dCircleFill(ix, iy, 6, em); // On speed — circle
+    }
+    if (cfg.hud.showEnergy) {
+      dText('E+', ix, iy + 20, 10*fs, pc, 'center');
+    }
+  }
+
+  // ── G-Force ──
+  if (cfg.hud.gDisplay === 'text') {
+    dText('G: ' + sim.g.toFixed(1), 12, H - 30, 14*fs, pc, 'left');
+    dText('Max: ' + sim.peakG.toFixed(1), 12, H - 14, 12*fs, sc, 'left');
+  } else if (cfg.hud.gDisplay === 'gauge') {
+    const gx = 30, gTop = H - 120, gH = 80;
+    dRectOutline(gx-6, gTop, 12, gH, sc, lw*0.5);
+    dRectC(gx, gTop + gH/2, 10, gH-2, 'rgba(0,0,0,0.4)');
+    const gNorm = Math.min(Math.max(sim.g / 9, 0), 1);
+    const gFillH = gH * gNorm;
+    const gc = sim.g > 7 ? wn : sim.g > 5 ? em : pc;
+    dRect(gx-5, gTop + gH - gFillH, 10, gFillH, gc);
+    dText(sim.g.toFixed(1)+'G', gx, gTop + gH + 12, 10*fs, gc, 'center');
+  }
+
+  // ── Throttle ──
+  if (cfg.hud.throttleStyle === 'bar') {
+    const tx = 6, tTop = H - 175, tH = 110, tW = 10;
+    dRectOutline(tx, tTop, tW, tH, pc, lw*0.5);
+    const fillH = tH * sim.throttle;
+    const tc = sim.throttle > 0.8 ? em : pc;
+    dRect(tx+1, tTop + tH - fillH, tW-2, fillH, tc);
+    // MIL gate line
+    dLine(tx, tTop + tH * 0.2, tx + tW, tTop + tH * 0.2, em, lw * 0.5);
+    dText('MIL', tx + tW + 4, tTop + tH * 0.2, 8*fs, sc, 'left');
+    dText((sim.throttle*100).toFixed(0)+'%', tx + tW/2, tTop - 8, 9*fs, tc, 'center');
+  } else if (cfg.hud.throttleStyle === 'box') {
+    const bx = 6, by = H - 55, bw = 22, bh = 18;
+    dRectOutline(bx, by, bw, bh, pc, lw*0.5);
+    const fillW = bw * sim.throttle;
+    const tc = sim.throttle > 0.8 ? em : pc;
+    dRect(bx+1, by+1, fillW-2, bh-2, tc);
+  }
+
+  // ── Radar minimap ──
+  if (cfg.hud.radarSize !== 'off') {
+    const sizes = {small: 80, medium: 110, large: 150};
+    const rSz = sizes[cfg.hud.radarSize];
+    const rMargin = 12;
+    const rX = cfg.hud.radarPos === 'br' ? W - rSz - rMargin : rMargin;
+    const rY = H - rSz - rMargin;
+    const rCx = rX + rSz/2, rCy = rY + rSz/2;
+    const rR = rSz/2;
+
+    dRectOutline(rX-2, rY-2, rSz+4, rSz+4, pc, lw*0.5);
+    dRect(rX, rY, rSz, rSz, 'rgba(0,0,0,0.4)');
+
+    // Range ring
+    ctx.setLineDash([3,3]);
+    dCircle(rCx, rCy, rR*0.5, sc+'55', lw*0.4);
+    ctx.setLineDash([]);
+
+    // Sweep line
+    const sweepAngle = (animTick * 0.08) % (Math.PI * 2);
+    dLine(rCx, rCy, rCx + Math.sin(sweepAngle)*rR*0.9, rCy - Math.cos(sweepAngle)*rR*0.9,
+      pc+'44', lw*0.5);
+
+    // Player arrow
+    dTriangle(rCx, rCy, rR*0.12, pc, 0);
+
+    // Contacts
+    sim.targets.forEach(t => {
+      const brgRad = (t.brg - sim.heading) * Math.PI / 180;
+      const dist = Math.min(t.range / 10000, 1);
+      const tx = rCx + Math.sin(brgRad) * rR * dist * 0.85;
+      const ty = rCy - Math.cos(brgRad) * rR * dist * 0.85;
+      const tc = t.hot ? wn : t.vc > 0 ? em : '#666666';
+      if (t.sel) {
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(Math.PI/4);
+        dRect(-3.5, -3.5, 7, 7, tc);
+        ctx.restore();
+      } else {
+        dRect(tx-3, ty-3, 6, 6, tc);
+      }
+    });
+
+    // Labels
+    dText('5.0', rCx, rY - 4, 7*fs, sc+'88', 'center');
+    dText('TGT: ' + sim.targets.length, rCx, rY + rSz + 8, 8*fs, pc, 'center');
+  }
+
+  // ── Target brackets + lead pip ──
+  if (cfg.hud.showTarget) {
+    const tgtX = cx + 60, tgtY = cy + 30;
+    const bSz = 35;
+    const cLen = bSz * 0.3;
+    const bc = em;
+    // Brackets
+    dLine(tgtX-bSz/2, tgtY-bSz/2, tgtX-bSz/2+cLen, tgtY-bSz/2, bc, lw);
+    dLine(tgtX-bSz/2, tgtY-bSz/2, tgtX-bSz/2, tgtY-bSz/2+cLen, bc, lw);
+    dLine(tgtX+bSz/2, tgtY-bSz/2, tgtX+bSz/2-cLen, tgtY-bSz/2, bc, lw);
+    dLine(tgtX+bSz/2, tgtY-bSz/2, tgtX+bSz/2, tgtY-bSz/2+cLen, bc, lw);
+    dLine(tgtX-bSz/2, tgtY+bSz/2, tgtX-bSz/2+cLen, tgtY+bSz/2, bc, lw);
+    dLine(tgtX-bSz/2, tgtY+bSz/2, tgtX-bSz/2, tgtY+bSz/2-cLen, bc, lw);
+    dLine(tgtX+bSz/2, tgtY+bSz/2, tgtX+bSz/2-cLen, tgtY+bSz/2, bc, lw);
+    dLine(tgtX+bSz/2, tgtY+bSz/2, tgtX+bSz/2, tgtY+bSz/2-cLen, bc, lw);
+    // Target info
+    dText('2.4km', tgtX, tgtY+bSz/2+8, 9*fs, bc, 'center');
+    dText('Vc:45 HOT', tgtX, tgtY+bSz/2+20, 9*fs, wn, 'center');
+
+    // Lead pip
+    const pipX = tgtX + 25, pipY = tgtY - 15;
+    dCircle(pipX, pipY, 8, pc, lw);
+    dText('1.2s', pipX + 14, pipY - 4, 9*fs, pc, 'left');
+    // Connection line
+    dLine(pipX, pipY, tgtX, tgtY, em+'88', lw*0.5);
+    // Target X
+    dLine(tgtX-4, tgtY-4, tgtX+4, tgtY+4, em, lw);
+    dLine(tgtX-4, tgtY+4, tgtX+4, tgtY-4, em, lw);
+  }
+
+  // ── Fuel percentage ──
+  if (cfg.hud.showFuel) {
+    const fx = W - 14, fy = 80;
+    dText('FUEL', fx, fy, 9*fs, sc, 'right');
+    dText((sim.fuel*100).toFixed(0)+'%', fx, fy+14, 11*fs, sim.fuel<0.2?wn:pc, 'right');
+  }
+
+  // ── Missile count ──
+  if (cfg.hud.showMslCount) {
+    const mx = W - 14, my = cfg.hud.showFuel ? 112 : 80;
+    dText('MSL', mx, my, 9*fs, sc, 'right');
+    dText('3', mx, my+14, 11*fs, pc, 'right');
+  }
+
+  // ── RWR Rose ──
+  if (cfg.hud.showRwr) {
+    const rwrX = cfg.hud.radarPos === 'br' ? 70 : W - 70;
+    const rwrY = H - 70;
+    const rwrR = 40;
+    dCircle(rwrX, rwrY, rwrR, sc+'66', lw*0.4);
+    dCircle(rwrX, rwrY, rwrR*0.5, sc+'33', lw*0.3);
+    dLine(rwrX, rwrY-rwrR, rwrX, rwrY+rwrR, sc+'33', lw*0.3);
+    dLine(rwrX-rwrR, rwrY, rwrX+rwrR, rwrY, sc+'33', lw*0.3);
+    dText('RWR', rwrX, rwrY-rwrR-8, 8*fs, sc, 'center');
+    // Sample threat
+    const threatAngle = 45 * Math.PI / 180;
+    dText('15', rwrX + Math.sin(threatAngle)*rwrR*0.7, rwrY - Math.cos(threatAngle)*rwrR*0.7, 9*fs, wn, 'center');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MFD SHARED CHROME
+// ══════════════════════════════════════════════════════════════
+function drawMFDChrome(W, H, headerRight) {
+  const m = T().mfd;
+  const padX = W * 0.019;
+  const headerH = H * 0.069;
+  const footerH = H * 0.054;
+  const cornerLen = Math.min(W, H) * 0.03;
+  const topOff = 15;
+  const titleSc = H * 0.026;
+  const smallSc = H * 0.020;
+  const tinySc = H * 0.016;
+
+  // Background
+  dRect(0, 0, W, H, m.bg);
+
+  // Corner brackets
+  if (cfg.mfd.corners) {
+    const ci = 4, cl = cornerLen;
+    // Top-left
+    dRectC(ci+cl/2, ci, cl, 1, m.corner);
+    dRectC(ci, ci+cl/2, 1, cl, m.corner);
+    // Top-right
+    dRectC(W-ci-cl/2, ci, cl, 1, m.corner);
+    dRectC(W-ci, ci+cl/2, 1, cl, m.corner);
+    // Bottom-left
+    dRectC(ci+cl/2, H-ci, cl, 1, m.corner);
+    dRectC(ci, H-ci-cl/2, 1, cl, m.corner);
+    // Bottom-right
+    dRectC(W-ci-cl/2, H-ci, cl, 1, m.corner);
+    dRectC(W-ci, H-ci-cl/2, 1, cl, m.corner);
+  }
+
+  // Header
+  const hy = topOff;
+  dRect(0, hy, W, headerH, m.headerBg);
+  dRectC(W/2, hy+headerH, W, 1, m.border);
+  if (cfg.mfd.goldAccent) dRectC(W/2, hy+headerH+1, W, 1, m.goldLine);
+
+  if (cfg.mfd.branding === 'nyinah') {
+    dTextTop('NYINAH CORP', padX, hy+headerH*0.15, titleSc, m.gold);
+    dTextTop('TACTICAL SYSTEM', padX + W*0.26, hy+headerH*0.22, smallSc, m.midText);
+  }
+  if (headerRight) {
+    ctx.fillStyle = m.dimTextMid;
+    ctx.font = `${smallSc}px 'Share Tech Mono',monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText(headerRight, W-padX, hy+headerH*0.2);
+  }
+
+  // Footer
+  const fy = H - footerH;
+  dRect(0, fy, W, footerH, m.headerBg);
+  dRectC(W/2, fy, W, 1, m.border);
+  if (cfg.mfd.footerNav) {
+    dTextTop('1 UP  2 DN  3 SEL  4 BACK  5-8 FN  9 MENU', padX, fy+footerH*0.15, tinySc, m.dimText);
+  }
+  if (cfg.mfd.branding === 'nyinah') {
+    dTextTop('NYINAH CORP', W-padX-60, fy+footerH*0.15, tinySc, m.goldDim);
+  }
+
+  // Screen border
+  dRectC(W/2, 1, W, 2, m.border);
+  dRectC(W/2, H-1, W, 2, m.border);
+  dRectC(1, H/2, 2, H, m.border);
+  dRectC(W-1, H/2, 2, H, m.border);
+
+  // Scanlines
+  if (cfg.mfd.scanlines) {
+    for (let y = 0; y < H; y += 3) {
+      dRect(0, y, W, 1, 'rgba(0,0,0,0.15)');
+    }
+  }
+
+  return hy + headerH + 3;
+}
+
+function mfdContentBot(H) { return H - H * 0.054; }
+
+// ══════════════════════════════════════════════════════════════
+// MFD-0: MAIN MENU
+// ══════════════════════════════════════════════════════════════
+function renderMFD0(W, H) {
+  const m = T().mfd;
+  const contentY = drawMFDChrome(W, H, 'MFD-1');
+  const contentBot = mfdContentBot(H);
+  const padX = W * 0.019;
+  const sideW = W * 0.35;
+  const menuW = W - sideW - padX * 3;
+  const menuItems = ['RADAR CONTROL', 'AIR-TO-AIR', 'AIR-TO-GROUND', 'GUN CONTROL', 'TARGETING POD', 'CONFIGURATION'];
+  const selectedIdx = 1;
+  const rowH = H * 0.065;
+  const txtSc = H * 0.030;
+  const smallSc = H * 0.022;
+
+  // Section title
+  const titleY = contentY + 8;
+  const titleTxt = 'SYSTEM MENU';
+  const titW = titleTxt.length * W * 0.014;
+  const titCx = padX + menuW / 2;
+  dRectC(padX + (titCx - titW/2 - padX)/2, titleY + 6, titCx - titW/2 - padX, 1, m.border);
+  dRectC(titCx + titW/2 + (padX + menuW - titCx - titW/2)/2, titleY + 6,
+    padX + menuW - titCx - titW/2, 1, m.border);
+  dText(titleTxt, titCx, titleY + 4, smallSc, m.midText, 'center');
+
+  // Menu items
+  const menuTop = titleY + 24;
+  menuItems.forEach((item, i) => {
+    const ry = menuTop + i * rowH;
+    const sel = i === selectedIdx;
+    if (sel) {
+      dRect(padX, ry, menuW, rowH, m.selFill);
+      dRect(padX, ry, 2, rowH, mc('accent'));
+      dRectC(padX + menuW/2, ry, menuW, 1, m.selBorder);
+      dRectC(padX + menuW/2, ry + rowH, menuW, 1, m.selBorder);
+    }
+    dTextTop(item, padX + 10, ry + rowH*0.25, txtSc, sel ? m.brightText : m.normalText);
+    dRectC(padX + menuW/2, ry + rowH, menuW, 1, '#0c140c');
+  });
+
+  // Sidebar divider
+  const sideX = W - sideW - padX;
+  dRectC(sideX - 1, contentY + (contentBot - contentY)/2, 1, contentBot - contentY - 10, m.borderLt);
+
+  // Sidebar: Propulsion
+  const spX = sideX + 6;
+  dTextTop('PROPULSION', spX, contentY + 8, smallSc * 0.85, m.dimTextMid);
+  // Engine bars
+  ['ENG L', 'ENG R'].forEach((eng, i) => {
+    const ey = contentY + 30 + i * 60;
+    dTextTop(eng, spX, ey, smallSc * 0.75, m.dimText);
+    const barY = ey + 16;
+    const barW = sideW - 20;
+    dRect(spX, barY, barW, 8, m.barTrack);
+    dRect(spX, barY, barW * sim.throttle, 8, mc('accent'));
+    dTextTop((sim.throttle * 100).toFixed(0) + '%', spX + barW + 4, barY - 2, smallSc * 0.7, m.statusVal);
+  });
+
+  // H2 Fuel
+  const fuelY = contentY + 165;
+  dTextTop('H2 FUEL', spX, fuelY, smallSc * 0.85, m.dimTextMid);
+  const fBarY = fuelY + 16;
+  const fBarW = sideW - 20;
+  dRect(spX, fBarY, fBarW, 8, m.barTrack);
+  const fc = sim.fuel < 0.2 ? m.warn : mc('accent');
+  dRect(spX, fBarY, fBarW * sim.fuel, 8, fc);
+  dTextTop((sim.fuel * 100).toFixed(0) + '%', spX + fBarW + 4, fBarY - 2, smallSc * 0.7, fc);
+
+  // Battery
+  const batY = fuelY + 40;
+  dTextTop('BATTERY', spX, batY, smallSc * 0.85, m.dimTextMid);
+  const bBarY = batY + 16;
+  dRect(spX, bBarY, fBarW, 8, m.barTrack);
+  dRect(spX, bBarY, fBarW * 0.92, 8, mc('accent'));
+  dTextTop('92%', spX + fBarW + 4, bBarY - 2, smallSc * 0.7, m.statusVal);
+}
+
+// ══════════════════════════════════════════════════════════════
+// MFD-1: STATUS
+// ══════════════════════════════════════════════════════════════
+function renderMFD1(W, H) {
+  const m = T().mfd;
+  const contentY = drawMFDChrome(W, H, 'STATUS');
+  const contentBot = mfdContentBot(H);
+  const padX = W * 0.019;
+  const smallSc = H * 0.020;
+  const tinySc = H * 0.016;
+
+  // Missile pips
+  dTextTop('MSL', 12, contentY + 4, tinySc, m.dimText);
+  for (let i = 0; i < 4; i++) {
+    const px = 12 + i * 20, py = contentY + 20;
+    dRectOutline(px, py, 14, 14, i < 3 ? mc('accent') : m.border, 1);
+    if (i < 3) dRectC(px + 7, py + 7, 10, 10, '#143214');
+  }
+
+  // Block count
+  dText('248/265', W/2, contentY + 8, smallSc, m.dimTextMid, 'center');
+
+  // Ship silhouette (simplified top-down fighter shape)
+  if (cfg.mfd.s1Content === 'grid') {
+    const scx = W/2, scy = (contentY + contentBot) / 2;
+    const sc = 2.5;
+    ctx.strokeStyle = mc('accent');
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    // Nose
+    ctx.moveTo(scx, scy - 50*sc);
+    ctx.lineTo(scx + 4*sc, scy - 35*sc);
+    ctx.lineTo(scx + 5*sc, scy - 15*sc);
+    // Right wing
+    ctx.lineTo(scx + 28*sc, scy + 2*sc);
+    ctx.lineTo(scx + 30*sc, scy + 5*sc);
+    ctx.lineTo(scx + 7*sc, scy + 10*sc);
+    // Right tail
+    ctx.lineTo(scx + 7*sc, scy + 28*sc);
+    ctx.lineTo(scx + 16*sc, scy + 38*sc);
+    ctx.lineTo(scx + 15*sc, scy + 40*sc);
+    ctx.lineTo(scx + 5*sc, scy + 34*sc);
+    ctx.lineTo(scx + 3*sc, scy + 45*sc);
+    // Center
+    ctx.lineTo(scx, scy + 48*sc);
+    // Left side (mirror)
+    ctx.lineTo(scx - 3*sc, scy + 45*sc);
+    ctx.lineTo(scx - 5*sc, scy + 34*sc);
+    ctx.lineTo(scx - 15*sc, scy + 40*sc);
+    ctx.lineTo(scx - 16*sc, scy + 38*sc);
+    ctx.lineTo(scx - 7*sc, scy + 28*sc);
+    ctx.lineTo(scx - 7*sc, scy + 10*sc);
+    ctx.lineTo(scx - 30*sc, scy + 5*sc);
+    ctx.lineTo(scx - 28*sc, scy + 2*sc);
+    ctx.lineTo(scx - 5*sc, scy - 15*sc);
+    ctx.lineTo(scx - 4*sc, scy - 35*sc);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Damage indicators (simulated)
+    dCircleFill(scx + 20*sc, scy + 3*sc, 3, m.warn);
+    dCircleFill(scx - 6*sc, scy + 30*sc, 3, '#b43228');
+  } else if (cfg.mfd.s1Content === 'tactical') {
+    // Simplified tactical radar view
+    const tcx = W/2, tcy = (contentY + contentBot) / 2;
+    const tR = Math.min(W, contentBot - contentY) * 0.35;
+    dCircle(tcx, tcy, tR, m.border, 1);
+    dCircle(tcx, tcy, tR*0.5, m.border+'88', 0.5);
+    dLine(tcx - tR, tcy, tcx + tR, tcy, m.border+'66', 0.5);
+    dLine(tcx, tcy - tR, tcx, tcy + tR, m.border+'66', 0.5);
+    dTriangle(tcx, tcy, 10, mc('accent'), 0);
+    sim.targets.forEach((t,i) => {
+      const a = (t.brg - sim.heading) * Math.PI / 180;
+      const d = Math.min(t.range/10000, 0.9);
+      const tx = tcx + Math.sin(a)*tR*d;
+      const ty = tcy - Math.cos(a)*tR*d;
+      const c = t.hot ? T().hud.warning : T().hud.emphasis;
+      dRect(tx-4, ty-4, 8, 8, c);
+      dTextTop(t.name, tx+8, ty-6, tinySc, c);
+    });
+    dText('TACTICAL', W/2, contentY + 24, smallSc, m.midText, 'center');
+  } else {
+    // Weapon loadout
+    const lcx = W/2, lcy = (contentY + contentBot) / 2;
+    dText('STORES', W/2, contentY + 24, smallSc, m.midText, 'center');
+    const stations = ['AIM-9X','BAY 1','BAY 2','GUN','BAY 3','AIM-9X'];
+    const stY = contentY + 60;
+    stations.forEach((s, i) => {
+      const sy = stY + i * 36;
+      const ready = i !== 2;
+      dTextTop(s, 60, sy, smallSc, ready ? m.normalText : m.dimText);
+      dRectOutline(W-80, sy-2, 50, 18, ready ? mc('accent') : m.border, 1);
+      dTextTop(ready ? 'RDY' : 'EMPTY', W-78, sy, tinySc, ready ? m.statusRdy : m.dimText);
+    });
+  }
+
+  // Flight data (right side)
+  if (cfg.mfd.showFlightData) {
+    const rx = W - 8, dy = contentY + 24, lh = 20;
+    const flds = [
+      ['SPD', sim.speed+' kph', m.statusVal],
+      ['ALT', sim.alt+' m', sim.alt<200?'#b43228':m.statusVal],
+      ['AoA', sim.aoa.toFixed(1)+'°', Math.abs(sim.aoa)>15?'#b43228':m.statusVal],
+      ['MCH', sim.mach.toFixed(2), m.statusVal],
+      ['THR', (sim.throttle*100).toFixed(0)+'%', mc('accent')]
+    ];
+    flds.forEach(([lbl,val,c],i) => {
+      ctx.fillStyle = c;
+      ctx.font = `${tinySc}px 'Share Tech Mono',monospace`;
+      ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText(lbl+' '+val, rx, dy + i*lh);
+    });
+    // Gun ammo
+    const gy = dy + flds.length * lh + 8;
+    const gPct = sim.ammo / sim.maxAmmo;
+    const gc = gPct < 0.2 ? '#b43228' : gPct < 0.5 ? m.warn : mc('accent');
+    dTextTop('GUN', rx - 100, gy, tinySc, m.dimText);
+    dRect(rx-60, gy+2, 40, 8, m.barTrack);
+    dRect(rx-60, gy+2, 40*gPct, 8, gc);
+  }
+
+  // Fuel bar (left side)
+  if (cfg.mfd.showFuelBar) {
+    const bx = 28, top = contentY + 40, bot = contentBot - 40;
+    const bh = bot - top;
+    const fc = sim.fuel < 0.2 ? '#b43228' : sim.fuel < 0.4 ? m.warn : mc('accent');
+    dTextTop((sim.fuel*100).toFixed(0)+'%', bx, top-18, smallSc, fc);
+    dRectOutline(bx-8, top, 16, bh, m.border, 1);
+    dRect(bx-7, top+1, 14, bh-2, m.barTrack);
+    const fh = (bh-2) * sim.fuel;
+    if (fh > 1) dRect(bx-7, top + bh - 1 - fh, 14, fh, fc);
+    dTextTop('FUEL', bx-4, bot+4, tinySc, fc);
+  }
+
+  // G-meter (right side)
+  if (cfg.mfd.showGMeter) {
+    const mx = W - 22, top = contentY + 120, bh = contentBot - top - 50;
+    if (bh > 30) {
+      const cy = top + bh/2;
+      dRectOutline(mx-7, top, 14, bh, m.border, 1);
+      dRect(mx-6, top+1, 12, bh-2, m.barTrack);
+      dRectC(mx, cy, 10, 1, m.dimText);
+      const gNorm = Math.min(Math.max(sim.g / 9, 0), 1);
+      const gH = bh/2 * gNorm;
+      const gc = sim.g > 7 ? '#b43228' : sim.g > 5 ? m.warn : mc('accent');
+      if (gH > 1) dRect(mx-5, cy - gH, 10, gH, gc);
+      dTextTop('+9', mx-4, top-14, tinySc*0.9, m.dimText);
+      dTextTop('-3', mx-4, top+bh+2, tinySc*0.9, m.dimText);
+      dTextTop(sim.g.toFixed(1)+'G', mx, top+bh+18, tinySc, gc);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// MFD-2: WEAPONS
+// ══════════════════════════════════════════════════════════════
+function renderMFD2(W, H) {
+  const m = T().mfd;
+  const contentY = drawMFDChrome(W, H, 'WEAPONS');
+  const contentBot = mfdContentBot(H);
+  const padX = W * 0.019;
+  const txtSc = H * 0.028;
+  const smallSc = H * 0.022;
+  const tinySc = H * 0.016;
+
+  // Section title: TARGET LIST
+  let secY = contentY + 8;
+  drawMFDSectionTitle(W, secY, 'TARGET LIST', smallSc);
+  secY += 18;
+
+  // Selected target detail box
+  const detH = 100;
+  dRect(padX, secY, W - padX*2, detH, m.panelBg);
+  dRectOutline(padX, secY, W - padX*2, detH, m.borderLt, 1);
+
+  const selTarget = sim.targets.find(t => t.sel);
+  if (selTarget) {
+    const tx = padX + 10, rightX = W - padX - 10;
+    let ty = secY + 8;
+
+    // Row 1: Name + badge
+    dTextTop(selTarget.name, tx, ty, txtSc, m.brightText);
+    const badge = 'STT';
+    const bw = 32, bh = 16;
+    dRectOutline(rightX - bw, ty, bw, bh, mc('accent'), 1);
+    dText(badge, rightX - bw/2, ty + bh/2, tinySc, mc('accent'), 'center');
+
+    ty += 24;
+    dRectC(W/2, ty, W - padX*2 - 16, 1, m.border);
+    ty += 6;
+
+    // Row 2: Range + closure
+    const rangeStr = selTarget.range >= 1000 ? (selTarget.range/1000).toFixed(2)+' km' : selTarget.range+'m';
+    dTextTop(rangeStr, tx, ty, txtSc * 1.1, mc('accent'));
+    const closureStr = selTarget.vc > 10 ? 'HOT' : selTarget.vc < -10 ? 'COLD' : '---';
+    const closureColor = selTarget.vc > 10 ? m.warn : selTarget.vc < -10 ? '#5070c8' : m.dimTextMid;
+    ctx.fillStyle = closureColor;
+    ctx.font = `${smallSc}px 'Share Tech Mono',monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText(Math.abs(selTarget.vc) + ' ' + closureStr, rightX, ty);
+
+    ty += 22;
+
+    // Row 3: BRG + SPD
+    dTextTop('BRG', tx, ty, tinySc, m.dimText);
+    dTextTop(selTarget.brg + '°', tx + 60, ty, tinySc, m.statusVal);
+    dTextTop('SPD', W/2, ty, tinySc, m.dimText);
+    dTextTop(selTarget.spd + ' m/s', W/2 + 50, ty, tinySc, m.statusVal);
+
+    ty += 18;
+
+    // Row 4: Source + tracking timeline
+    dTextTop('RDR', tx, ty, tinySc*0.9, m.dimText);
+    const tlX = W/2-10, tlW = rightX - tlX, tlH = 8;
+    dRect(tlX, ty+2, tlW, tlH, m.barTrack);
+    // Simulated tracking history bars (deterministic pattern)
+    const trackPattern = [1,1,1,0,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1,1];
+    for (let i = 0; i < 20; i++) {
+      const on = trackPattern[i];
+      const segW = tlW / 20 - 1;
+      dRect(tlX + i * (tlW/20), ty+3, segW, on ? tlH-2 : (tlH-2)*0.4,
+        on ? mc('accent') : '#b43228');
+    }
+  }
+
+  secY += detH + 10;
+  dRectC(W/2, secY, W - padX*4, 1, m.border);
+  secY += 10;
+
+  // Enemy list
+  const lineH = 22;
+  sim.targets.forEach((t, i) => {
+    const ry = secY + i * lineH;
+    if (ry + lineH > contentBot - 60) return;
+    const sel = t.sel;
+    if (sel) {
+      dRect(padX, ry, W - padX*2, lineH, m.selFill);
+      dRect(padX, ry, 2, lineH, mc('accent'));
+    }
+    const c = sel ? m.brightText : t.hot ? T().hud.warning : m.normalText;
+    const marker = sel ? '\u25C9' : '\u25CB';
+    dTextTop(marker, padX + 6, ry + 2, smallSc, c);
+    dTextTop(t.name, padX + 22, ry + 2, smallSc, c);
+    const rngStr = t.range >= 1000 ? (t.range/1000).toFixed(1)+'km' : t.range+'m';
+    ctx.fillStyle = c;
+    ctx.font = `${smallSc}px 'Share Tech Mono',monospace`;
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+    ctx.fillText(rngStr, W - padX - 50, ry + 2);
+    // Mini timeline (deterministic)
+    const miniPat = [[1,1,0,1,1,1,1,0,1,1],[1,0,1,1,1,1,1,1,0,1],[1,1,1,1,0,1,1,1,1,1]];
+    const mtX = W - padX - 45, mtW = 40, mtH = 6;
+    dRect(mtX, ry + 8, mtW, mtH, m.barTrack);
+    for (let j = 0; j < 10; j++) {
+      const on = miniPat[i][j];
+      dRect(mtX + j*(mtW/10), ry+9, mtW/10-1, on?mtH-2:2, on?mc('accent'):'#b43228');
+    }
+  });
+
+  // Missile TOF
+  if (sim.missiles.length > 0) {
+    const tofY = contentBot - 50;
+    dRectC(W/2, tofY - 5, W - padX*4, 1, m.border);
+    dText('MSL IN FLIGHT', W/2, tofY + 8, smallSc, m.statusRdy, 'center');
+    sim.missiles.forEach((ms, i) => {
+      const my = tofY + 22 + i * 22;
+      const tofColor = ms.tof < 3 ? m.warn : m.statusRdy;
+      dText(`MSL ${ms.bay}: ${ms.tof.toFixed(1)}s \u2192 TGT`, W/2, my, txtSc, tofColor, 'center');
+    });
+  }
+}
+
+function drawMFDSectionTitle(W, y, text, scale) {
+  const m = T().mfd;
+  const padX = W * 0.019;
+  const tw = text.length * W * 0.014;
+  const cx = W/2;
+  const hg = tw/2 + 8;
+  const leftW = cx - hg - padX;
+  if (leftW > 2) dRectC(padX + leftW/2, y+6, leftW, 1, T().mfd.border);
+  const rightStart = cx + hg;
+  const rightW = W - padX - rightStart;
+  if (rightW > 2) dRectC(rightStart + rightW/2, y+6, rightW, 1, T().mfd.border);
+  dText(text, cx, y+4, scale, T().mfd.midText, 'center');
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════════════════
+function showExport() {
+  const t = T();
+  const yn = v => v ? '\u2713' : '\u2717';
+  const lines = [
+    '═══════════════════════════════════════',
+    '  JETOS THEME CONFIGURATION EXPORT',
+    '═══════════════════════════════════════',
+    '',
+    'PALETTE',
+    `  Theme Base: ${t.name}`,
+    cfg.customPrimary ? `  Custom Primary: ${cfg.customPrimary}` : '',
+    cfg.customAccent ? `  Custom Accent: ${cfg.customAccent}` : '',
+    '',
+    'HUD LAYOUT',
+    `  Speed Display: ${cfg.hud.speedStyle.toUpperCase()}`,
+    `  Altitude Display: ${cfg.hud.altStyle.toUpperCase()}`,
+    `  Compass: ${cfg.hud.compassStyle.toUpperCase()}`,
+    `  Throttle: ${cfg.hud.throttleStyle.toUpperCase()}`,
+    `  Radar: ${cfg.hud.radarSize.toUpperCase()}, ${cfg.hud.radarPos.toUpperCase()}`,
+    `  G-Force Display: ${cfg.hud.gDisplay.toUpperCase()}`,
+    '',
+    'HUD ELEMENTS',
+    `  ${yn(cfg.hud.showBank)} Bank Angle Markers`,
+    `  ${yn(cfg.hud.showAoA)} AoA Indexer`,
+    `  ${yn(cfg.hud.showEnergy)} Energy Cue`,
+    `  ${yn(cfg.hud.showMach)} Mach Number`,
+    `  ${yn(cfg.hud.showFPM)} Flight Path Marker`,
+    `  ${yn(cfg.hud.showTarget)} Target Brackets`,
+    `  ${yn(cfg.hud.showFuel)} Fuel Percentage`,
+    `  ${yn(cfg.hud.showMslCount)} Missile Count`,
+    `  ${yn(cfg.hud.showRwr)} RWR Compass Rose`,
+    '',
+    'HUD STYLE',
+    `  Line Weight: ${cfg.hud.lineWeight}px`,
+    `  Font Scale: ${cfg.hud.fontScale}x`,
+    '',
+    'MFD CHROME',
+    `  Branding: ${cfg.mfd.branding.toUpperCase()}`,
+    `  ${yn(cfg.mfd.corners)} Corner Brackets`,
+    `  ${yn(cfg.mfd.goldAccent)} Gold Accent Line`,
+    `  ${yn(cfg.mfd.footerNav)} Footer Nav Hints`,
+    `  ${yn(cfg.mfd.scanlines)} CRT Scanlines`,
+    '',
+    'MFD-1 CONTENT',
+    `  Primary View: ${cfg.mfd.s1Content.toUpperCase()}`,
+    `  ${yn(cfg.mfd.showFuelBar)} Fuel Bar`,
+    `  ${yn(cfg.mfd.showGMeter)} G-Meter`,
+    `  ${yn(cfg.mfd.showFlightData)} Flight Data Readouts`,
+    '',
+    '═══════════════════════════════════════',
+    '  Paste this back to Claude to apply',
+    '═══════════════════════════════════════',
+  ].filter(l => l !== undefined);
+
+  document.getElementById('exportText').value = lines.join('\n');
+  document.getElementById('exportModal').classList.add('show');
+}
+
+function closeExport() {
+  document.getElementById('exportModal').classList.remove('show');
+}
+
+function copyExport() {
+  const ta = document.getElementById('exportText');
+  ta.select();
+  document.execCommand('copy');
+  const btn = document.getElementById('copyBtn');
+  btn.textContent = 'COPIED';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = 'COPY TO CLIPBOARD'; btn.classList.remove('copied'); }, 2000);
+}
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+buildOptions();
+buildScreenTabs();
+updateToolAccent();
+setupCanvas();
+render();
+
+// Animation loop (slow, for radar sweep)
+setInterval(() => { animTick++; if (cfg.screen === 'hud') render(); }, 120);
+</script>
+</body>
+</html>

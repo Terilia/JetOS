@@ -183,12 +183,7 @@ namespace IngameScript
                                 // Flip X so left side of ship shows on left side of screen
                                 // (SE grid X+ is leftward from cockpit perspective)
                                 Vector2 dp = topLeft + new Vector2((gridW - 1 - x) * cs + cs / 2f, (gridH - 1 - z) * cs + cs / 2f);
-                                cachedSprites.Add(new MySprite
-                                {
-                                    Type = MFDTheme.TX, Data = MFDTheme.SQ,
-                                    Position = dp, Size = new Vector2(cs * 5f, cs * 2f),
-                                    Color = c, Alignment = MFDTheme.AC
-                                });
+                                cachedSprites.Add(SpriteHelpers.FBx(dp.X, dp.Y, cs * 5f, cs * 2f, c));
                             }
                         }
 
@@ -208,13 +203,13 @@ namespace IngameScript
             static void DrawMslPips(MySpriteDrawFrame f, List<IMyShipMergeBlock> bays)
             {
                 if (bays == null || bays.Count == 0) return;
-                Txt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 for (int i = 0; i < bays.Count; i++)
                 {
                     float px = 12f + i * 18f, py = 26f;
                     bool rdy = bays[i] != null && bays[i].IsConnected;
-                    Box(f, px + 7f, py + 7f, 14f, 14f, rdy ? MFDTheme.ACCENT : MFDTheme.BORDER);
-                    if (rdy) Box(f, px + 7f, py + 7f, 10f, 10f, new Color(20, 80, 20));
+                    SpriteHelpers.Bx(f, px + 7f, py + 7f, 14f, 14f, rdy ? MFDTheme.ACCENT : MFDTheme.BORDER);
+                    if (rdy) SpriteHelpers.Bx(f, px + 7f, py + 7f, 10f, 10f, new Color(20, 80, 20));
                 }
             }
 
@@ -222,7 +217,7 @@ namespace IngameScript
             {
                 int cur = gridBlocks.Count, orig = originalBlockCount > 0 ? originalBlockCount : cur;
                 Color c = cur >= orig ? MFDTheme.DIM_TEXT_MID : cur > orig * 0.7 ? MFDTheme.WARN : new Color(180, 50, 40);
-                Txt(f, $"{cur}/{orig}", area.Width / 2f, contentY + 4f, 0.45f, c);
+                SpriteHelpers.Tt(f, $"{cur}/{orig}", area.Width / 2f, contentY + 4f, 0.45f, c);
             }
 
             static void DrawFlightData(MySpriteDrawFrame f, RectangleF area, HUDModule hud, Jet jet, float contentY)
@@ -230,31 +225,26 @@ namespace IngameScript
                 float rx = area.Width - 6f, y = contentY + 8f, lh = 18f;
                 if (hud != null)
                 {
-                    FVal(f, rx, y, "SPD", $"{hud.smoothedVelocity:F0} kph", MFDTheme.STATUS_VAL);
-                    FVal(f, rx, y + lh, "ALT", $"{hud.smoothedAltitude:F0} m",
-                        hud.smoothedAltitude < 200 ? new Color(180, 50, 40) : MFDTheme.STATUS_VAL);
+                    SpriteHelpers.Tt(f, $"SPD {hud.smoothedVelocity:F0} kph", rx, y, 0.45f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                    SpriteHelpers.Tt(f, $"ALT {hud.smoothedAltitude:F0} m", rx, y + lh, 0.45f,
+                        hud.smoothedAltitude < 200 ? new Color(180, 50, 40) : MFDTheme.STATUS_VAL, MFDTheme.AR);
                     double aoa = hud.smoothedAoA;
-                    FVal(f, rx, y + lh * 2, "AoA", $"{aoa:F1}\u00B0",
-                        Math.Abs(aoa) > 15 ? new Color(180, 50, 40) : Math.Abs(aoa) > 10 ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
-                    FVal(f, rx, y + lh * 3, "MCH", $"{hud.mach:F2}", MFDTheme.STATUS_VAL);
-                    FVal(f, rx, y + lh * 4, "THR", $"{hud.smoothedThrottle:F0}%",
-                        hud.smoothedThrottle < 20 ? new Color(180, 50, 40) : MFDTheme.ACCENT);
+                    SpriteHelpers.Tt(f, $"AoA {aoa:F1}\u00B0", rx, y + lh * 2, 0.45f,
+                        Math.Abs(aoa) > 15 ? new Color(180, 50, 40) : Math.Abs(aoa) > 10 ? MFDTheme.WARN : MFDTheme.STATUS_VAL, MFDTheme.AR);
+                    SpriteHelpers.Tt(f, $"MCH {hud.mach:F2}", rx, y + lh * 3, 0.45f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                    SpriteHelpers.Tt(f, $"THR {hud.throttlePercent:F0}%", rx, y + lh * 4, 0.45f,
+                        hud.throttlePercent < 20 ? new Color(180, 50, 40) : MFDTheme.ACCENT, MFDTheme.AR);
                 }
 
                 float gy = y + lh * 5 + 4f;
                 int ammo = jet.GetTotalGunAmmo();
                 Color gc = ammo <= 0 ? new Color(180, 50, 40) : ammo < 500 ? MFDTheme.WARN : MFDTheme.ACCENT;
-                Txt(f, "GUN", rx - 100f, gy, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(f, "GUN", rx - 100f, gy, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 float bx = rx - 60f;
-                Box(f, bx + 20f, gy + 6f, 40f, 8f, MFDTheme.BAR_TRACK);
+                SpriteHelpers.Bx(f, bx + 20f, gy + 6f, 40f, 8f, MFDTheme.BAR_TRACK);
                 float pct = Math.Min(ammo / 2400f, 1f);
-                if (pct > 0.01f) Box(f, bx + 20f * pct, gy + 6f, 40f * pct, 8f, gc);
-                Txt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
-            }
-
-            static void FVal(MySpriteDrawFrame f, float rx, float y, string lbl, string val, Color vc)
-            {
-                Txt(f, $"{lbl} {val}", rx, y, 0.45f, vc, MFDTheme.AR);
+                if (pct > 0.01f) SpriteHelpers.Bx(f, bx + 20f * pct, gy + 6f, 40f * pct, 8f, gc);
+                SpriteHelpers.Tt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
             }
 
             static void DrawFuelBar(MySpriteDrawFrame f, RectangleF area, List<IMyGasTank> tanks,
@@ -274,20 +264,20 @@ namespace IngameScript
                 float bh = bot - top;
                 Color fc = pct < BINGO_FUEL ? new Color(180, 50, 40) : pct < LOW_FUEL ? MFDTheme.WARN : MFDTheme.ACCENT;
 
-                Txt(f, $"{pct * 100:F0}%", bx, top - 18f, 0.5f, fc);
-                Box(f, bx, top + bh / 2f, 16f, bh + 2f, MFDTheme.BORDER);
-                Box(f, bx, top + bh / 2f, 14f, bh, MFDTheme.BAR_TRACK);
+                SpriteHelpers.Tt(f, $"{pct * 100:F0}%", bx, top - 18f, 0.5f, fc);
+                SpriteHelpers.Bx(f, bx, top + bh / 2f, 16f, bh + 2f, MFDTheme.BORDER);
+                SpriteHelpers.Bx(f, bx, top + bh / 2f, 14f, bh, MFDTheme.BAR_TRACK);
 
                 float fh = bh * (float)pct;
-                if (fh > 1f) Box(f, bx, top + bh - fh / 2f, 14f, fh, fc);
+                if (fh > 1f) SpriteHelpers.Bx(f, bx, top + bh - fh / 2f, 14f, fh, fc);
 
                 if (pct > 0.01)
                 {
                     double tr = pct * 600;
-                    Txt(f, $"{(int)(tr / 60):D2}:{(int)(tr % 60):D2}", bx + 11f, top + bh / 2f - 8f, 0.35f,
+                    SpriteHelpers.Tt(f, $"{(int)(tr / 60):D2}:{(int)(tr % 60):D2}", bx + 11f, top + bh / 2f - 8f, 0.35f,
                         MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 }
-                Txt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, fc);
+                SpriteHelpers.Tt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, fc);
             }
 
             static void DrawGMeter(MySpriteDrawFrame f, RectangleF area, HUDModule hud,
@@ -301,10 +291,10 @@ namespace IngameScript
                 float cy = top + bh / 2f;
                 double g = hud.smoothedGForces, pk = hud.peakGForce;
 
-                Txt(f, "+9", mx, top - 16f, 0.35f, MFDTheme.DIM_TEXT);
-                Box(f, mx, cy, 14f, bh + 2f, MFDTheme.BORDER);
-                Box(f, mx, cy, 12f, bh, MFDTheme.BAR_TRACK);
-                Box(f, mx, cy, 12f, 1f, MFDTheme.DIM_TEXT);
+                SpriteHelpers.Tt(f, "+9", mx, top - 16f, 0.35f, MFDTheme.DIM_TEXT);
+                SpriteHelpers.Bx(f, mx, cy, 14f, bh + 2f, MFDTheme.BORDER);
+                SpriteHelpers.Bx(f, mx, cy, 12f, bh, MFDTheme.BAR_TRACK);
+                SpriteHelpers.Bx(f, mx, cy, 12f, 1f, MFDTheme.DIM_TEXT);
 
                 float half = bh / 2f;
                 float gc = (float)Cl(g, -3, 9);
@@ -314,28 +304,18 @@ namespace IngameScript
                 if (gc >= 0)
                 {
                     float fh = half * gc / 9f;
-                    if (fh > 1f) Box(f, mx, cy - fh / 2f, 10f, fh, fColor);
+                    if (fh > 1f) SpriteHelpers.Bx(f, mx, cy - fh / 2f, 10f, fh, fColor);
                 }
                 else
                 {
                     float fh = half * Math.Abs(gc) / 3f;
-                    if (fh > 1f) Box(f, mx, cy + fh / 2f, 10f, fh, fColor);
+                    if (fh > 1f) SpriteHelpers.Bx(f, mx, cy + fh / 2f, 10f, fh, fColor);
                 }
 
-                Txt(f, "-3", mx, top + bh + 2f, 0.35f, MFDTheme.DIM_TEXT);
+                SpriteHelpers.Tt(f, "-3", mx, top + bh + 2f, 0.35f, MFDTheme.DIM_TEXT);
                 Color gvc = Math.Abs(g) > 7 ? new Color(180, 50, 40) : Math.Abs(g) > 5 ? MFDTheme.WARN : MFDTheme.STATUS_VAL;
-                Txt(f, $"{g:F1}G", mx, top + bh + 18f, 0.45f, gvc);
-                Txt(f, $"pk {pk:F1}", mx, top + bh + 36f, 0.3f, MFDTheme.DIM_TEXT);
-            }
-
-            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT });
-            }
-
-            static void Box(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = new Vector2(x, y), Size = new Vector2(w, h), Color = c, Alignment = MFDTheme.AC });
+                SpriteHelpers.Tt(f, $"{g:F1}G", mx, top + bh + 18f, 0.45f, gvc);
+                SpriteHelpers.Tt(f, $"pk {pk:F1}", mx, top + bh + 36f, 0.3f, MFDTheme.DIM_TEXT);
             }
         }
     }

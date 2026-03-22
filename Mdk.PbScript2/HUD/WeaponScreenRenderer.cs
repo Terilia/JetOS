@@ -342,24 +342,15 @@ namespace IngameScript
                 SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, new Color(100, 100, 100, 150), 2f);
 
                 string statusText = "GUN AUTO-TRACK";
-                Color statusColor = Color.Cyan;
+                Color statusColor = HUD_PRIMARY;
 
                 if (gunControl.IsLeftCalibrating || gunControl.IsRightCalibrating)
                 {
                     statusText = "CALIBRATING...";
-                    statusColor = Color.Yellow;
+                    statusColor = HUD_EMPHASIS;
                 }
 
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = statusText,
-                    Position = new Vector2(center.X, center.Y - coneRadius - 30f),
-                    RotationOrScale = 0.6f,
-                    Color = statusColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT_W
-                });
+                SpriteHelpers.Tt(frame, statusText, center.X, center.Y - coneRadius - 30f, 0.6f, statusColor, MFDTheme.AC, MFDTheme.FONT_W);
 
                 Vector2 leftIndicatorPos = new Vector2(center.X - coneRadius - 40f, center.Y);
                 DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking, gunControl.IsLeftCalibrating);
@@ -369,56 +360,21 @@ namespace IngameScript
 
                 if (gunControl.IsLeftTracking && gunControl.IsRightTracking)
                 {
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = "FIRE",
-                        Position = new Vector2(center.X, center.Y + coneRadius + 20f),
-                        RotationOrScale = 1.0f,
-                        Color = Color.Red,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, "FIRE", center.X, center.Y + coneRadius + 20f, 1.0f, HUD_WARNING, MFDTheme.AC, MFDTheme.FONT_W);
 
                     int flashPhase = (radarSweepTick / 5) % 2;
                     if (flashPhase == 0)
                     {
-                        frame.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TX,
-                            Data = TEXTURE_CIRCLE_SOLID,
-                            Position = center,
-                            Size = new Vector2(20f, 20f),
-                            Color = Color.Red,
-                            Alignment = MFDTheme.AC
-                        });
+                        SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, center.X, center.Y, 20f, 20f, HUD_WARNING);
                     }
                 }
                 else if (gunControl.IsLeftTracking || gunControl.IsRightTracking)
                 {
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = "TRACKING",
-                        Position = new Vector2(center.X, center.Y + coneRadius + 20f),
-                        RotationOrScale = 0.7f,
-                        Color = Color.Yellow,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, "TRACKING", center.X, center.Y + coneRadius + 20f, 0.7f, HUD_EMPHASIS, MFDTheme.AC, MFDTheme.FONT_W);
                 }
                 else
                 {
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = "SEARCHING",
-                        Position = new Vector2(center.X, center.Y + coneRadius + 20f),
-                        RotationOrScale = 0.6f,
-                        Color = Color.Gray,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, "SEARCHING", center.X, center.Y + coneRadius + 20f, 0.6f, HUD_SECONDARY, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 
@@ -431,7 +387,7 @@ namespace IngameScript
                 if (isCalibrating)
                 {
                     bgColor = new Color(100, 100, 0, 200);
-                    textColor = Color.Yellow;
+                    textColor = HUD_EMPHASIS;
                     statusChar = "?";
                 }
                 else if (isLocked)
@@ -447,37 +403,9 @@ namespace IngameScript
                     statusChar = "O";
                 }
 
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = TEXTURE_CIRCLE_SOLID,
-                    Position = position,
-                    Size = new Vector2(35f, 35f),
-                    Color = bgColor,
-                    Alignment = MFDTheme.AC
-                });
-
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = label,
-                    Position = position + new Vector2(0f, -18f),
-                    RotationOrScale = 0.5f,
-                    Color = textColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT_W
-                });
-
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = statusChar,
-                    Position = position + new Vector2(0f, -5f),
-                    RotationOrScale = 0.8f,
-                    Color = textColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT_W
-                });
+                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, position.X, position.Y, 35f, 35f, bgColor);
+                SpriteHelpers.Tt(frame, label, position.X, position.Y - 18f, 0.5f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(frame, statusChar, position.X, position.Y - 5f, 0.8f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
             }
         }
     }

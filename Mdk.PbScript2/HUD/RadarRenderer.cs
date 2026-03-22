@@ -16,10 +16,6 @@ namespace IngameScript
             private const float RADAR_MIN_RANGE = 2000f;
             private const float RADAR_RANGE_PADDING = 1.3f; // 30% padding beyond farthest target
 
-            /// <summary>
-            /// Top-down radar minimap. Ship nose = up. Auto-scales range to fit all radar contacts.
-            /// Uses cockpit inverse matrix for reliable local-space projection (same basis as the pip).
-            /// </summary>
             private void DrawRadarMinimap(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
             {
                 if (cockpit == null || hud == null) return;
@@ -70,8 +66,6 @@ namespace IngameScript
                 yawForward = VN(yawForward);
 
                 // Yaw-right perpendicular to yaw-forward on the horizontal plane
-                // Cross(forward, up) = right in SE's coordinate system.
-                // Cross(up, forward) would give LEFT (inverted radar).
                 Vector3D yawRight = VX(yawForward, worldUp);
                 if (yawRight.LengthSquared() < 0.01)
                     yawRight = cockpit.WorldMatrix.Right;
@@ -107,42 +101,15 @@ namespace IngameScript
                 {
                     DrawDashedCircle(frame, radarCenter, ringPx, new Color(HUD_SECONDARY, 0.35f));
                     string ringLabel = SpriteHelpers.FormatRange(ringRange);
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = ringLabel,
-                        Position = radarCenter + new Vector2(0, -ringPx - 5f),
-                        RotationOrScale = 0.3f,
-                        Color = new Color(HUD_SECONDARY, 0.5f),
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT
-                    });
+                    SpriteHelpers.Tt(frame, ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, new Color(HUD_SECONDARY, 0.5f));
                 }
 
                 // Outer range label
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = outerLabel,
-                    Position = new Vector2(radarCenter.X, radarOrigin.Y - 8f),
-                    RotationOrScale = 0.28f,
-                    Color = new Color(HUD_SECONDARY, 0.5f),
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT
-                });
+                SpriteHelpers.Tt(frame, outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, new Color(HUD_SECONDARY, 0.5f));
 
                 // Player arrow (always center, pointing up)
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = TEXTURE_TRIANGLE,
-                    Position = radarCenter,
-                    Size = new Vector2(radarRadius * 0.15f, radarRadius * 0.15f),
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC,
-                    RotationOrScale = 0 // Points up
-                });
+                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, radarCenter.X, radarCenter.Y, radarRadius * 0.15f, radarRadius * 0.15f, HUD_PRIMARY);
 
                 // --- Draw contacts ---
                 var selectedEnemy = myjet.GetSelectedEnemy();
@@ -154,14 +121,9 @@ namespace IngameScript
                     float dist = (float)toTarget.Length();
                     if (dist < 1.0) continue;
 
-                    // Project onto horizontal plane relative to ship heading:
-                    //   dotRight  = how far right of us (positive = right on screen)
-                    //   dotForward = how far ahead of us (positive = ahead = UP on screen)
                     float dotRight = (float)VD(toTarget, yawRight);
                     float dotForward = (float)VD(toTarget, yawForward);
 
-                    // Screen mapping: X = right, Y = up (forward).
-                    // Screen Y is inverted (positive Y = down), so negate forward for screen Y.
                     Vector2 offset = new Vector2(
                         dotRight * pixelsPerMeter,
                         -dotForward * pixelsPerMeter
@@ -200,16 +162,7 @@ namespace IngameScript
                     float iconSize = clamped ? 5f : 7f;
 
                     // Selected target: diamond, others: square
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = pos,
-                        Size = new Vector2(iconSize, iconSize),
-                        RotationOrScale = isSelected ? MathHelper.PiOver4 : 0f,
-                        Color = contactColor,
-                        Alignment = MFDTheme.AC
-                    });
+                    SpriteHelpers.Bx(frame, pos.X, pos.Y, iconSize, iconSize, contactColor, isSelected ? MathHelper.PiOver4 : 0f);
 
                     // Bearing line for dangerous/imminent threats
                     if (timeToClosest < 15 && closingSpeed > 0)
@@ -221,38 +174,17 @@ namespace IngameScript
                     if (dist < radarRange * 0.8f && !clamped)
                     {
                         string rangeText = dist >= 1000 ? $"{dist / 1000:F1}" : $"{dist:F0}";
-                        frame.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = rangeText,
-                            Position = pos + new Vector2(7f, -4f),
-                            RotationOrScale = 0.28f,
-                            Color = contactColor,
-                            Alignment = MFDTheme.AL,
-                            FontId = MFDTheme.FONT
-                        });
+                        SpriteHelpers.Tt(frame, rangeText, pos.X + 7f, pos.Y - 4f, 0.28f, contactColor, MFDTheme.AL);
                     }
                 }
 
                 // Threat count below radar
                 if (enemies.Count > 0)
                 {
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = $"TGT: {enemies.Count}",
-                        Position = new Vector2(radarCenter.X, radarOrigin.Y + radarSize.Y + 5f),
-                        RotationOrScale = 0.4f,
-                        Color = HUD_PRIMARY,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT
-                    });
+                    SpriteHelpers.Tt(frame, $"TGT: {enemies.Count}", radarCenter.X, radarOrigin.Y + radarSize.Y + 5f, 0.4f, HUD_PRIMARY);
                 }
             }
 
-            /// <summary>
-            /// Rounds a range to a nice human-readable value for ring labels.
-            /// </summary>
             private static float RoundToNiceRange(float range)
             {
                 if (range >= 10000) return (float)Math.Round(range / 5000) * 5000;
@@ -261,9 +193,6 @@ namespace IngameScript
                 return (float)Math.Round(range / 100) * 100;
             }
 
-            /// <summary>
-            /// Draws a dashed circle on the radar.
-            /// </summary>
             private static void DrawDashedCircle(MySpriteDrawFrame frame, Vector2 center, float radius, Color color)
             {
                 const int SEGMENTS = 24;
@@ -318,15 +247,7 @@ namespace IngameScript
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = "Triangle",
-                        Position = ghostPos,
-                        Size = new Vector2(15f, 15f),
-                        Color = new Color(HUD_RADAR_FRIENDLY, 0.7f),
-                        Alignment = MFDTheme.AC
-                    });
+                    SpriteHelpers.Sp(frame, "Triangle", ghostPos.X, ghostPos.Y, 15f, 15f, new Color(HUD_RADAR_FRIENDLY, 0.7f));
                 }
             }
         }

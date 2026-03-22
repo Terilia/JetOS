@@ -46,24 +46,8 @@ namespace IngameScript
                     {
                         // Solid lines for nose-up pitch lines (i<0 because pitch sign is inverted:
                         // pitch = asin(dot(forward, gravityDown)), so nose-up = negative pitch)
-                        sprites.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TX,
-                            Data = MFDTheme.SQ,
-                            Position = new Vector2(centerX * 0.75f, markerY),
-                            Size = new Vector2(lineWidth, lineThickness),
-                            Color = lineColor,
-                            Alignment = MFDTheme.AC
-                        });
-                        sprites.Add(new MySprite()
-                        {
-                            Type = MFDTheme.TX,
-                            Data = MFDTheme.SQ,
-                            Position = new Vector2(centerX * 1.25f, markerY),
-                            Size = new Vector2(lineWidth, lineThickness),
-                            Color = lineColor,
-                            Alignment = MFDTheme.AC
-                        });
+                        sprites.Add(SpriteHelpers.FBx(centerX * 0.75f, markerY, lineWidth, lineThickness, lineColor));
+                        sprites.Add(SpriteHelpers.FBx(centerX * 1.25f, markerY, lineWidth, lineThickness, lineColor));
                     }
                     else
                     {
@@ -75,82 +59,24 @@ namespace IngameScript
                         for (int d = 0; d < dashCount; d++)
                         {
                             float dashOffset = -totalDashWidth / 2f + d * (dashWidth * 2) + dashWidth / 2f;
-                            sprites.Add(new MySprite()
-                            {
-                                Type = MFDTheme.TX,
-                                Data = MFDTheme.SQ,
-                                Position = new Vector2(centerX * 0.75f + dashOffset, markerY),
-                                Size = new Vector2(dashWidth, lineThickness),
-                                Color = lineColor,
-                                Alignment = MFDTheme.AC
-                            });
-                            sprites.Add(new MySprite()
-                            {
-                                Type = MFDTheme.TX,
-                                Data = MFDTheme.SQ,
-                                Position = new Vector2(centerX * 1.25f + dashOffset, markerY),
-                                Size = new Vector2(dashWidth, lineThickness),
-                                Color = lineColor,
-                                Alignment = MFDTheme.AC
-                            });
+                            sprites.Add(SpriteHelpers.FBx(centerX * 0.75f + dashOffset, markerY, dashWidth, lineThickness, lineColor));
+                            sprites.Add(SpriteHelpers.FBx(centerX * 1.25f + dashOffset, markerY, dashWidth, lineThickness, lineColor));
                         }
                     }
 
                     float tipLength = 12f;
-                    float tipAngle = ToRad(isPositive ? 45f : -45f);
 
                     string label = Math.Abs(i).ToString();
                     float labelOffsetX = halfWidth + tipLength + 10f;
 
-                    sprites.Add(
-                        new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = label,
-                            Position = new Vector2(centerX - labelOffsetX, markerY + 10f),
-                            RotationOrScale = 0.8f,
-                            Color = lineColor,
-                            Alignment = MFDTheme.AR,
-                            FontId = MFDTheme.FONT_W
-                        }
-                    );
-                    sprites.Add(
-                        new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = label,
-                            Position = new Vector2(centerX + labelOffsetX, markerY + 10f),
-                            RotationOrScale = 0.8f,
-                            Color = lineColor,
-                            Alignment = MFDTheme.AL,
-                            FontId = MFDTheme.FONT_W
-                        }
-                    );
+                    sprites.Add(SpriteHelpers.FTt(label, centerX - labelOffsetX, markerY + 10f, 0.8f, lineColor, MFDTheme.AR, MFDTheme.FONT_W));
+                    sprites.Add(SpriteHelpers.FTt(label, centerX + labelOffsetX, markerY + 10f, 0.8f, lineColor, MFDTheme.AL, MFDTheme.FONT_W));
                 }
 
                 float horizonY = centerY + pitch * pixelsPerDegree;
-                sprites.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = new Vector2(centerX * 1.25f, horizonY),
-                        Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
-                        Color = HUD_HORIZON,
-                        Alignment = MFDTheme.AC
-                    }
-                );
-                sprites.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = new Vector2(centerX * 0.75f, horizonY),
-                        Size = new Vector2(hud.SurfaceSize.X * 0.125f, 4f),
-                        Color = HUD_HORIZON,
-                        Alignment = MFDTheme.AC
-                    }
-                );
+                sprites.Add(SpriteHelpers.FBx(centerX * 1.25f, horizonY, hud.SurfaceSize.X * 0.125f, 4f, HUD_HORIZON));
+                sprites.Add(SpriteHelpers.FBx(centerX * 0.75f, horizonY, hud.SurfaceSize.X * 0.125f, 4f, HUD_HORIZON));
+
                 float rollRad = ToRad(-roll);
                 float cosRoll = (float)Cs(rollRad);
                 float sinRoll = (float)Sn(rollRad);
@@ -224,16 +150,7 @@ namespace IngameScript
                     float tickLength = isMajor ? 8f : 5f;
                     Color tickColor = isMajor ? HUD_EMPHASIS : HUD_SECONDARY;
 
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = finalPos,
-                        Size = new Vector2(2f, tickLength),
-                        Color = tickColor,
-                        Alignment = MFDTheme.AC,
-                        RotationOrScale = angleRad + rollRad
-                    });
+                    SpriteHelpers.Bx(frame, finalPos.X, finalPos.Y, 2f, tickLength, tickColor, angleRad + rollRad);
                 }
             }
 
@@ -267,15 +184,7 @@ namespace IngameScript
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, new Vector2(centerX, centerY), surfaceSize);
 
-                frame.Add(new MySprite
-                {
-                    Type = MFDTheme.TX,
-                    Data = TEXTURE_CIRCLE_SOLID,
-                    Position = markerPosition,
-                    Size = new Vector2(MarkerSize, MarkerSize),
-                    Color = Color.White,
-                    Alignment = MFDTheme.AC
-                });
+                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, markerPosition.X, markerPosition.Y, MarkerSize, MarkerSize, Color.White);
 
                 // Wings counter-rotate by roll to stay horizon-aligned (like a real F-18 FPM)
                 float rollRad = ToRad((float)roll);
@@ -286,27 +195,11 @@ namespace IngameScript
                 Vector2 rotatedLeftWingOffset = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
                 Vector2 rotatedRightWingOffset = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
 
-                frame.Add(new MySprite
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = markerPosition + rotatedLeftWingOffset,
-                    Size = new Vector2(WingLength, WingThickness),
-                    Color = Color.White,
-                    Alignment = MFDTheme.AC,
-                    RotationOrScale = -rollRad
-                });
+                Vector2 lw = markerPosition + rotatedLeftWingOffset;
+                SpriteHelpers.Bx(frame, lw.X, lw.Y, WingLength, WingThickness, Color.White, -rollRad);
 
-                frame.Add(new MySprite
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = markerPosition + rotatedRightWingOffset,
-                    Size = new Vector2(WingLength, WingThickness),
-                    Color = Color.White,
-                    Alignment = MFDTheme.AC,
-                    RotationOrScale = -rollRad
-                });
+                Vector2 rw = markerPosition + rotatedRightWingOffset;
+                SpriteHelpers.Bx(frame, rw.X, rw.Y, WingLength, WingThickness, Color.White, -rollRad);
             }
         }
     }

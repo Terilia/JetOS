@@ -31,16 +31,7 @@ namespace IngameScript
                 float digitalSpeedBoxHeight = 30f;
                 float digitalSpeedBoxX = tapeLineX + tapeNumberMargin;
 
-                var tapeLine = new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = new Vector2(tapeLineX, centerY),
-                    Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC
-                };
-                frame.Add(tapeLine);
+                SpriteHelpers.Bx(frame, tapeLineX, centerY, tapeWidth, TAPE_HEIGHT_PIXELS, HUD_PRIMARY);
 
                 float tapeTopSpeed = (float)currentSpeedKph + (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
                 float tapeBottomSpeed = (float)currentSpeedKph - (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
@@ -68,85 +59,29 @@ namespace IngameScript
 
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
 
-                        var tickMark = new MySprite()
-                        {
-                            Type = MFDTheme.TX,
-                            Data = MFDTheme.SQ,
-                            Position = new Vector2(tapeLineX + currentTickLength / 2f, yPos),
-                            Size = new Vector2(currentTickLength, tapeWidth),
-                            Color = HUD_PRIMARY,
-                            Alignment = MFDTheme.AC
-                        };
-                        frame.Add(tickMark);
+                        SpriteHelpers.Bx(frame, tapeLineX + currentTickLength / 2f, yPos, currentTickLength, tapeWidth, HUD_PRIMARY);
 
                         if (isMajorTick)
                         {
                             string speedText = speedMark.ToString("F0");
-                            var numberLabel = new MySprite()
-                            {
-                                Type = MFDTheme.TT,
-                                Data = speedText,
-                                Position = new Vector2(tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f),
-                                RotationOrScale = 0.5f,
-                                Color = HUD_PRIMARY,
-                                Alignment = MFDTheme.AL,
-                                FontId = FONT
-                            };
-                            frame.Add(numberLabel);
+                            SpriteHelpers.Tt(frame, speedText, tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AL);
                         }
                     }
                 }
 
                 // Semi-transparent background behind speed box
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130),
-                    Size = new Vector2(digitalSpeedBoxWidth, digitalSpeedBoxHeight),
-                    Color = new Color(0, 0, 0, 128),
-                    Alignment = MFDTheme.AC
-                });
+                SpriteHelpers.Bx(frame, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, new Color(0, 0, 0, 128));
 
                 SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentSpeedText = currentSpeedKph.ToString("F0");
-                var speedLabel = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = currentSpeedText,
-                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f),
-                    RotationOrScale = 0.8f,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC,
-                    FontId = FONT
-                };
-                frame.Add(speedLabel);
+                SpriteHelpers.Tt(frame, currentSpeedText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f, 0.8f, HUD_PRIMARY);
 
                 // Mach number below speed box
                 string machText = $"M {mach:F2}";
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = machText,
-                    Position = new Vector2(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f),
-                    RotationOrScale = 0.5f,
-                    Color = HUD_SECONDARY,
-                    Alignment = MFDTheme.AC,
-                    FontId = FONT
-                });
+                SpriteHelpers.Tt(frame, machText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f, 0.5f, HUD_SECONDARY);
 
-                var caret = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = ">",
-                    Position = new Vector2(digitalSpeedBoxX - 10f, centerY - 7.5f),
-                    RotationOrScale = 0.5f,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AR,
-                    FontId = FONT
-                };
-                frame.Add(caret);
+                SpriteHelpers.Tt(frame, ">", digitalSpeedBoxX - 10f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AR);
             }
 
             private void DrawCompass(MySpriteDrawFrame frame, double heading)
@@ -174,74 +109,26 @@ namespace IngameScript
                         float markerLineHeight = isMajorTick ? compassHeight * 0.7f : compassHeight * 0.4f;
                         Color markerColor = isMajorTick ? HUD_SECONDARY : HUD_PRIMARY;
 
-                        var markerLine = new MySprite()
-                        {
-                            Type = MFDTheme.TX,
-                            Data = MFDTheme.SQ,
-                            Position = new Vector2(markerX, compassY),
-                            Size = new Vector2(2f, markerLineHeight),
-                            Color = markerColor,
-                            Alignment = MFDTheme.AC
-                        };
-                        frame.Add(markerLine);
+                        SpriteHelpers.Bx(frame, markerX, compassY, 2f, markerLineHeight, markerColor);
 
                         string label = isMajorTick ? GetCompassDirection(markerHeading) : markerHeading.ToString();
-                        float textScale = 0.7f;
-
-                        var markerText = new MySprite()
-                        {
-                            Type = MFDTheme.TT,
-                            Data = label,
-                            Position = new Vector2(markerX, compassY + compassHeight / 2f + 5f),
-                            RotationOrScale = textScale,
-                            Color = markerColor,
-                            Alignment = MFDTheme.AC,
-                            FontId = MFDTheme.FONT_W
-                        };
-                        frame.Add(markerText);
+                        SpriteHelpers.Tt(frame, label, markerX, compassY + compassHeight / 2f + 5f, 0.7f, markerColor, MFDTheme.AC, MFDTheme.FONT_W);
                     }
                 }
 
-                var headingIndicator = new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = "Triangle",
-                    Position = new Vector2(centerX, compassY - compassHeight / 2f - 6f),
-                    Size = new Vector2(12f, 10f),
-                    Color = HUD_EMPHASIS,
-                    Alignment = MFDTheme.AC,
-                    RotationOrScale = (float)Math.PI
-                };
-                frame.Add(headingIndicator);
+                SpriteHelpers.Sp(frame, "Triangle", centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)Math.PI);
 
                 // Digital heading readout box
                 float headingBoxWidth = 50f;
                 float headingBoxHeight = 22f;
                 float headingBoxY = compassY + compassHeight / 2f + 20f;
 
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = new Vector2(centerX, headingBoxY + headingBoxHeight / 2f),
-                    Size = new Vector2(headingBoxWidth, headingBoxHeight),
-                    Color = new Color(0, 0, 0, 128),
-                    Alignment = MFDTheme.AC
-                });
+                SpriteHelpers.Bx(frame, centerX, headingBoxY + headingBoxHeight / 2f, headingBoxWidth, headingBoxHeight, new Color(0, 0, 0, 128));
                 SpriteHelpers.DrawRectangleOutline(frame, centerX - headingBoxWidth / 2f, headingBoxY,
                     headingBoxWidth, headingBoxHeight, 1f, HUD_PRIMARY);
 
                 string headingText = ((int)((heading % 360 + 360) % 360)).ToString("D3");
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = headingText,
-                    Position = new Vector2(centerX, headingBoxY + 1f),
-                    RotationOrScale = 0.65f,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC,
-                    FontId = FONT
-                });
+                SpriteHelpers.Tt(frame, headingText, centerX, headingBoxY + 1f, 0.65f, HUD_PRIMARY);
             }
 
             private string GetCompassDirection(double heading)
@@ -276,16 +163,7 @@ namespace IngameScript
                 float digitalAltBoxHeight = 30f;
                 float digitalAltBoxX = tapeLineX - tapeNumberMargin - digitalAltBoxWidth;
 
-                var tapeLine = new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = new Vector2(tapeLineX, centerY),
-                    Size = new Vector2(tapeWidth, TAPE_HEIGHT_PIXELS),
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC
-                };
-                frame.Add(tapeLine);
+                SpriteHelpers.Bx(frame, tapeLineX, centerY, tapeWidth, TAPE_HEIGHT_PIXELS, HUD_PRIMARY);
 
                 float tapeTopAlt = (float)currentAltitude + (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
                 float tapeBottomAlt = (float)currentAltitude - (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
@@ -308,32 +186,13 @@ namespace IngameScript
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
                         if (altMark >= 0)
                         {
-                            var tickMark = new MySprite()
-                            {
-                                Type = MFDTheme.TX,
-                                Data = MFDTheme.SQ,
-                                Position = new Vector2(tapeLineX - currentTickLength / 2f, yPos),
-                                Size = new Vector2(currentTickLength, tapeWidth),
-                                Color = HUD_PRIMARY,
-                                Alignment = MFDTheme.AC
-                            };
-                            frame.Add(tickMark);
+                            SpriteHelpers.Bx(frame, tapeLineX - currentTickLength / 2f, yPos, currentTickLength, tapeWidth, HUD_PRIMARY);
                         }
 
                         if (isMajorTick)
                         {
                             string altText = altMark.ToString("F0");
-                            var numberLabel = new MySprite()
-                            {
-                                Type = MFDTheme.TT,
-                                Data = altText,
-                                Position = new Vector2(tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f),
-                                RotationOrScale = 0.5f,
-                                Color = HUD_PRIMARY,
-                                Alignment = MFDTheme.AR,
-                                FontId = FONT
-                            };
-                            frame.Add(numberLabel);
+                            SpriteHelpers.Tt(frame, altText, tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AR);
                         }
                     }
                 }
@@ -341,57 +200,20 @@ namespace IngameScript
                 // Semi-transparent background behind altitude box
                 float altBoxTopLeftX = digitalAltBoxX - 20;
                 float altBoxTopLeftY = centerY - digitalAltBoxHeight - 225 / 2f;
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TX,
-                    Data = MFDTheme.SQ,
-                    Position = new Vector2(altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f),
-                    Size = new Vector2(digitalAltBoxWidth, digitalAltBoxHeight),
-                    Color = new Color(0, 0, 0, 128),
-                    Alignment = MFDTheme.AC
-                });
+                SpriteHelpers.Bx(frame, altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, new Color(0, 0, 0, 128));
 
                 SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentAltitudeText = currentAltitude.ToString("F0");
-                var altitudeLabel = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = currentAltitudeText,
-                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140),
-                    RotationOrScale = 0.8f,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AC,
-                    FontId = FONT
-                };
-                frame.Add(altitudeLabel);
+                SpriteHelpers.Tt(frame, currentAltitudeText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140, 0.8f, HUD_PRIMARY);
 
-                var caret = new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = "<",
-                    Position = new Vector2(digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f),
-                    RotationOrScale = 0.5f,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AL,
-                    FontId = FONT
-                };
-                frame.Add(caret);
+                SpriteHelpers.Tt(frame, "<", digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AL);
 
                 // VVI (Vertical Velocity Indicator) below altitude box
                 Color vviColor = Math.Abs(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
                 string vviArrow = verticalVelocity > 1 ? "\u25B2" : verticalVelocity < -1 ? "\u25BC" : "\u25C6";
                 string vviText = $"{vviArrow} {verticalVelocity:F0}";
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = vviText,
-                    Position = new Vector2(digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f),
-                    RotationOrScale = 0.5f,
-                    Color = vviColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = FONT
-                });
+                SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
             }
 
             private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
@@ -401,28 +223,10 @@ namespace IngameScript
                 const float LINE_HEIGHT = 20f;
 
                 string gForceText = $"G: {gForces:F1}";
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = gForceText,
-                    Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AL,
-                    FontId = MFDTheme.FONT_W
-                });
+                SpriteHelpers.Tt(frame, gForceText, PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
 
                 string peakGText = $"Max G: {peakGForce:F1}";
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = peakGText,
-                    Position = new Vector2(PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT * 2),
-                    RotationOrScale = TEXT_SCALE,
-                    Color = HUD_PRIMARY,
-                    Alignment = MFDTheme.AL,
-                    FontId = MFDTheme.FONT_W
-                });
+                SpriteHelpers.Tt(frame, peakGText, PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
             }
 
             private void DrawAOAIndexer(MySpriteDrawFrame frame, double aoa, Vector3D acceleration, double velocity)
@@ -471,17 +275,7 @@ namespace IngameScript
                 {
                     indexerColor = HUD_PRIMARY;
                     spriteType = "Triangle";
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = spriteType,
-                        Position = new Vector2(INDEXER_X, indexerY),
-                        Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
-                        RotationOrScale = 0f,
-                        Color = indexerColor,
-                        Alignment = MFDTheme.AC
-                    });
+                    SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor);
                 }
                 else if (aoa > OPTIMAL_AOA_MAX)
                 {
@@ -496,31 +290,12 @@ namespace IngameScript
                         indexerColor = HUD_WARNING;
 
                     spriteType = "Triangle";
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = spriteType,
-                        Position = new Vector2(INDEXER_X, indexerY),
-                        Size = new Vector2(SYMBOL_SIZE, SYMBOL_SIZE),
-                        RotationOrScale = MathHelper.Pi,
-                        Color = indexerColor,
-                        Alignment = MFDTheme.AC
-                    });
+                    SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor, MathHelper.Pi);
                 }
                 else
                 {
                     indexerColor = HUD_EMPHASIS;
-
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = TEXTURE_CIRCLE_SOLID,
-                        Position = new Vector2(INDEXER_X, indexerY),
-                        Size = new Vector2(SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f),
-                        Color = indexerColor,
-                        Alignment = MFDTheme.AC
-                    });
+                    SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, INDEXER_X, indexerY, SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f, indexerColor);
                 }
 
                 // Draw stall warning indicators
@@ -536,21 +311,9 @@ namespace IngameScript
                 string energySymbol = energyRate > 5 ? "+" : energyRate < -5 ? "-" : "=";
                 Color energyColor = energyRate > 5 ? HUD_PRIMARY : energyRate < -5 ? HUD_WARNING : HUD_EMPHASIS;
 
-                frame.Add(new MySprite()
-                {
-                    Type = MFDTheme.TT,
-                    Data = $"E{energySymbol}",
-                    Position = new Vector2(INDEXER_X, indexerY + 25f),
-                    RotationOrScale = 0.5f,
-                    Color = energyColor,
-                    Alignment = MFDTheme.AC,
-                    FontId = MFDTheme.FONT
-                });
+                SpriteHelpers.Tt(frame, $"E{energySymbol}", INDEXER_X, indexerY + 25f, 0.5f, energyColor);
             }
 
-            /// <summary>
-            /// Draws stall warning overlays based on severity level.
-            /// </summary>
             private void DrawStallWarning(MySpriteDrawFrame frame, int level, double currentAoA)
             {
 
@@ -588,29 +351,11 @@ namespace IngameScript
                 if (level < 3 || flash) // Always show for caution/warning, flash for stall
                 {
                     // Warning text
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = warningText,
-                        Position = new Vector2(center.X, textY),
-                        RotationOrScale = textScale,
-                        Color = warningColor,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT_W
-                    });
+                    SpriteHelpers.Tt(frame, warningText, center.X, textY, textScale, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
 
                     // AoA value
                     string aoaText = $"{currentAoA:F1}\u00B0";
-                    frame.Add(new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = aoaText,
-                        Position = new Vector2(center.X, textY + 25f),
-                        RotationOrScale = 0.7f,
-                        Color = warningColor,
-                        Alignment = MFDTheme.AC,
-                        FontId = MFDTheme.FONT
-                    });
+                    SpriteHelpers.Tt(frame, aoaText, center.X, textY + 25f, 0.7f, warningColor);
                 }
 
                 // Draw AoA bracket highlights for stall
@@ -659,29 +404,8 @@ namespace IngameScript
                     string labelText = extraValues[i].Label;
                     double numericValue = extraValues[i].Value;
 
-                    var labelSprite = new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = labelText,
-                        Position = new Vector2(labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
-                        RotationOrScale = TEXT_SCALE,
-                        Color = HUD_PRIMARY,
-                        Alignment = MFDTheme.AL,
-                        FontId = MFDTheme.FONT_W
-                    };
-                    frame.Add(labelSprite);
-
-                    var valueSprite = new MySprite()
-                    {
-                        Type = MFDTheme.TT,
-                        Data = numericValue.ToString("F1"),
-                        Position = new Vector2(numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE),
-                        RotationOrScale = TEXT_SCALE,
-                        Color = HUD_PRIMARY,
-                        Alignment = MFDTheme.AR,
-                        FontId = MFDTheme.FONT_W
-                    };
-                    frame.Add(valueSprite);
+                    SpriteHelpers.Tt(frame, labelText, labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(frame, numericValue.ToString("F1"), numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AR, MFDTheme.FONT_W);
                 }
             }
 
@@ -690,96 +414,30 @@ namespace IngameScript
                 double throttle
             )
             {
-                DrawThrottleBarWithBox(
-                    frame,
-                    hud,
-                    (float)throttle / 100,
-                    new Vector2(5, hud.SurfaceSize.Y - 30f - 140),
-                    80,
-                    8,
-                    0.75f
-                );
-            }
+                float t = (float)throttle / 100f;
 
-            private void DrawThrottleBarWithBox(
-                MySpriteDrawFrame frame,
-                IMyTextSurface surface,
-                float throttle,
-                Vector2 position,
-                float boxPadding,
-                float maxWidth,
-                float barHeight,
-                Color barColor = default(Color),
-                Color boxColor = default(Color),
-                float lineThickness = 2f
-            )
-            {
-                barColor = barColor == default(Color) ? Color.Lime : barColor;
-                boxColor = boxColor == default(Color) ? Color.Lime : boxColor;
+                const float BAR_W = 14f;
+                const float BAR_H = 100f;
+                const float BORDER = 1.5f;
 
-                Vector2 boxSize = new Vector2(
-                    maxWidth + boxPadding * 1f,
-                    barHeight + boxPadding * 1.5f
-                );
-                boxSize.X = boxSize.X / 4;
+                float barX = 5f;
+                float barY = hud.SurfaceSize.Y - 170f;
+                float cx = barX + BAR_W / 2f;
 
-                Vector2 boxTopLeft = position;
+                // Track outline
+                SpriteHelpers.DrawRectangleOutline(frame, barX, barY, BAR_W, BAR_H, BORDER, HUD_PRIMARY);
 
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = boxTopLeft + new Vector2(0, lineThickness / 2),
-                        Size = new Vector2(boxSize.X, lineThickness),
-                        Color = boxColor
-                    }
-                );
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = boxTopLeft + new Vector2(0, boxSize.Y - lineThickness / 2),
-                        Size = new Vector2(boxSize.X, lineThickness),
-                        Color = boxColor
-                    }
-                );
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = boxTopLeft + new Vector2(lineThickness / 2, boxSize.Y / 2),
-                        Size = new Vector2(lineThickness, boxSize.Y),
-                        Color = boxColor
-                    }
-                );
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = boxTopLeft + new Vector2(boxSize.X - lineThickness / 2, boxSize.Y / 2),
-                        Size = new Vector2(lineThickness, boxSize.Y),
-                        Color = boxColor
-                    }
-                );
+                // Fill from bottom
+                float fillH = BAR_H * t;
+                if (fillH > 1f)
+                {
+                    Color fillColor = hydrogenswitch ? HUD_EMPHASIS : HUD_PRIMARY;
+                    SpriteHelpers.Bx(frame, cx, barY + BAR_H - fillH / 2f, BAR_W - 2f, fillH, fillColor);
+                }
 
-                float filledHeight = barHeight * throttle;
-                Vector2 filledSize = new Vector2(maxWidth * 100, filledHeight * boxSize.Y * 1.25f);
-                barColor = hydrogenswitch ? HUD_EMPHASIS : HUD_PRIMARY;
-
-                frame.Add(
-                    new MySprite()
-                    {
-                        Type = MFDTheme.TX,
-                        Data = MFDTheme.SQ,
-                        Position = boxTopLeft + new Vector2(0, (boxSize.Y - boxPadding / 33 - lineThickness / 2 - filledSize.Y / 2) * 1.025f),
-                        Size = new Vector2(boxSize.X, filledSize.Y * 1.05f),
-                        Color = barColor
-                    }
-                );
+                // MIL gate marker at 80%
+                float milY = barY + BAR_H * (1f - THROTTLE_HYDROGEN_THRESHOLD);
+                SpriteHelpers.Bx(frame, cx, milY, BAR_W + 4f, 1.5f, HUD_EMPHASIS);
             }
 
         }
