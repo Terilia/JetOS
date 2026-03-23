@@ -144,8 +144,8 @@ namespace IngameScript
                 MFDFrame.Txt(frame, rangeText, textX, textY, 0.8f, MFDTheme.ACCENT);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
-                string closureText = $"{Math.Abs(closureRate):F0} {closureLabel}";
-                Color closureColor = closureRate > 10 ? MFDTheme.WARN : closureRate < -10 ? new Color(80, 110, 200) : MFDTheme.DIM_TEXT_MID;
+                string closureText = $"{Ab(closureRate):F0} {closureLabel}";
+                Color closureColor = closureRate > 10 ? MFDTheme.WARN : closureRate < -10 ? Cr(80, 110, 200) : MFDTheme.DIM_TEXT_MID;
                 MFDFrame.Txt(frame, closureText, rightX, textY, 0.65f, closureColor, MFDTheme.AR);
 
                 textY += 20f;
@@ -198,7 +198,7 @@ namespace IngameScript
 
                         float segH = runIsOk ? height - 2f : (height - 2f) * 0.5f;
                         float segY = runIsOk ? y + 1f + segH / 2f : y + height - 1f - segH / 2f;
-                        Color segC = runIsOk ? MFDTheme.ACCENT : new Color(180, 50, 40);
+                        Color segC = runIsOk ? MFDTheme.ACCENT : Cr(180, 50, 40);
 
                         MFDFrame.Rect(frame, segX + segW / 2f, segY, segW, segH, segC);
 
@@ -218,9 +218,9 @@ namespace IngameScript
 
                 float bottomReserve = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 45f) : 10f;
                 int maxRows = (int)((contentBot - startY - bottomReserve) / LINE_HEIGHT);
-                maxRows = Math.Min(maxRows, 10);
+                maxRows = Mn(maxRows, 10);
 
-                for (int i = 0; i < Math.Min(maxRows, enemies.Count); i++)
+                for (int i = 0; i < Mn(maxRows, enemies.Count); i++)
                 {
                     var contact = enemies[i];
                     bool isSelected = IsContactSelected(contact, selected);
@@ -310,7 +310,7 @@ namespace IngameScript
 
                 activeMissiles.RemoveAll(m => (totalElapsedTime - m.LaunchTime).TotalSeconds > m.EstimatedTOF + 5);
 
-                for (int i = 0; i < Math.Min(5, activeMissiles.Count); i++)
+                for (int i = 0; i < Mn(5, activeMissiles.Count); i++)
                 {
                     var missile = activeMissiles[i];
                     double timeRemaining = missile.EstimatedTOF - (totalElapsedTime - missile.LaunchTime).TotalSeconds;
@@ -335,11 +335,11 @@ namespace IngameScript
 
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
-                float viewportMin = Math.Min(surfaceSize.X, surfaceSize.Y);
+                float viewportMin = Mn(surfaceSize.X, surfaceSize.Y);
 
                 float coneRadius = viewportMin * 0.25f;
 
-                SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, new Color(100, 100, 100, 150), 2f);
+                SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, Cr(100, 100, 100, 150), 2f);
 
                 string statusText = "GUN AUTO-TRACK";
                 Color statusColor = HUD_PRIMARY;
@@ -352,10 +352,10 @@ namespace IngameScript
 
                 SpriteHelpers.Tt(frame, statusText, center.X, center.Y - coneRadius - 30f, 0.6f, statusColor, MFDTheme.AC, MFDTheme.FONT_W);
 
-                Vector2 leftIndicatorPos = new Vector2(center.X - coneRadius - 40f, center.Y);
+                Vector2 leftIndicatorPos = V2(center.X - coneRadius - 40f, center.Y);
                 DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking, gunControl.IsLeftCalibrating);
 
-                Vector2 rightIndicatorPos = new Vector2(center.X + coneRadius + 40f, center.Y);
+                Vector2 rightIndicatorPos = V2(center.X + coneRadius + 40f, center.Y);
                 DrawTurretIndicator(frame, rightIndicatorPos, "R", gunControl.IsRightTracking, gunControl.IsRightCalibrating);
 
                 if (gunControl.IsLeftTracking && gunControl.IsRightTracking)
@@ -386,19 +386,19 @@ namespace IngameScript
 
                 if (isCalibrating)
                 {
-                    bgColor = new Color(100, 100, 0, 200);
+                    bgColor = Cr(100, 100, 0, 200);
                     textColor = HUD_EMPHASIS;
                     statusChar = "?";
                 }
                 else if (isLocked)
                 {
-                    bgColor = new Color(0, 100, 0, 200);
+                    bgColor = Cr(0, 100, 0, 200);
                     textColor = MFDTheme.ACCENT;
                     statusChar = "X";
                 }
                 else
                 {
-                    bgColor = new Color(30, 30, 30, 200);
+                    bgColor = Cr(30, 30, 30, 200);
                     textColor = MFDTheme.DIM_TEXT_MID;
                     statusChar = "O";
                 }

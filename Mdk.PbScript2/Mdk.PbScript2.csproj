@@ -34,6 +34,9 @@
       <Compile Remove="Diagnostics\**" />
       <None Include="Diagnostics\**" />
       <Compile Remove="UI\StartupSequence.cs" />
+      <Compile Remove="Utilities\TerrainAPI.cs" />
+      <Compile Remove="Modules\TerrainMapModule.cs" />
+      <Compile Remove="UI\TerrainRenderer.cs" />
     </ItemGroup>
 
 </Project>

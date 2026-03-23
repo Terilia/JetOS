@@ -22,7 +22,7 @@ namespace IngameScript
                 float padX = sw * 0.019f;
                 float headerH = sh * 0.069f;
                 float footerH = sh * 0.054f;
-                float cornerLen = Math.Min(sw, sh) * 0.03f;
+                float cornerLen = Mn(sw, sh) * 0.03f;
                 float topOffset = 15f;
                 float titleScale = sh * 0.00085f;
                 float smallScale = sh * 0.00069f;
@@ -95,7 +95,7 @@ namespace IngameScript
             public static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
             {
                 f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
-                    Position = new Vector2(cx, cy), Size = new Vector2(w, h),
+                    Position = V2(cx, cy), Size = V2(w, h),
                     Color = c, Alignment = MFDTheme.AC });
             }
 
@@ -103,7 +103,7 @@ namespace IngameScript
                 TextAlignment a = MFDTheme.AL)
             {
                 f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
-                    Position = new Vector2(x, y), RotationOrScale = s,
+                    Position = V2(x, y), RotationOrScale = s,
                     Color = c, Alignment = a, FontId = MFDTheme.FONT });
             }
         }

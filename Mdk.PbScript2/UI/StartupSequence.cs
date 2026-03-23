@@ -85,7 +85,7 @@ namespace IngameScript
                 // Logo breathes
                 int a = (int)(170 + 50 * Sn(waitT * 0.04));
                 Tx(f, MFDTheme.NC, cx, cy - 22f, 0.85f, new Color(138, 122, 80, a));
-                Tx(f, "TACTICAL SYSTEM", cx, cy + 6f, 0.38f, new Color(74, 122, 74, a / 2));
+                Tx(f, "JetOS", cx, cy + 6f, 0.38f, new Color(74, 122, 74, a / 2));
                 // Prompt pulses
                 Tx(f, "PRESS KEY", cx, cy + 44f, 0.42f,
                     new Color(64, 160, 64, (int)(90 + 110 * Sn(waitT * 0.07))));
@@ -173,7 +173,7 @@ namespace IngameScript
                     }
                     Tx(f, $"{(int)(load * 100)}%", cx + bw / 2f + 14f, by - 4f, 0.32f,
                         new Color(64, 160, 64, ba));
-                    Tx(f, "Initializing" + new string('.', (int)(la / 8) % 4),
+                    Tx(f, "Init" + new string('.', (int)(la / 8) % 4),
                         cx, by + 14f, 0.28f, new Color(42, 74, 42, ba));
                 }
 
@@ -213,7 +213,7 @@ namespace IngameScript
                     // System online
                     float rp = Sm(Cl((chrome - 0.55f) / 0.45f, 0f, 1f));
                     if (rp > 0f)
-                        Tx(f, "SYSTEM ONLINE", cx, cy, 0.6f, new Color(64, 160, 64, (int)(255 * rp)));
+                        Tx(f, "ONLINE", cx, cy, 0.6f, new Color(64, 160, 64, (int)(255 * rp)));
                 }
                 f.Dispose();
             }

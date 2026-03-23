@@ -111,7 +111,7 @@ namespace IngameScript
                     // p1 not yet initialized (still at default zero) — no valid velocity yet.
                     // Without two real position samples, velocity would be
                     // (realPos - ZeroVector) / time = wildly wrong.
-                    if (time1 <= 0) return Vector3D.Zero;
+                    if (time1 <= 0) return VZ;
 
                     Vector3D pos1 = p1.Position;
                     Vector3D pos0 = p0.Position;
@@ -119,7 +119,7 @@ namespace IngameScript
 
                     //Calculates protecting against zero time errors (would give NaN)
                     double dt = time0 - time1;
-                    if (dt <= 0) return Vector3D.Zero;
+                    if (dt <= 0) return VZ;
 
                     // Timestamps are in TimeSpan ticks (10,000,000 per second), convert to seconds
                     double dtSeconds = dt / 10000000.0;

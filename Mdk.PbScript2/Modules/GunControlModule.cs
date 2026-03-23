@@ -42,7 +42,7 @@ namespace IngameScript
 
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
-            private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)Math.PI / 180f;
+            private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)PI / 180f;
             private const int INTERCEPT_ITERATIONS = 10;
 
             // --- Configurable (read from config) ---
@@ -315,7 +315,7 @@ namespace IngameScript
                         Vector3D driftCross = VX(flatCurFwd, lastFwd);
                         double driftAngle = At2(driftCross.Length(), VD(flatCurFwd, lastFwd));
                         driftAngle *= Math.Sign(VD(driftCross, lastUp));
-                        yawFeedforward = (float)(driftAngle * 3600.0 / (2.0 * Math.PI));
+                        yawFeedforward = (float)(driftAngle * 3600.0 / (2.0 * PI));
                     }
 
                     // Pitch drift: similar for elevation axis
@@ -326,7 +326,7 @@ namespace IngameScript
                         Vector3D elevCross = VX(flatCurFwdElev, lastFwd);
                         double elevAngle = At2(elevCross.Length(), VD(flatCurFwdElev, lastFwd));
                         elevAngle *= Math.Sign(VD(elevCross, lastLeft));
-                        pitchFeedforward = (float)(elevAngle * turret.ElevationSign * 3600.0 / (2.0 * Math.PI));
+                        pitchFeedforward = (float)(elevAngle * turret.ElevationSign * 3600.0 / (2.0 * PI));
                     }
                 }
                 turret.LastShipMatrix = currentShipMatrix;
@@ -337,21 +337,21 @@ namespace IngameScript
                 float pitchCmd = Cl(KP * pitchDeg + pitchFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
 
                 // Deadband: zero out when close enough to prevent jitter
-                if (Math.Abs(yawDeg) < 0.5f && Math.Abs(pitchDeg) < 0.5f
-                    && Math.Abs(yawFeedforward) < 0.5f && Math.Abs(pitchFeedforward) < 0.5f)
+                if (Ab(yawDeg) < 0.5f && Ab(pitchDeg) < 0.5f
+                    && Ab(yawFeedforward) < 0.5f && Ab(pitchFeedforward) < 0.5f)
                 {
                     yawCmd = 0f;
                     pitchCmd = 0f;
                 }
 
                 // Conditional writes: only set RPM if value actually changed (avoids network sync)
-                if (Math.Abs(turret.Rotor.TargetVelocityRPM - yawCmd) > 0.01f)
+                if (Ab(turret.Rotor.TargetVelocityRPM - yawCmd) > 0.01f)
                     turret.Rotor.TargetVelocityRPM = yawCmd;
-                if (Math.Abs(turret.Hinge.TargetVelocityRPM - pitchCmd) > 0.01f)
+                if (Ab(turret.Hinge.TargetVelocityRPM - pitchCmd) > 0.01f)
                     turret.Hinge.TargetVelocityRPM = pitchCmd;
 
-                turret.YawError = Math.Abs(yawDeg);
-                turret.PitchError = Math.Abs(pitchDeg);
+                turret.YawError = Ab(yawDeg);
+                turret.PitchError = Ab(pitchDeg);
             }
 
             private void TrackTarget(TurretAssembly turret, List<Jet.EnemyContact> enemies)
@@ -372,8 +372,8 @@ namespace IngameScript
 
                 // Find closest enemy within cone of ship's forward (fixed cone, not gun's moving forward)
                 Vector3D? bestTargetPos = null;
-                Vector3D bestTargetVel = Vector3D.Zero;
-                Vector3D bestTargetAccel = Vector3D.Zero;
+                Vector3D bestTargetVel = VZ;
+                Vector3D bestTargetAccel = VZ;
                 double bestDistance = double.MaxValue;
 
                 for (int i = 0; i < enemies.Count; i++)

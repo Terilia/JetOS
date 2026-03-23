@@ -53,7 +53,7 @@ namespace IngameScript
                 public float MaxValue;
                 public float StepSize;
                 public string Unit;
-                public bool IsModified => Math.Abs(Value - DefaultValue) > 0.0001f;
+                public bool IsModified => Ab(Value - DefaultValue) > 0.0001f;
 
                 public ConfigParam(string category, string name, string displayName, float defaultValue,
                                  float minValue, float maxValue, float stepSize, string unit = "")
@@ -71,7 +71,7 @@ namespace IngameScript
 
                 public void Adjust(int direction)
                 {
-                    Value = Math.Max(MinValue, Math.Min(MaxValue, Value + direction * StepSize));
+                    Value = Mx(MinValue, Mn(MaxValue, Value + direction * StepSize));
                 }
 
                 public void Reset()

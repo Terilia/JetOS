@@ -74,7 +74,7 @@ namespace IngameScript
                     PositionHistory = new List<Vector3D>();
                     for (int i = 0; i < 10; i++)
                     {
-                        PositionHistory.Add(Vector3D.Zero);
+                        PositionHistory.Add(VZ);
                     }
                 }
 
@@ -82,7 +82,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < PositionHistory.Count; i++)
                     {
-                        PositionHistory[i] = Vector3D.Zero;
+                        PositionHistory[i] = VZ;
                     }
                     HistoryIndex = 0;
                 }
@@ -142,12 +142,12 @@ namespace IngameScript
                 }
 
                 // Load RWR config from CustomData
-                int maxRWR = Math.Max(0, allRadars.Count - 1);
+                int maxRWR = Mx(0, allRadars.Count - 1);
                 string savedCount = SystemManager.GetCustomDataValue("RWRCount");
                 int count;
                 if (!string.IsNullOrEmpty(savedCount) && int.TryParse(savedCount, out count))
                 {
-                    configuredRWRCount = Math.Max(0, Math.Min(count, maxRWR));
+                    configuredRWRCount = Mx(0, Mn(count, maxRWR));
                 }
                 else
                 {
@@ -665,7 +665,7 @@ namespace IngameScript
 
             private int GetSweepTrackPoolSize()
             {
-                return Math.Max(0, allRadars.Count - configuredRWRCount);
+                return Mx(0, allRadars.Count - configuredRWRCount);
             }
 
             private void ReassignRoles()
@@ -705,7 +705,7 @@ namespace IngameScript
                 {
                     return allRadars.Count;
                 }
-                return Math.Min(configuredRWRCount, allRadars.Count);
+                return Mn(configuredRWRCount, allRadars.Count);
             }
 
             private int GetRWRRadarIndex(int rwrIndex)

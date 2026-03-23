@@ -1,3 +1,6 @@
+using VRage.Game.GUI.TextPanel;
+using VRageMath;
+
 namespace IngameScript
 {
     partial class Program
@@ -12,6 +15,9 @@ namespace IngameScript
             public string name = "program";
             public abstract string[] GetOptions();
             public abstract void ExecuteOption(int index);
+            // Override to take over the main MFD screen with custom rendering
+            public virtual bool HasCustomScreen => false;
+            public virtual void RenderCustomScreen(MySpriteDrawFrame frame, RectangleF area) { }
             public virtual void HandleSpecialFunction(int key) { }
             public virtual void Tick() { }
             public virtual string GetHotkeys()

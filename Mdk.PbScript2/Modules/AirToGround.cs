@@ -41,7 +41,7 @@ namespace IngameScript
 
                     if (oldArray != null)
                     {
-                        int copyLength = Math.Min(oldArray.Length, baySelected.Length);
+                        int copyLength = Mn(oldArray.Length, baySelected.Length);
                         for (int i = 0; i < copyLength; i++)
                         {
                             baySelected[i] = oldArray[i];

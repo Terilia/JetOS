@@ -24,15 +24,17 @@ namespace IngameScript
                 List<MySprite> sprites = _horizonSprites;
                 sprites.Clear();
 
-                for (int i = -90; i <= 90; i += 5)
+                // Compute visible pitch range — typically ~5 lines instead of 36 iterations
+                float halfVisibleDeg = (hud.SurfaceSize.Y / 2f + 100f) / pixelsPerDegree;
+                int loopMin = Mx(-90, (int)Math.Floor((pitch - halfVisibleDeg) / 5f) * 5);
+                int loopMax = Mn(90, (int)Math.Ceiling((pitch + halfVisibleDeg) / 5f) * 5);
+
+                for (int i = loopMin; i <= loopMax; i += 5)
                 {
                     if (i == 0)
                         continue;
 
                     float markerY = centerY - (i - pitch) * pixelsPerDegree;
-
-                    if (markerY < -100 || markerY > hud.SurfaceSize.Y + 100)
-                        continue;
 
                     bool isPositive = (i > 0);
 
@@ -66,7 +68,7 @@ namespace IngameScript
 
                     float tipLength = 12f;
 
-                    string label = Math.Abs(i).ToString();
+                    string label = Ab(i).ToString();
                     float labelOffsetX = halfWidth + tipLength + 10f;
 
                     sprites.Add(SpriteHelpers.FTt(label, centerX - labelOffsetX, markerY + 10f, 0.8f, lineColor, MFDTheme.AR, MFDTheme.FONT_W));
@@ -85,14 +87,14 @@ namespace IngameScript
                 {
                     MySprite sprite = sprites[s];
                     Vector2 pos = sprite.Position ?? Vector2.Zero;
-                    Vector2 offset = pos - new Vector2(centerX, centerY);
+                    Vector2 offset = pos - V2(centerX, centerY);
 
-                    Vector2 rotated = new Vector2(
+                    Vector2 rotated = V2(
                         offset.X * cosRoll - offset.Y * sinRoll,
                         offset.X * sinRoll + offset.Y * cosRoll
                     );
 
-                    sprite.Position = rotated + new Vector2(centerX, centerY);
+                    sprite.Position = rotated + V2(centerX, centerY);
 
                     if (sprite.Type == MFDTheme.TX)
                     {
@@ -115,14 +117,14 @@ namespace IngameScript
                 float refThickness = 2.5f;
                 Color refColor = HUD_EMPHASIS;
 
-                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX - wingSpan, centerY),
-                    new Vector2(centerX - innerSpan, centerY), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX - innerSpan, centerY),
-                    new Vector2(centerX, centerY + dipDepth), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX, centerY + dipDepth),
-                    new Vector2(centerX + innerSpan, centerY), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, new Vector2(centerX + innerSpan, centerY),
-                    new Vector2(centerX + wingSpan, centerY), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, V2(centerX - wingSpan, centerY),
+                    V2(centerX - innerSpan, centerY), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, V2(centerX - innerSpan, centerY),
+                    V2(centerX, centerY + dipDepth), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, V2(centerX, centerY + dipDepth),
+                    V2(centerX + innerSpan, centerY), refThickness, refColor);
+                SpriteHelpers.AddLineSprite(frame, V2(centerX + innerSpan, centerY),
+                    V2(centerX + wingSpan, centerY), refThickness, refColor);
             }
 
             private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
@@ -137,21 +139,25 @@ namespace IngameScript
                 foreach (int angle in bankAngles)
                 {
                     float angleRad = ToRad(angle);
-                    Vector2 tickPos = new Vector2((float)Sn(angleRad) * horizonRadius, -(float)Cs(angleRad) * horizonRadius);
+                    Vector2 tickPos = V2((float)Sn(angleRad) * horizonRadius, -(float)Cs(angleRad) * horizonRadius);
 
-                    Vector2 rotatedTick = new Vector2(
+                    Vector2 rotatedTick = V2(
                         tickPos.X * cosRoll - tickPos.Y * sinRoll,
                         tickPos.X * sinRoll + tickPos.Y * cosRoll
                     );
 
-                    Vector2 finalPos = new Vector2(centerX, centerY) + rotatedTick;
+                    Vector2 finalPos = V2(centerX, centerY) + rotatedTick;
 
-                    bool isMajor = (Math.Abs(angle) % 30 == 0);
+                    bool isMajor = (Ab(angle) % 30 == 0);
                     float tickLength = isMajor ? 8f : 5f;
                     Color tickColor = isMajor ? HUD_EMPHASIS : HUD_SECONDARY;
 
                     SpriteHelpers.Bx(frame, finalPos.X, finalPos.Y, 2f, tickLength, tickColor, angleRad + rollRad);
                 }
+
+                // Roll pointer — fixed index triangle at 12 o'clock of bank arc
+                // Doesn't rotate; the bank ticks slide past it to indicate current roll
+                SpriteHelpers.Sp(frame, "Triangle", centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY, (float)PI);
             }
 
             private void DrawFlightPathMarker(
@@ -178,19 +184,28 @@ namespace IngameScript
 
                 // Only draw when velocity has a forward component
                 if (localVelocity.Z >= 0) return;
-                if (Math.Abs(localVelocity.Z) < MIN_Z_FOR_PROJECTION)
+                if (Ab(localVelocity.Z) < MIN_Z_FOR_PROJECTION)
                     localVelocity.Z = -MIN_Z_FOR_PROJECTION;
 
                 Vector2 surfaceSize = hud.SurfaceSize;
-                Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, new Vector2(centerX, centerY), surfaceSize);
+                Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, V2(centerX, centerY), surfaceSize);
 
                 SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, markerPosition.X, markerPosition.Y, MarkerSize, MarkerSize, Color.White);
+
+                // Boresight-to-FPM connector — only when FPM is off-screen
+                bool fpmOnScreen = markerPosition.X >= 0 && markerPosition.X <= surfaceSize.X &&
+                                   markerPosition.Y >= 0 && markerPosition.Y <= surfaceSize.Y;
+                if (!fpmOnScreen)
+                {
+                    Vector2 boresight = V2(centerX, centerY);
+                    SpriteHelpers.AddLineSprite(frame, boresight, markerPosition, 1f, Cr(Color.White, 0.35f));
+                }
 
                 // Wings counter-rotate by roll to stay horizon-aligned (like a real F-18 FPM)
                 float rollRad = ToRad((float)roll);
 
-                Vector2 leftWingOffset = new Vector2(-WingLength / 2 - WingOffsetX, 0f);
-                Vector2 rightWingOffset = new Vector2(WingLength / 2 + WingOffsetX, 0f);
+                Vector2 leftWingOffset = V2(-WingLength / 2 - WingOffsetX, 0f);
+                Vector2 rightWingOffset = V2(WingLength / 2 + WingOffsetX, 0f);
 
                 Vector2 rotatedLeftWingOffset = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
                 Vector2 rotatedRightWingOffset = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);

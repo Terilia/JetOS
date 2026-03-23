@@ -54,14 +54,14 @@ namespace IngameScript
                     lcdWeapons.BackgroundColor = Color.Black;
                     lcdWeapons.ScriptBackgroundColor = Color.Black;
                     lcdWeapons.ScriptForegroundColor = Color.White;
-                    lcdWeapons.FontColor = new Color(25, 217, 140, 255);
+                    lcdWeapons.FontColor = Cr(25, 217, 140, 255);
                     lcdWeapons.FontSize = 0.1f;
                     lcdWeapons.TextPadding = 0f;
                     lcdWeapons.Alignment = MFDTheme.AC;
 
                     for (int i = 0; i < 3; i++)
                     {
-                        cockpit.GetSurface(i).FontColor = new Color(25, 217, 140, 255);
+                        cockpit.GetSurface(i).FontColor = Cr(25, 217, 140, 255);
                     }
                 }
 
@@ -72,6 +72,7 @@ namespace IngameScript
                 // Initialize subsystems
                 CustomDataManager.Initialize(program.Me);
                 SoundManager.Initialize(program.GridTerminalSystem);
+                TerrainData.Probe(program.Me);
 
                 // Initialize centralized radar control FIRST
                 radarControlModule = new RadarControlModule(parentProgram, _myJet);
@@ -91,6 +92,8 @@ namespace IngameScript
 
                 gunControlModule = new GunControlModule(parentProgram, _myJet);
                 modules.Add(gunControlModule);
+
+                modules.Add(new TerrainModule(parentProgram, _myJet));
 
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
@@ -163,9 +166,23 @@ namespace IngameScript
                 double velocityKnots = velocity * 1.94384;
                 double altitude = _myJet.GetAltitude();
 
-                // DISABLED: boot screen excluded from build to save compiled size
-                // if (StartupSequence.Tick(_myJet, velocity, argument, lcdMain, lcdExtra, lcdWeapons))
-                //     return;
+                // Terrain heightmap async loading (predictive, centered ahead of travel)
+                TerrainData.Tick(parentProgram.Me);
+                Vector3D shipVel = _myJet._cockpit != null ? _myJet._cockpit.GetShipVelocities().LinearVelocity : VZ;
+                if (_myJet.CachedGravity.LengthSquared() > 0.01
+                    && TerrainData.NeedsRefresh(cockpitPosition, shipVel))
+                {
+                    Vector3D up = VN(-_myJet.CachedGravity);
+                    Vector3D fwd = cockpitMatrix.Forward;
+                    fwd = fwd - VD(fwd, up) * up;
+                    if (fwd.LengthSquared() > 0.01) fwd = VN(fwd);
+                    // Center grid 3km ahead of travel direction for proactive coverage
+                    Vector3D flatVel = shipVel - VD(shipVel, up) * up;
+                    Vector3D center = cockpitPosition;
+                    if (flatVel.LengthSquared() > 25) // >5m/s
+                        center = cockpitPosition + VN(flatVel) * 3000;
+                    TerrainData.Request(parentProgram.Me, center, fwd);
+                }
 
                 // Altitude warning with hysteresis
                 float altWarn = GetConfigValue("altitude_warning");
@@ -250,19 +267,30 @@ namespace IngameScript
 
             private static void DisplayMenu()
             {
-                string[] options =
-                    currentModule == null ? mainMenuOptions : currentModule.GetOptions();
-                string title = currentModule == null ? "SYSTEM MENU" : currentModule.name.ToUpper();
-                uiController.RenderMainScreen(
-                    title: title,
-                    options: options,
-                    currentMenuIndex: currentMenuIndex,
-                    moduleName: currentModule != null ? currentModule.name : null,
-                    statusPanelRenderer: currentModule == null ? (Action<MySpriteDrawFrame, RectangleF>)((frame, panelArea) =>
-                    {
-                        StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick);
-                    }) : null
-                );
+                // Modules with HasCustomScreen render their own MFD page
+                if (currentModule != null && currentModule.HasCustomScreen)
+                {
+                    var size = uiController.MainScreen.SurfaceSize;
+                    uiController.RenderCustomFrame(
+                        (frame, renderArea) => currentModule.RenderCustomScreen(frame, renderArea),
+                        new RectangleF(0, 0, size.X, size.Y));
+                }
+                else
+                {
+                    string[] options =
+                        currentModule == null ? mainMenuOptions : currentModule.GetOptions();
+                    string title = currentModule == null ? "SYSTEM MENU" : currentModule.name.ToUpper();
+                    uiController.RenderMainScreen(
+                        title: title,
+                        options: options,
+                        currentMenuIndex: currentMenuIndex,
+                        moduleName: currentModule != null ? currentModule.name : null,
+                        statusPanelRenderer: (Action<MySpriteDrawFrame, RectangleF>)((frame, panelArea) =>
+                            {
+                                StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick);
+                            })
+                    );
+                }
 
                 var area = new RectangleF(0, 0, 512, 512);
                 uiController.RenderCustomExtraFrame(

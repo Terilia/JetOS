@@ -23,11 +23,11 @@ namespace IngameScript
                 Vector2 surfaceSize = hud.SurfaceSize;
 
                 // Radar box: bottom-right corner of HUD
-                Vector2 radarOrigin = new Vector2(
+                Vector2 radarOrigin = V2(
                     surfaceSize.X * 0.8f - RADAR_BORDER_MARGIN,
                     surfaceSize.Y - RADAR_BOX_SIZE_PX - RADAR_BORDER_MARGIN
                 );
-                Vector2 radarSize = new Vector2(RADAR_BOX_SIZE_PX, RADAR_BOX_SIZE_PX);
+                Vector2 radarSize = V2(RADAR_BOX_SIZE_PX, RADAR_BOX_SIZE_PX);
                 Vector2 radarCenter = radarOrigin + radarSize / 2f;
                 float radarRadius = RADAR_BOX_SIZE_PX / 2f;
 
@@ -83,7 +83,7 @@ namespace IngameScript
                         maxDist = dist;
                 }
 
-                float targetRange = Math.Max(maxDist * RADAR_RANGE_PADDING, RADAR_MIN_RANGE);
+                float targetRange = Mx(maxDist * RADAR_RANGE_PADDING, RADAR_MIN_RANGE);
                 // Smooth the range so it doesn't jump around
                 smoothedRadarRange += (targetRange - smoothedRadarRange) * RADAR_RANGE_SMOOTH;
                 float radarRange = smoothedRadarRange;
@@ -99,14 +99,14 @@ namespace IngameScript
                 float ringPx = ringRange * pixelsPerMeter;
                 if (ringPx > 5f && ringPx < radarRadius)
                 {
-                    DrawDashedCircle(frame, radarCenter, ringPx, new Color(HUD_SECONDARY, 0.35f));
+                    DrawDashedCircle(frame, radarCenter, ringPx, Cr(HUD_SECONDARY, 0.35f));
                     string ringLabel = SpriteHelpers.FormatRange(ringRange);
-                    SpriteHelpers.Tt(frame, ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, new Color(HUD_SECONDARY, 0.5f));
+                    SpriteHelpers.Tt(frame, ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, Cr(HUD_SECONDARY, 0.5f));
                 }
 
                 // Outer range label
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
-                SpriteHelpers.Tt(frame, outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, new Color(HUD_SECONDARY, 0.5f));
+                SpriteHelpers.Tt(frame, outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, Cr(HUD_SECONDARY, 0.5f));
 
                 // Player arrow (always center, pointing up)
                 SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, radarCenter.X, radarCenter.Y, radarRadius * 0.15f, radarRadius * 0.15f, HUD_PRIMARY);
@@ -124,7 +124,7 @@ namespace IngameScript
                     float dotRight = (float)VD(toTarget, yawRight);
                     float dotForward = (float)VD(toTarget, yawForward);
 
-                    Vector2 offset = new Vector2(
+                    Vector2 offset = V2(
                         dotRight * pixelsPerMeter,
                         -dotForward * pixelsPerMeter
                     );
@@ -150,11 +150,11 @@ namespace IngameScript
                     if (timeToClosest < 5)
                         contactColor = HUD_WARNING;
                     else if (timeToClosest < 15)
-                        contactColor = new Color(255, 128, 0);
+                        contactColor = Cr(255, 128, 0);
                     else if (closingSpeed > 0)
                         contactColor = HUD_EMPHASIS;
                     else
-                        contactColor = new Color(100, 100, 100);
+                        contactColor = Cr(100, 100, 100);
 
                     // Highlight selected enemy
                     bool isSelected = selectedEnemy.HasValue && enemy.Matches(selectedEnemy.Value);
@@ -167,7 +167,7 @@ namespace IngameScript
                     // Bearing line for dangerous/imminent threats
                     if (timeToClosest < 15 && closingSpeed > 0)
                     {
-                        SpriteHelpers.AddLineSprite(frame, radarCenter, pos, 1f, new Color(contactColor, 0.35f));
+                        SpriteHelpers.AddLineSprite(frame, radarCenter, pos, 1f, Cr(contactColor, 0.35f));
                     }
 
                     // Range label for close contacts that fit on radar
@@ -195,15 +195,11 @@ namespace IngameScript
 
             private static void DrawDashedCircle(MySpriteDrawFrame frame, Vector2 center, float radius, Color color)
             {
-                const int SEGMENTS = 24;
-                for (int i = 0; i < SEGMENTS; i += 2)
+                // Uses precomputed trig table — eliminates 24 sin/cos calls per frame
+                for (int i = 0; i < SpriteHelpers.CIRC_SEGS; i += 2)
                 {
-                    float a1 = (i / (float)SEGMENTS) * MathHelper.TwoPi;
-                    float a2 = ((i + 1) / (float)SEGMENTS) * MathHelper.TwoPi;
-
-                    Vector2 p1 = center + new Vector2((float)Cs(a1) * radius, (float)Sn(a1) * radius);
-                    Vector2 p2 = center + new Vector2((float)Cs(a2) * radius, (float)Sn(a2) * radius);
-
+                    Vector2 p1 = center + V2(SpriteHelpers.CCos[i] * radius, SpriteHelpers.CSin[i] * radius);
+                    Vector2 p2 = center + V2(SpriteHelpers.CCos[i + 1] * radius, SpriteHelpers.CSin[i + 1] * radius);
                     SpriteHelpers.AddLineSprite(frame, p1, p2, 1f, color);
                 }
             }
@@ -243,11 +239,11 @@ namespace IngameScript
 
                     if (localDirection.Z >= 0) continue;
 
-                    if (Math.Abs(localDirection.Z) < MIN_Z_FOR_PROJECTION)
+                    if (Ab(localDirection.Z) < MIN_Z_FOR_PROJECTION)
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
-                    SpriteHelpers.Sp(frame, "Triangle", ghostPos.X, ghostPos.Y, 15f, 15f, new Color(HUD_RADAR_FRIENDLY, 0.7f));
+                    SpriteHelpers.Sp(frame, "Triangle", ghostPos.X, ghostPos.Y, 15f, 15f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
                 }
             }
         }

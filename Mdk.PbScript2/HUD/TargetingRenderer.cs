@@ -38,9 +38,9 @@ namespace IngameScript
 
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 center = surfaceSize / 2f;
-                float viewportMinDim = Math.Min(surfaceSize.X, surfaceSize.Y);
+                float viewportMinDim = Mn(surfaceSize.X, surfaceSize.Y);
                 float targetMarkerSize = viewportMinDim * 0.02f;
-                float lineThickness = Math.Max(1f, viewportMinDim * 0.004f);
+                float lineThickness = Mx(1f, viewportMinDim * 0.004f);
                 float reticleArmLength = viewportMinDim * 0.025f;
                 float arrowSize = viewportMinDim * 0.04f;
                 float arrowHeadSize = viewportMinDim * 0.025f;
@@ -52,16 +52,16 @@ namespace IngameScript
 
                 if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION)
                 {
-                    SpriteHelpers.AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, behindColor);
-                    SpriteHelpers.AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, behindColor);
+                    SpriteHelpers.AddLineSprite(frame, center - V2(reticleArmLength, 0), center + V2(reticleArmLength, 0), lineThickness, behindColor);
+                    SpriteHelpers.AddLineSprite(frame, center - V2(0, reticleArmLength), center + V2(0, reticleArmLength), lineThickness, behindColor);
                     return;
                 }
 
-                SpriteHelpers.AddLineSprite(frame, center - new Vector2(reticleArmLength, 0), center + new Vector2(reticleArmLength, 0), lineThickness, reticleColor);
-                SpriteHelpers.AddLineSprite(frame, center - new Vector2(0, reticleArmLength), center + new Vector2(0, reticleArmLength), lineThickness, reticleColor);
+                SpriteHelpers.AddLineSprite(frame, center - V2(reticleArmLength, 0), center + V2(reticleArmLength, 0), lineThickness, reticleColor);
+                SpriteHelpers.AddLineSprite(frame, center - V2(0, reticleArmLength), center + V2(0, reticleArmLength), lineThickness, reticleColor);
 
 
-                if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
+                if (Ab(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
                 {
                     localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION;
                 }
@@ -120,8 +120,8 @@ namespace IngameScript
                     {
                         Vector2 currentTargetScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToTarget, center, surfaceSize);
                         float halfMark = targetMarkerSize / 2f;
-                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, halfMark), currentTargetScreenPos + new Vector2(halfMark, halfMark), lineThickness, Color.Yellow);
-                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - new Vector2(halfMark, -halfMark), currentTargetScreenPos + new Vector2(halfMark, -halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - V2(halfMark, halfMark), currentTargetScreenPos + V2(halfMark, halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - V2(halfMark, -halfMark), currentTargetScreenPos + V2(halfMark, -halfMark), lineThickness, Color.Yellow);
                         SpriteHelpers.AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
                     }
                 }
@@ -138,20 +138,20 @@ namespace IngameScript
 
                     // FIX: Prevent division by zero when edgeX or edgeY is near zero
                     Vector2 edgePoint;
-                    float absEdgeX = Math.Abs(edgeX);
-                    float absEdgeY = Math.Abs(edgeY);
+                    float absEdgeX = Ab(edgeX);
+                    float absEdgeY = Ab(edgeY);
 
                     // Add epsilon to prevent division by zero
                     if (absEdgeX < 1e-6f) absEdgeX = 1e-6f;
                     if (absEdgeY < 1e-6f) absEdgeY = 1e-6f;
 
-                    if (Math.Abs(edgeX / maxDistX) > Math.Abs(edgeY / maxDistY))
+                    if (Ab(edgeX / maxDistX) > Ab(edgeY / maxDistY))
                     {
-                        edgePoint = new Vector2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / absEdgeX));
+                        edgePoint = V2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / absEdgeX));
                     }
                     else
                     {
-                        edgePoint = new Vector2(center.X + edgeX * (maxDistY / absEdgeY), center.Y + Math.Sign(edgeY) * maxDistY);
+                        edgePoint = V2(center.X + edgeX * (maxDistY / absEdgeY), center.Y + Math.Sign(edgeY) * maxDistY);
                     }
 
 
@@ -160,12 +160,12 @@ namespace IngameScript
 
 
                     float arrowRotation = (float)At2(direction.Y, direction.X);
-                    SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, edgePoint.X, edgePoint.Y, arrowHeadSize, arrowHeadSize, offScreenColor, arrowRotation + (float)Math.PI / 2f);
+                    SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, edgePoint.X, edgePoint.Y, arrowHeadSize, arrowHeadSize, offScreenColor, arrowRotation + (float)PI / 2f);
 
                     // Range label next to off-screen arrow
                     double offscreenRange = VDi(shooterPosition, targetPosition);
                     string offscreenRangeText = SpriteHelpers.FormatRange(offscreenRange);
-                    Vector2 perpDir = new Vector2(-direction.Y, direction.X);
+                    Vector2 perpDir = V2(-direction.Y, direction.X);
                     Vector2 labelPos = edgePoint + perpDir * 14f - direction * 10f;
                     SpriteHelpers.Tt(frame, offscreenRangeText, labelPos.X, labelPos.Y, 0.45f, offScreenColor);
                 }
@@ -193,11 +193,11 @@ namespace IngameScript
                 Vector3D targetForward = targetVelocity.LengthSquared() > 0.01
                     ? VN(targetVelocity) : directionToTarget;
                 Vector3D toShooter = VN(shooterPosition - targetPosition);
-                double aspectAngle = At2(VX(targetForward, toShooter).Length(), VD(targetForward, toShooter)) * (180.0 / Math.PI);
+                double aspectAngle = At2(VX(targetForward, toShooter).Length(), VD(targetForward, toShooter)) * (180.0 / PI);
 
                 Vector3D directionToTargetLocal = VTN(targetPosition - shooterPosition, worldToCockpitMatrix);
 
-                if (Math.Abs(directionToTargetLocal.Z) < MIN_Z_FOR_PROJECTION)
+                if (Ab(directionToTargetLocal.Z) < MIN_Z_FOR_PROJECTION)
                     directionToTargetLocal.Z = -MIN_Z_FOR_PROJECTION;
 
                 if (directionToTargetLocal.Z >= 0) return;
@@ -219,32 +219,32 @@ namespace IngameScript
                 Color bracketColor = closureRate > 10 ? HUD_WARNING :
                                    closureRate < -10 ? HUD_EMPHASIS : HUD_PRIMARY;
 
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2),
-                                    targetScreenPos + new Vector2(-bracketSize/2 + cornerLength, -bracketSize/2),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(-bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + V2(-bracketSize/2 + cornerLength, -bracketSize/2),
                                     bracketThickness, bracketColor);
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2),
-                                    targetScreenPos + new Vector2(-bracketSize/2, -bracketSize/2 + cornerLength),
-                                    bracketThickness, bracketColor);
-
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2),
-                                    targetScreenPos + new Vector2(bracketSize/2 - cornerLength, -bracketSize/2),
-                                    bracketThickness, bracketColor);
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2),
-                                    targetScreenPos + new Vector2(bracketSize/2, -bracketSize/2 + cornerLength),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(-bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + V2(-bracketSize/2, -bracketSize/2 + cornerLength),
                                     bracketThickness, bracketColor);
 
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2),
-                                    targetScreenPos + new Vector2(-bracketSize/2 + cornerLength, bracketSize/2),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + V2(bracketSize/2 - cornerLength, -bracketSize/2),
                                     bracketThickness, bracketColor);
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2),
-                                    targetScreenPos + new Vector2(-bracketSize/2, bracketSize/2 - cornerLength),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(bracketSize/2, -bracketSize/2),
+                                    targetScreenPos + V2(bracketSize/2, -bracketSize/2 + cornerLength),
                                     bracketThickness, bracketColor);
 
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, bracketSize/2),
-                                    targetScreenPos + new Vector2(bracketSize/2 - cornerLength, bracketSize/2),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(-bracketSize/2, bracketSize/2),
+                                    targetScreenPos + V2(-bracketSize/2 + cornerLength, bracketSize/2),
                                     bracketThickness, bracketColor);
-                SpriteHelpers.AddLineSprite(frame, targetScreenPos + new Vector2(bracketSize/2, bracketSize/2),
-                                    targetScreenPos + new Vector2(bracketSize/2, bracketSize/2 - cornerLength),
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(-bracketSize/2, bracketSize/2),
+                                    targetScreenPos + V2(-bracketSize/2, bracketSize/2 - cornerLength),
+                                    bracketThickness, bracketColor);
+
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(bracketSize/2, bracketSize/2),
+                                    targetScreenPos + V2(bracketSize/2 - cornerLength, bracketSize/2),
+                                    bracketThickness, bracketColor);
+                SpriteHelpers.AddLineSprite(frame, targetScreenPos + V2(bracketSize/2, bracketSize/2),
+                                    targetScreenPos + V2(bracketSize/2, bracketSize/2 - cornerLength),
                                     bracketThickness, bracketColor);
 
                 float textY = targetScreenPos.Y + bracketSize/2 + 5f;
@@ -254,7 +254,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, rangeText, targetScreenPos.X, textY, textScale, bracketColor);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
-                string closureText = $"Vc:{Math.Abs(closureRate):F0} {closureLabel}";
+                string closureText = $"Vc:{Ab(closureRate):F0} {closureLabel}";
                 SpriteHelpers.Tt(frame, closureText, targetScreenPos.X, textY + 12f, textScale, bracketColor);
 
                 string aspectText = $"AA:{aspectAngle:F0}\u00B0";
@@ -284,26 +284,19 @@ namespace IngameScript
 
                 if (localDirectionToIntercept.Z >= 0) return;
 
-                if (Math.Abs(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
+                if (Ab(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
                     localDirectionToIntercept.Z = -MIN_Z_FOR_PROJECTION;
 
                 Vector2 pipScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToIntercept, center, surfaceSize);
 
-                Color funnelColor = new Color(HUD_PRIMARY, 0.3f);
+                Color funnelColor = Cr(HUD_PRIMARY, 0.3f);
                 float lineThickness = 1f;
 
-                Vector2[] edgePoints = new Vector2[]
-                {
-                    new Vector2(center.X - funnelBaseWidth/2, 0),
-                    new Vector2(center.X + funnelBaseWidth/2, 0),
-                    new Vector2(center.X + funnelBaseWidth/2, surfaceSize.Y),
-                    new Vector2(center.X - funnelBaseWidth/2, surfaceSize.Y)
-                };
-
-                foreach (var edgePoint in edgePoints)
-                {
-                    SpriteHelpers.AddLineSprite(frame, edgePoint, pipScreenPos, lineThickness, funnelColor);
-                }
+                float halfFunnel = funnelBaseWidth / 2f;
+                SpriteHelpers.AddLineSprite(frame, V2(center.X - halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(frame, V2(center.X + halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(frame, V2(center.X + halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(frame, V2(center.X - halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
 
                 if (isAimingAtPip && range < 2500)
                 {
@@ -318,7 +311,7 @@ namespace IngameScript
                 bool lowAltitudeWarning = altitude < 100 && verticalVelocityMps < -5;
                 bool collisionWarning = false;
 
-                if (targetPosition != Vector3D.Zero)
+                if (targetPosition != VZ)
                 {
                     double range = VDi(shooterPosition, targetPosition);
                     Vector3D relativeVelocity = velocity - targetVelocity;
@@ -338,8 +331,8 @@ namespace IngameScript
 
                 if ((radarSweepTick / 10) % 2 == 0)
                 {
-                    SpriteHelpers.AddLineSprite(frame, center - new Vector2(xSize/2, xSize/2), center + new Vector2(xSize/2, xSize/2), lineThickness, warningColor);
-                    SpriteHelpers.AddLineSprite(frame, center - new Vector2(xSize/2, -xSize/2), center + new Vector2(xSize/2, -xSize/2), lineThickness, warningColor);
+                    SpriteHelpers.AddLineSprite(frame, center - V2(xSize/2, xSize/2), center + V2(xSize/2, xSize/2), lineThickness, warningColor);
+                    SpriteHelpers.AddLineSprite(frame, center - V2(xSize/2, -xSize/2), center + V2(xSize/2, -xSize/2), lineThickness, warningColor);
 
                     string warningText = lowAltitudeWarning ? "PULL UP" : "BREAK AWAY";
                     SpriteHelpers.Tt(frame, warningText, center.X, center.Y + xSize/2 + 20f, 1.2f, warningColor, MFDTheme.AC, MFDTheme.FONT_W);

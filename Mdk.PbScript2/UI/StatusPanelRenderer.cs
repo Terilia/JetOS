@@ -82,12 +82,12 @@ namespace IngameScript
             static readonly string[] AST_NAMES = { "VIPER", "JACKAL", "CONDOR", "SPARROW",
                 "COBRA", "FALCON", "MANTIS", "RAPTOR", "HOUND", "SPECTER", "TALON", "WRAITH" };
 
-            static readonly Color SBG = new Color(5, 8, 5);
-            static readonly Color CST = new Color(22, 55, 32);
-            static readonly Color ELV = new Color(16, 42, 26);
-            static readonly Color PKC = new Color(30, 65, 40);
-            static readonly Color AMBER = new Color(140, 100, 35);
-            static readonly Color MGREEN = new Color(45, 120, 55);
+            static readonly Color SBG = Cr(5, 8, 5);
+            static readonly Color CST = Cr(22, 55, 32);
+            static readonly Color ELV = Cr(16, 42, 26);
+            static readonly Color PKC = Cr(30, 65, 40);
+            static readonly Color AMBER = Cr(140, 100, 35);
+            static readonly Color MGREEN = Cr(45, 120, 55);
 
             // ════════════════════════════════════════
             // PUBLIC ENTRY POINT
@@ -136,7 +136,7 @@ namespace IngameScript
                 if (transitionTick > 0)
                 {
                     Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
-                    SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                    SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
                     transitionTick--;
                     if (transitionTick == 0) InitSlide(activeSlide);
                     return;
@@ -154,7 +154,7 @@ namespace IngameScript
                     case 4: done = DrawAssetSlide(frame, x, y, w, h, tick); break;
                 }
 
-                if (satOffline) DrawOffline(frame, x, y, w, h);
+                if (satOffline) DrawTerrain(frame, x, y, w, h, jet);
 
                 if (!satOffline && done)
                 {
@@ -192,10 +192,18 @@ namespace IngameScript
                 }
             }
 
-            static void DrawOffline(MySpriteDrawFrame frame, float x, float y, float w, float h)
+            static void DrawTerrain(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
             {
-                Rect(frame, x + w / 2f, y + h / 2f, w, h, new Color(2, 3, 2));
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                // Dark background + border (same chrome as slides)
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, Cr(2, 3, 2));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
+                // Render terrain minimap inside the slide window
+                var area = new RectangleF(V2(x + 2f, y + 2f), V2(w - 4f, h - 4f));
+                var sprites = TerrainModule.GetMinimap(area, jet);
+                if (sprites != null)
+                    for (int i = 0; i < sprites.Count; i++) frame.Add(sprites[i]);
+                else
+                    Txt(frame, "NO TERRAIN", x + w / 2f, y + h / 2f - 6f, 0.35f, Cr(42, 74, 42));
             }
 
             // ════════════════════════════════════════
@@ -233,11 +241,11 @@ namespace IngameScript
                     camZoom += (camTgtZ - camZoom) * 0.02f;
                 }
 
-                float sc = Math.Min(w, h) / 110f * camZoom;
+                float sc = Mn(w, h) / 110f * camZoom;
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
 
                 // Grid
-                Color gridC = new Color(8, 14, 8, 16);
+                Color gridC = Cr(8, 14, 8, 16);
                 for (float gv = (float)Math.Floor((camY - h / sc * 0.6f) / 20f) * 20f; gv <= camY + h / sc * 0.6f; gv += 20f)
                 { float gy = vpCY + (gv - camY) * sc; if (gy > vT + 1 && gy < vB - 1) Rect(frame, x + w / 2f, gy, w, 0.5f, gridC); }
                 for (float gv = (float)Math.Floor((camX - w / sc * 0.6f) / 20f) * 20f; gv <= camX + w / sc * 0.6f; gv += 20f)
@@ -256,11 +264,11 @@ namespace IngameScript
                             float x0 = vpCX + (vPX[i0] - camX) * sc, y0 = vpCY + (vPY[i0] - camY) * sc;
                             float x1 = vpCX + (vPX[i1] - camX) * sc, y1 = vpCY + (vPY[i1] - camY) * sc;
                             if ((x0 < vL && x1 < vL) || (x0 > vR && x1 > vR) || (y0 < vT && y1 < vT) || (y0 > vB && y1 > vB)) continue;
-                            SpriteHelpers.AddLineSprite(frame, new Vector2(x0, y0), new Vector2(x1, y1), lvlW[lv], lvlC[lv]);
+                            SpriteHelpers.AddLineSprite(frame, V2(x0, y0), V2(x1, y1), lvlW[lv], lvlC[lv]);
                         }
                     }
 
-                if (!satOffline) Rect(frame, x + w / 2f, y + 14f + ((tick * 0.5f) % (h - 14f)), w, 1f, new Color(10, 20, 12, 16));
+                if (!satOffline) Rect(frame, x + w / 2f, y + 14f + ((tick * 0.5f) % (h - 14f)), w, 1f, Cr(10, 20, 12, 16));
 
                 // Threat rings
                 for (int i = 0; i < mCnt; i++)
@@ -272,8 +280,8 @@ namespace IngameScript
                     for (int p = 0; p < 12; p += 2)
                     {
                         float a0 = p * 6.2832f / 12, a1 = (p + 1) * 6.2832f / 12;
-                        SpriteHelpers.AddLineSprite(frame, new Vector2(sx + (float)Cs(a0) * tr, sy + (float)Sn(a0) * tr),
-                            new Vector2(sx + (float)Cs(a1) * tr, sy + (float)Sn(a1) * tr), 0.6f, new Color(140, 100, 35, 50));
+                        SpriteHelpers.AddLineSprite(frame, V2(sx + (float)Cs(a0) * tr, sy + (float)Sn(a0) * tr),
+                            V2(sx + (float)Cs(a1) * tr, sy + (float)Sn(a1) * tr), 0.6f, Cr(140, 100, 35, 50));
                     }
                 }
 
@@ -288,7 +296,7 @@ namespace IngameScript
                     Txt(frame, mNm[i] ?? "", sx, sy + tsc * 12f, tsc, mc, MFDTheme.AC);
                     if (camState == 1 && camMarker == i)
                     {
-                        Color ic = new Color(mc.R, mc.G, mc.B, 180);
+                        Color ic = Cr(mc.R, mc.G, mc.B, 180);
                         if (mIn[i] != null) Txt(frame, mIn[i], sx, sy + tsc * 42f, tsc * 0.8f, ic, MFDTheme.AC);
                         if (mIn2[i] != null) Txt(frame, mIn2[i], sx, sy + tsc * 66f, tsc * 0.8f, ic, MFDTheme.AC);
                     }
@@ -300,9 +308,9 @@ namespace IngameScript
                 Rect(frame, x + w / 2f, vB + mp / 2f - 0.5f, w + 2f, mp, SBG);
                 Rect(frame, vL - mp / 2f + 0.5f, y + h / 2f, mp, h + 2f, SBG);
                 Rect(frame, vR + mp / 2f - 0.5f, y + h / 2f, mp, h + 2f, SBG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
                 Txt(frame, satName ?? "", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
-                Txt(frame, satCoord ?? "", x + w - 4f, y + 2f, 0.18f, new Color(18, 36, 20), MFDTheme.AR);
+                Txt(frame, satCoord ?? "", x + w - 4f, y + 2f, 0.18f, Cr(18, 36, 20), MFDTheme.AR);
                 return false;
             }
 
@@ -312,11 +320,11 @@ namespace IngameScript
             static bool DrawSigintSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
                 Txt(frame, "SIGINT INTERCEPT", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
                 bool recOn = (tick / 30) % 2 == 0;
                 Txt(frame, recOn ? "●REC" : " REC", x + w - 4f, y + 2f, 0.2f,
-                    recOn ? new Color(180, 50, 40) : MFDTheme.DIM_TEXT, MFDTheme.AR);
+                    recOn ? Cr(180, 50, 40) : MFDTheme.DIM_TEXT, MFDTheme.AR);
                 Txt(frame, SIG_FREQ[(slideTick / 900) % SIG_FREQ.Length], x + 4f, y + 12f, 0.2f, MFDTheme.DIM_TEXT, MFDTheme.AL);
 
                 if (!satOffline)
@@ -351,14 +359,14 @@ namespace IngameScript
                     float bh0 = sigW0[i] * 1.3f, bh1 = sigW1[i] * 1.1f;
                     Color bc = sigPhase == 1 ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT;
                     Rect(frame, bx, base0 - bh0 / 2f, barW - 1f, bh0, bc);
-                    Rect(frame, bx, base1 - bh1 / 2f, barW - 1f, bh1, new Color(bc.R, (int)(bc.G * 0.7f), bc.B, bc.A));
+                    Rect(frame, bx, base1 - bh1 / 2f, barW - 1f, bh1, Cr(bc.R, (int)(bc.G * 0.7f), bc.B, bc.A));
                 }
 
                 // Decoded fragment
                 float fragY = y + h * 0.62f;
                 if (sigFrag > 0 || sigPhase == 1)
                 {
-                    int fi = sigPhase == 1 ? sigFrag : Math.Max(0, sigFrag - 1);
+                    int fi = sigPhase == 1 ? sigFrag : Mx(0, sigFrag - 1);
                     Txt(frame, "\"" + SIG_FRAG[fi % SIG_FRAG.Length] + "\"", x + w / 2f, fragY, 0.26f, MFDTheme.NORMAL_TEXT, MFDTheme.AC);
                 }
                 else
@@ -369,7 +377,7 @@ namespace IngameScript
                 Txt(frame, "SIG:", x + 4f, mY - 3f, 0.18f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 float mW = w - 36f, mBx = x + 30f;
                 float mFill = sigPhase == 1 ? 0.7f + (Rng() % 20) * 0.015f : 0.08f + (Rng() % 10) * 0.005f;
-                Rect(frame, mBx + mW / 2f, mY, mW, 3f, new Color(6, 10, 6));
+                Rect(frame, mBx + mW / 2f, mY, mW, 3f, Cr(6, 10, 6));
                 float fmw = mW * Cl(mFill, 0f, 1f);
                 if (fmw > 0.5f) Rect(frame, mBx + fmw / 2f, mY, fmw, 3f, sigPhase == 1 ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT);
 
@@ -385,7 +393,7 @@ namespace IngameScript
 
                 // Pulsing border when low
                 int ba = cdSec < 30 ? (int)(120 + 100 * Sn(tick * 0.15)) : 80;
-                Color bc = cdSec < 30 ? new Color(140, 60, 20, ba) : new Color(14, 26, 16);
+                Color bc = cdSec < 30 ? Cr(140, 60, 20, ba) : Cr(14, 26, 16);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, bc);
 
                 Txt(frame, "OPERATION", x + w / 2f, y + 6f, 0.22f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
@@ -405,7 +413,7 @@ namespace IngameScript
 
                 // Flash effect on zero
                 if (cdFlash > 20)
-                    Rect(frame, x + w / 2f, y + h / 2f, w, h, new Color(140, 100, 35, (cdFlash - 20) * 15));
+                    Rect(frame, x + w / 2f, y + h / 2f, w, h, Cr(140, 100, 35, (cdFlash - 20) * 15));
 
                 // Big countdown with blinking colon
                 string sep = (cdSub < 30) ? ":" : " ";
@@ -413,14 +421,14 @@ namespace IngameScript
                 Txt(frame, timeStr, x + w / 2f, y + h * 0.32f, 0.55f, MFDTheme.BRIGHT_TEXT, MFDTheme.AC);
 
                 // Classification + status
-                Txt(frame, "// CLASSIFIED //", x + w / 2f, y + h * 0.58f, 0.2f, new Color(80, 40, 20), MFDTheme.AC);
+                Txt(frame, "// CLASSIFIED //", x + w / 2f, y + h * 0.58f, 0.2f, Cr(80, 40, 20), MFDTheme.AC);
                 Txt(frame, "MISSION CLOCK ACTIVE", x + w / 2f, y + h - 14f, 0.18f, MFDTheme.DIM_TEXT, MFDTheme.AC);
 
                 // Seconds indicator dots
                 int dotCount = cdSub / 10; // 0-5 dots filling up each second
                 for (int d = 0; d < 6; d++)
                 {
-                    Color dc = d < dotCount ? MFDTheme.ACCENT : new Color(10, 18, 10);
+                    Color dc = d < dotCount ? MFDTheme.ACCENT : Cr(10, 18, 10);
                     Rect(frame, x + w * 0.3f + d * 6f, y + h * 0.72f, 3f, 3f, dc);
                 }
 
@@ -433,7 +441,7 @@ namespace IngameScript
             static bool DrawExfilSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
                 Txt(frame, "DATA EXFIL", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
                 Txt(frame, "TGT: " + EX_TGTS[exTgtIdx % EX_TGTS.Length], x + 4f, y + 13f, 0.2f, MFDTheme.DIM_TEXT, MFDTheme.AL);
 
@@ -456,7 +464,7 @@ namespace IngameScript
                     float ry = rowY + i * rowH;
                     bool done2 = exProg[i] >= 1f;
                     bool active = i == exFile && exPhase == 0;
-                    Color tc = done2 ? MFDTheme.DIM_TEXT : active ? MFDTheme.NORMAL_TEXT : new Color(30, 50, 30);
+                    Color tc = done2 ? MFDTheme.DIM_TEXT : active ? MFDTheme.NORMAL_TEXT : Cr(30, 50, 30);
                     Txt(frame, EX_FILES[exFIdx[i]], x + 4f, ry, 0.22f, tc, MFDTheme.AL);
 
                     if (done2)
@@ -467,7 +475,7 @@ namespace IngameScript
                         Txt(frame, $"{(int)(exProg[i] * 100)}%", x + w - 4f, ry, 0.2f, MFDTheme.STATUS_VAL, MFDTheme.AR);
                         // Progress bar
                         float barX2 = x + 4f, barW2 = w - 8f, barY2 = ry + 11f;
-                        Rect(frame, barX2 + barW2 / 2f, barY2, barW2, 2f, new Color(8, 14, 8));
+                        Rect(frame, barX2 + barW2 / 2f, barY2, barW2, 2f, Cr(8, 14, 8));
                         float fw = barW2 * Cl(exProg[i], 0f, 1f);
                         if (fw > 0.5f) Rect(frame, barX2 + fw / 2f, barY2, fw, 2f, MFDTheme.ACCENT);
                     }
@@ -492,7 +500,7 @@ namespace IngameScript
             static bool DrawAssetSlide(MySpriteDrawFrame frame, float x, float y, float w, float h, int tick)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, SBG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, new Color(14, 26, 16));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
                 Txt(frame, "ASSET STATUS", x + 4f, y + 2f, 0.24f, MFDTheme.CORP_GOLD, MFDTheme.AL);
 
                 if (!satOffline)
@@ -524,20 +532,20 @@ namespace IngameScript
                     else if (astStat[i] == 1)
                     {
                         bool blink = (tick / 15) % 2 == 0;
-                        dot = "●"; dc = blink ? new Color(180, 50, 40) : new Color(80, 25, 20);
+                        dot = "●"; dc = blink ? Cr(180, 50, 40) : Cr(80, 25, 20);
                         tc = AMBER; status = "COMP";
                     }
-                    else { dot = "○"; dc = new Color(20, 30, 20); tc = new Color(20, 30, 20); status = "DARK"; }
+                    else { dot = "○"; dc = Cr(20, 30, 20); tc = Cr(20, 30, 20); status = "DARK"; }
 
                     Txt(frame, dot, x + 4f, ry, 0.24f, dc, MFDTheme.AL);
                     Txt(frame, astName[i] ?? "---", x + 18f, ry, 0.24f, tc, MFDTheme.AL);
                     Txt(frame, status, x + w - 4f, ry, 0.2f, tc, MFDTheme.AR);
                     // Row separator
-                    Rect(frame, x + w / 2f, ry + rowH - 1f, w - 8f, 0.5f, new Color(10, 18, 10));
+                    Rect(frame, x + w / 2f, ry + rowH - 1f, w - 8f, 0.5f, Cr(10, 18, 10));
                 }
 
                 Txt(frame, $"{opCount}/6 OPERATIONAL", x + w / 2f, y + h - 12f, 0.22f,
-                    opCount >= 5 ? MFDTheme.ACCENT : opCount >= 3 ? AMBER : new Color(180, 50, 40), MFDTheme.AC);
+                    opCount >= 5 ? MFDTheme.ACCENT : opCount >= 3 ? AMBER : Cr(180, 50, 40), MFDTheme.AC);
 
                 return slideTick >= 720;
             }
@@ -615,7 +623,7 @@ namespace IngameScript
                 int nm = (int)(Rng() % 3) + 4;
                 for (int m = 0; m < nm && mCnt < MM; m++)
                 {
-                    int bi = (int)(Rng() % (uint)Math.Max(1, vCnt));
+                    int bi = (int)(Rng() % (uint)Mx(1, vCnt));
                     mX[mCnt] = vPX[bi] + (int)(Rng() % 6) - 3; mY[mCnt] = vPY[bi] + (int)(Rng() % 4) - 2;
                     mT[mCnt] = m < 2 ? 1 : (int)(Rng() % 2);
                     mNm[mCnt] = NAMES[nameIdx % NAMES.Length]; nameIdx++;
@@ -654,8 +662,8 @@ namespace IngameScript
                 if (bh < 6f) bh = 6f;
                 Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
                 SpriteHelpers.DrawRectangleOutline(frame, bx, bt, bw, bh, 0.5f, MFDTheme.BORDER);
-                if (dmg && fn > 0) { float ch = bh * Cl((float)fn / tot, 0f, 1f); Rect(frame, bx + bw / 2f, bt + bh - ch / 2f, bw, ch, new Color(12, 22, 12)); if (ch > 1f && ch < bh - 1f) Rect(frame, bx + bw / 2f, bt + bh - ch, bw + 2f, 1f, MFDTheme.WARN); }
-                else if (!dmg) Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, new Color(12, 22, 12));
+                if (dmg && fn > 0) { float ch = bh * Cl((float)fn / tot, 0f, 1f); Rect(frame, bx + bw / 2f, bt + bh - ch / 2f, bw, ch, Cr(12, 22, 12)); if (ch > 1f && ch < bh - 1f) Rect(frame, bx + bw / 2f, bt + bh - ch, bw + 2f, 1f, MFDTheme.WARN); }
+                else if (!dmg) Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, Cr(12, 22, 12));
                 float fh = bh * Cl(pct, 0f, 1f);
                 if (fh > 0.5f) Rect(frame, bx + bw / 2f, bt + bh - fh / 2f, bw, fh, abCur > 0.1f ? MFDTheme.WARN : MFDTheme.BAR_FILL);
                 Txt(frame, tMax > 0 ? $"{tCur:F0}/{tMax:F0}" : "---", x + w / 2f, bt + bh + 1f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AC);
@@ -680,10 +688,10 @@ namespace IngameScript
             static string FmtTime(double s) { return s <= 0 ? "---" : $"{(int)(s / 60):D2}:{(int)(s % 60):D2}"; }
 
             static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
-            { f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = new Vector2(cx, cy), Size = new Vector2(w, h), Color = c, Alignment = MFDTheme.AC }); }
+            { f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = V2(cx, cy), Size = V2(w, h), Color = c, Alignment = MFDTheme.AC }); }
 
             static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
-            { f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = new Vector2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT }); }
+            { f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = V2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT }); }
         }
     }
 }

@@ -157,10 +157,10 @@ namespace IngameScript
 
                         float gL = 55f, gR = cachedArea.Width - 40f;
                         float gT = cachedContentY + 30f, gB = cachedContentBot - 30f;
-                        float cs = Math.Min((gR - gL) / gridW, (gB - gT) / gridH);
-                        cs = Math.Min(cs, 16f);
-                        Vector2 center = new Vector2((gL + gR) / 2f, (gT + gB) / 2f);
-                        Vector2 topLeft = center - new Vector2(gridW * cs, gridH * cs) / 2f;
+                        float cs = Mn((gR - gL) / gridW, (gB - gT) / gridH);
+                        cs = Mn(cs, 16f);
+                        Vector2 center = V2((gL + gR) / 2f, (gT + gB) / 2f);
+                        Vector2 topLeft = center - V2(gridW * cs, gridH * cs) / 2f;
 
                         for (int x = 0; x < gridW; x++)
                         {
@@ -175,14 +175,14 @@ namespace IngameScript
                                 if (!outline) continue;
 
                                 Color c;
-                                if (!gridFunctional[x, z]) c = new Color(120, 20, 20);
-                                else if (gridIntegrity[x, z] < 0.30f) c = new Color(180, 50, 40);
+                                if (!gridFunctional[x, z]) c = Cr(120, 20, 20);
+                                else if (gridIntegrity[x, z] < 0.30f) c = Cr(180, 50, 40);
                                 else if (gridIntegrity[x, z] < 0.80f) c = MFDTheme.WARN;
                                 else c = MFDTheme.ACCENT;
 
                                 // Flip X so left side of ship shows on left side of screen
                                 // (SE grid X+ is leftward from cockpit perspective)
-                                Vector2 dp = topLeft + new Vector2((gridW - 1 - x) * cs + cs / 2f, (gridH - 1 - z) * cs + cs / 2f);
+                                Vector2 dp = topLeft + V2((gridW - 1 - x) * cs + cs / 2f, (gridH - 1 - z) * cs + cs / 2f);
                                 cachedSprites.Add(SpriteHelpers.FBx(dp.X, dp.Y, cs * 5f, cs * 2f, c));
                             }
                         }
@@ -209,14 +209,14 @@ namespace IngameScript
                     float px = 12f + i * 18f, py = 26f;
                     bool rdy = bays[i] != null && bays[i].IsConnected;
                     SpriteHelpers.Bx(f, px + 7f, py + 7f, 14f, 14f, rdy ? MFDTheme.ACCENT : MFDTheme.BORDER);
-                    if (rdy) SpriteHelpers.Bx(f, px + 7f, py + 7f, 10f, 10f, new Color(20, 80, 20));
+                    if (rdy) SpriteHelpers.Bx(f, px + 7f, py + 7f, 10f, 10f, Cr(20, 80, 20));
                 }
             }
 
             static void DrawBlockCount(MySpriteDrawFrame f, RectangleF area, float contentY)
             {
                 int cur = gridBlocks.Count, orig = originalBlockCount > 0 ? originalBlockCount : cur;
-                Color c = cur >= orig ? MFDTheme.DIM_TEXT_MID : cur > orig * 0.7 ? MFDTheme.WARN : new Color(180, 50, 40);
+                Color c = cur >= orig ? MFDTheme.DIM_TEXT_MID : cur > orig * 0.7 ? MFDTheme.WARN : Cr(180, 50, 40);
                 SpriteHelpers.Tt(f, $"{cur}/{orig}", area.Width / 2f, contentY + 4f, 0.45f, c);
             }
 
@@ -227,22 +227,22 @@ namespace IngameScript
                 {
                     SpriteHelpers.Tt(f, $"SPD {hud.smoothedVelocity:F0} kph", rx, y, 0.45f, MFDTheme.STATUS_VAL, MFDTheme.AR);
                     SpriteHelpers.Tt(f, $"ALT {hud.smoothedAltitude:F0} m", rx, y + lh, 0.45f,
-                        hud.smoothedAltitude < 200 ? new Color(180, 50, 40) : MFDTheme.STATUS_VAL, MFDTheme.AR);
+                        hud.smoothedAltitude < 200 ? Cr(180, 50, 40) : MFDTheme.STATUS_VAL, MFDTheme.AR);
                     double aoa = hud.smoothedAoA;
                     SpriteHelpers.Tt(f, $"AoA {aoa:F1}\u00B0", rx, y + lh * 2, 0.45f,
-                        Math.Abs(aoa) > 15 ? new Color(180, 50, 40) : Math.Abs(aoa) > 10 ? MFDTheme.WARN : MFDTheme.STATUS_VAL, MFDTheme.AR);
+                        Ab(aoa) > 15 ? Cr(180, 50, 40) : Ab(aoa) > 10 ? MFDTheme.WARN : MFDTheme.STATUS_VAL, MFDTheme.AR);
                     SpriteHelpers.Tt(f, $"MCH {hud.mach:F2}", rx, y + lh * 3, 0.45f, MFDTheme.STATUS_VAL, MFDTheme.AR);
                     SpriteHelpers.Tt(f, $"THR {hud.throttlePercent:F0}%", rx, y + lh * 4, 0.45f,
-                        hud.throttlePercent < 20 ? new Color(180, 50, 40) : MFDTheme.ACCENT, MFDTheme.AR);
+                        hud.throttlePercent < 20 ? Cr(180, 50, 40) : MFDTheme.ACCENT, MFDTheme.AR);
                 }
 
                 float gy = y + lh * 5 + 4f;
                 int ammo = jet.GetTotalGunAmmo();
-                Color gc = ammo <= 0 ? new Color(180, 50, 40) : ammo < 500 ? MFDTheme.WARN : MFDTheme.ACCENT;
+                Color gc = ammo <= 0 ? Cr(180, 50, 40) : ammo < 500 ? MFDTheme.WARN : MFDTheme.ACCENT;
                 SpriteHelpers.Tt(f, "GUN", rx - 100f, gy, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 float bx = rx - 60f;
                 SpriteHelpers.Bx(f, bx + 20f, gy + 6f, 40f, 8f, MFDTheme.BAR_TRACK);
-                float pct = Math.Min(ammo / 2400f, 1f);
+                float pct = Mn(ammo / 2400f, 1f);
                 if (pct > 0.01f) SpriteHelpers.Bx(f, bx + 20f * pct, gy + 6f, 40f * pct, 8f, gc);
                 SpriteHelpers.Tt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
             }
@@ -262,7 +262,7 @@ namespace IngameScript
                 float top = contentY + 30f;
                 float bot = contentBot - 30f;
                 float bh = bot - top;
-                Color fc = pct < BINGO_FUEL ? new Color(180, 50, 40) : pct < LOW_FUEL ? MFDTheme.WARN : MFDTheme.ACCENT;
+                Color fc = pct < BINGO_FUEL ? Cr(180, 50, 40) : pct < LOW_FUEL ? MFDTheme.WARN : MFDTheme.ACCENT;
 
                 SpriteHelpers.Tt(f, $"{pct * 100:F0}%", bx, top - 18f, 0.5f, fc);
                 SpriteHelpers.Bx(f, bx, top + bh / 2f, 16f, bh + 2f, MFDTheme.BORDER);
@@ -298,8 +298,8 @@ namespace IngameScript
 
                 float half = bh / 2f;
                 float gc = (float)Cl(g, -3, 9);
-                Color fColor = g > 7 ? new Color(180, 50, 40) : g > 5 ? MFDTheme.WARN
-                    : g < -1 ? new Color(80, 110, 200) : MFDTheme.ACCENT;
+                Color fColor = g > 7 ? Cr(180, 50, 40) : g > 5 ? MFDTheme.WARN
+                    : g < -1 ? Cr(80, 110, 200) : MFDTheme.ACCENT;
 
                 if (gc >= 0)
                 {
@@ -308,12 +308,12 @@ namespace IngameScript
                 }
                 else
                 {
-                    float fh = half * Math.Abs(gc) / 3f;
+                    float fh = half * Ab(gc) / 3f;
                     if (fh > 1f) SpriteHelpers.Bx(f, mx, cy + fh / 2f, 10f, fh, fColor);
                 }
 
                 SpriteHelpers.Tt(f, "-3", mx, top + bh + 2f, 0.35f, MFDTheme.DIM_TEXT);
-                Color gvc = Math.Abs(g) > 7 ? new Color(180, 50, 40) : Math.Abs(g) > 5 ? MFDTheme.WARN : MFDTheme.STATUS_VAL;
+                Color gvc = Ab(g) > 7 ? Cr(180, 50, 40) : Ab(g) > 5 ? MFDTheme.WARN : MFDTheme.STATUS_VAL;
                 SpriteHelpers.Tt(f, $"{g:F1}G", mx, top + bh + 18f, 0.45f, gvc);
                 SpriteHelpers.Tt(f, $"pk {pk:F1}", mx, top + bh + 36f, 0.3f, MFDTheme.DIM_TEXT);
             }

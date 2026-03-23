@@ -13,7 +13,7 @@ namespace IngameScript
         {
             private void DrawSpeedIndicatorF18StyleKph(MySpriteDrawFrame frame, double currentSpeedKph)
             {
-                currentSpeedKph = Math.Max(0, currentSpeedKph);
+                currentSpeedKph = Mx(0, currentSpeedKph);
                 const float PIXELS_PER_SPEED_UNIT = 800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT;
 
                 float screenWidth = hud.SurfaceSize.X;
@@ -35,12 +35,12 @@ namespace IngameScript
 
                 float tapeTopSpeed = (float)currentSpeedKph + (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
                 float tapeBottomSpeed = (float)currentSpeedKph - (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
-                tapeBottomSpeed = Math.Max(0, tapeBottomSpeed);
+                tapeBottomSpeed = Mx(0, tapeBottomSpeed);
 
                 float startTickSpeed = (float)(Math.Floor(tapeBottomSpeed / SPEED_TICK_INTERVAL) * SPEED_TICK_INTERVAL);
                 if (startTickSpeed < tapeBottomSpeed)
                     startTickSpeed += SPEED_TICK_INTERVAL;
-                startTickSpeed = Math.Max(0, startTickSpeed);
+                startTickSpeed = Mx(0, startTickSpeed);
 
                 for (float speedMark = startTickSpeed; speedMark <= tapeTopSpeed + (SPEED_TICK_INTERVAL * 0.5f); speedMark += SPEED_TICK_INTERVAL)
                 {
@@ -54,8 +54,8 @@ namespace IngameScript
 
                     if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
                     {
-                        bool isMajorTick = Math.Abs(speedMark % SPEED_MAJOR_TICK_INTERVAL) < (SPEED_TICK_INTERVAL * 0.1f);
-                        if (Math.Abs(speedMark) < (SPEED_TICK_INTERVAL * 0.1f)) isMajorTick = true;
+                        bool isMajorTick = Ab(speedMark % SPEED_MAJOR_TICK_INTERVAL) < (SPEED_TICK_INTERVAL * 0.1f);
+                        if (Ab(speedMark) < (SPEED_TICK_INTERVAL * 0.1f)) isMajorTick = true;
 
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
 
@@ -70,7 +70,7 @@ namespace IngameScript
                 }
 
                 // Semi-transparent background behind speed box
-                SpriteHelpers.Bx(frame, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, new Color(0, 0, 0, 128));
+                SpriteHelpers.Bx(frame, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, Cr(0, 0, 0, 128));
 
                 SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
 
@@ -116,14 +116,14 @@ namespace IngameScript
                     }
                 }
 
-                SpriteHelpers.Sp(frame, "Triangle", centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)Math.PI);
+                SpriteHelpers.Sp(frame, "Triangle", centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)PI);
 
                 // Digital heading readout box
                 float headingBoxWidth = 50f;
                 float headingBoxHeight = 22f;
                 float headingBoxY = compassY + compassHeight / 2f + 20f;
 
-                SpriteHelpers.Bx(frame, centerX, headingBoxY + headingBoxHeight / 2f, headingBoxWidth, headingBoxHeight, new Color(0, 0, 0, 128));
+                SpriteHelpers.Bx(frame, centerX, headingBoxY + headingBoxHeight / 2f, headingBoxWidth, headingBoxHeight, Cr(0, 0, 0, 128));
                 SpriteHelpers.DrawRectangleOutline(frame, centerX - headingBoxWidth / 2f, headingBoxY,
                     headingBoxWidth, headingBoxHeight, 1f, HUD_PRIMARY);
 
@@ -182,7 +182,7 @@ namespace IngameScript
 
                     if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
                     {
-                        bool isMajorTick = Math.Abs(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f);
+                        bool isMajorTick = Ab(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f);
                         float currentTickLength = isMajorTick ? majorTickLength : tickLength;
                         if (altMark >= 0)
                         {
@@ -200,7 +200,7 @@ namespace IngameScript
                 // Semi-transparent background behind altitude box
                 float altBoxTopLeftX = digitalAltBoxX - 20;
                 float altBoxTopLeftY = centerY - digitalAltBoxHeight - 225 / 2f;
-                SpriteHelpers.Bx(frame, altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, new Color(0, 0, 0, 128));
+                SpriteHelpers.Bx(frame, altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, Cr(0, 0, 0, 128));
 
                 SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
@@ -210,7 +210,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, "<", digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AL);
 
                 // VVI (Vertical Velocity Indicator) below altitude box
-                Color vviColor = Math.Abs(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
+                Color vviColor = Ab(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
                 string vviArrow = verticalVelocity > 1 ? "\u25B2" : verticalVelocity < -1 ? "\u25BC" : "\u25C6";
                 string vviText = $"{vviArrow} {verticalVelocity:F0}";
                 SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
@@ -239,7 +239,7 @@ namespace IngameScript
                 const double OPTIMAL_AOA_MAX = 15.0;
 
                 // Calculate stall percentage (using absolute AoA)
-                double absAoA = Math.Abs(aoa);
+                double absAoA = Ab(aoa);
                 double stallPercent = absAoA / STALL_AOA;
 
                 // Determine stall warning level
@@ -258,7 +258,7 @@ namespace IngameScript
                 {
                     double speedFactor = velocity / 100.0;
                     double adjustedStallAoA = STALL_AOA * speedFactor;
-                    double adjustedStallPercent = absAoA / Math.Max(adjustedStallAoA, 5.0);
+                    double adjustedStallPercent = absAoA / Mx(adjustedStallAoA, 5.0);
 
                     if (adjustedStallPercent >= 1.0)
                         currentStallLevel = STALL_LEVEL_STALL;
@@ -283,7 +283,7 @@ namespace IngameScript
                     if (currentStallLevel == STALL_LEVEL_STALL)
                         indexerColor = HUD_WARNING;
                     else if (currentStallLevel == STALL_LEVEL_WARNING)
-                        indexerColor = new Color(255, 128, 0); // Orange
+                        indexerColor = Cr(255, 128, 0); // Orange
                     else if (currentStallLevel == STALL_LEVEL_CAUTION)
                         indexerColor = HUD_EMPHASIS;
                     else
@@ -333,7 +333,7 @@ namespace IngameScript
                         textScale = 0.8f;
                         break;
                     case 2: // Warning
-                        warningColor = new Color(255, 128, 0); // Orange
+                        warningColor = Cr(255, 128, 0); // Orange
                         warningText = "HIGH AOA";
                         textScale = 0.9f;
                         flash = (radarSweepTick / 10) % 2 == 0;
@@ -368,12 +368,12 @@ namespace IngameScript
                     if (flash || level < 3)
                     {
                         // Left bracket
-                        SpriteHelpers.AddLineSprite(frame, new Vector2(bracketX - 15f, bracketY),
-                                          new Vector2(bracketX - 15f, bracketY + bracketHeight), 3f, warningColor);
-                        SpriteHelpers.AddLineSprite(frame, new Vector2(bracketX - 15f, bracketY),
-                                          new Vector2(bracketX - 5f, bracketY), 3f, warningColor);
-                        SpriteHelpers.AddLineSprite(frame, new Vector2(bracketX - 15f, bracketY + bracketHeight),
-                                          new Vector2(bracketX - 5f, bracketY + bracketHeight), 3f, warningColor);
+                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY),
+                                          V2(bracketX - 15f, bracketY + bracketHeight), 3f, warningColor);
+                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY),
+                                          V2(bracketX - 5f, bracketY), 3f, warningColor);
+                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY + bracketHeight),
+                                          V2(bracketX - 5f, bracketY + bracketHeight), 3f, warningColor);
                     }
                 }
             }

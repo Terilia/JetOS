@@ -67,7 +67,7 @@ namespace IngameScript
             internal double velocity;
             internal double deltaTime;
             internal double mach;
-            internal Vector3D previousVelocity = Vector3D.Zero;
+            internal Vector3D previousVelocity = VZ;
 
             // --- Smoothed Values with Running Averages ---
             private CircularBuffer<double> velocityHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
@@ -230,7 +230,7 @@ namespace IngameScript
                 }
 
                 hud.ContentType = ContentType.SCRIPT;
-                hud.ScriptBackgroundColor = new Color(0, 0, 0, 0);
+                hud.ScriptBackgroundColor = Cr(0, 0, 0, 0);
                 hud.ScriptForegroundColor = Color.White;
 
                 ParentProgram.GridTerminalSystem.GetBlocksOfType(airbrakes, b => b.IsSameConstructAs(ParentProgram.Me));
@@ -279,7 +279,7 @@ namespace IngameScript
             private void RenderHUD(double heading, Vector3D gravity, Vector3D gravityDirection, Vector3D currentVelocity, MatrixD worldMatrix)
             {
                 hudCenter = hud.SurfaceSize / 2f;
-                viewportMinDim = Math.Min(hud.SurfaceSize.X, hud.SurfaceSize.Y);
+                viewportMinDim = Mn(hud.SurfaceSize.X, hud.SurfaceSize.Y);
 
                 float centerX = hudCenter.X;
                 float centerY = hudCenter.Y;
@@ -399,15 +399,15 @@ namespace IngameScript
 
                 gravity = myjet.CachedGravity;
                 inGravity = gravity.LengthSquared() > 0;
-                gravityDirection = inGravity ? VN(gravity) : Vector3D.Zero;
+                gravityDirection = inGravity ? VN(gravity) : VZ;
 
                 if (inGravity)
                 {
-                    pitch = Math.Asin(VD(forwardVector, gravityDirection)) * (180 / Math.PI);
+                    pitch = Math.Asin(VD(forwardVector, gravityDirection)) * (180 / PI);
                     roll = At2(
                         VD(leftVector, gravityDirection),
                         VD(upVector, gravityDirection)
-                    ) * (180 / Math.PI);
+                    ) * (180 / PI);
                 }
 
                 velocity = cockpit.GetShipSpeed();
@@ -554,7 +554,7 @@ namespace IngameScript
                         rightMax += myjet.rightEngines[i].MaxEffectiveThrust;
 
                 // Target thrust = weakest side * throttle percentage
-                float weakerMax = Math.Min(leftMax, rightMax);
+                float weakerMax = Mn(leftMax, rightMax);
                 float targetThrust = weakerMax * scaledThrottle;
 
                 // Set each side's override so they produce equal Newtons
@@ -580,7 +580,7 @@ namespace IngameScript
             {
                 for (int i = 0; i < group.Count; i++)
                 {
-                    if (group[i] != null && Math.Abs(group[i].ThrustOverridePercentage - value) > 0.001f)
+                    if (group[i] != null && Ab(group[i].ThrustOverridePercentage - value) > 0.001f)
                         group[i].ThrustOverridePercentage = value;
                 }
             }
@@ -674,7 +674,7 @@ namespace IngameScript
                     At2(
                         VD(velocityDirection, upVector),
                         VD(velocityDirection, forwardVector)
-                    ) * (180 / Math.PI);
+                    ) * (180 / PI);
 
                 return angleOfAttack;
             }

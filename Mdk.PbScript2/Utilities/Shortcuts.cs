@@ -14,11 +14,23 @@ namespace IngameScript
         static double Cs(double v) => Math.Cos(v);
         static double At2(double y, double x) => Math.Atan2(y, x);
         static float Cl(float v, float min, float max) => MathHelper.Clamp(v, min, max);
-        static int Cl(int v, int min, int max) => MathHelper.Clamp(v, min, max);
         static double Cl(double v, double min, double max) => MathHelper.Clamp(v, min, max);
-        static float ToDeg(float r) => MathHelper.ToDegrees(r);
         static double ToDeg(double r) => MathHelper.ToDegrees((float)r);
         static float ToRad(float d) => MathHelper.ToRadians(d);
-        static double ToRad(double d) => MathHelper.ToRadians((float)d);
+        static Vector2 V2(float x, float y) => new Vector2(x, y);
+        static Color Cr(int r, int g, int b) => new Color(r, g, b);
+        static Color Cr(int r, int g, int b, int a) => new Color(r, g, b, a);
+        static Color Cr(Color c, float a) => new Color(c, a);
+        static double Ab(double v) => Math.Abs(v);
+        static float Ab(float v) => Math.Abs(v);
+        static int Ab(int v) => Math.Abs(v);
+        static float Mn(float a, float b) => Math.Min(a, b);
+        static double Mn(double a, double b) => Math.Min(a, b);
+        static int Mn(int a, int b) => Math.Min(a, b);
+        static float Mx(float a, float b) => Math.Max(a, b);
+        static double Mx(double a, double b) => Math.Max(a, b);
+        static int Mx(int a, int b) => Math.Max(a, b);
+        static readonly Vector3D VZ = Vector3D.Zero;
+        const double PI = Math.PI;
     }
 }

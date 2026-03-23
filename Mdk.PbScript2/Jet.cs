@@ -97,7 +97,7 @@ namespace IngameScript
             public RadarControlModule radarControl;
 
             // Cached gravity vector (updated once per tick by SystemManager)
-            public Vector3D CachedGravity = Vector3D.Zero;
+            public Vector3D CachedGravity = VZ;
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -187,17 +187,6 @@ namespace IngameScript
                     batteries,
                     b => b.CubeGrid == _cockpit.CubeGrid
                 );
-
-                // Back HUD layer for parallax depth effect (optional)
-                var hud2Block = grid.GetBlockWithName("Fighter HUD2");
-                hud2 = hud2Block as IMyTextSurface;
-                if (hud2 != null)
-                {
-                    hud2.ContentType = ContentType.SCRIPT;
-                    hud2.Script = "";
-                    hud2.ScriptBackgroundColor = new Color(0, 0, 0, 0);
-                    hud2.ScriptForegroundColor = Color.White;
-                }
             }
             private int ExtractBayNumber(string name)
             {
@@ -263,7 +252,7 @@ namespace IngameScript
                     }
                 }
 
-                Vector3D accel = Vector3D.Zero;
+                Vector3D accel = VZ;
                 if (existingIndex >= 0)
                 {
                     long tickDelta = GameTicks - enemyList[existingIndex].LastSeenTicks;
@@ -335,7 +324,7 @@ namespace IngameScript
                 _resultBuffer.Clear();
 
                 var sorted = SortEnemiesByDistance();
-                int count = Math.Min(n, sorted.Count);
+                int count = Mn(n, sorted.Count);
                 for (int i = 0; i < count; i++)
                 {
                     _resultBuffer.Add(sorted[i].Value);
@@ -430,17 +419,17 @@ namespace IngameScript
                 if (ageSeconds < 3)
                 {
                     // Fresh: Bright red
-                    return new Color(255, 0, 0);
+                    return Cr(255, 0, 0);
                 }
                 else if (ageSeconds < 6)
                 {
                     // Aging: Orange
-                    return new Color(255, 165, 0);
+                    return Cr(255, 165, 0);
                 }
                 else
                 {
                     // Stale: Yellow
-                    return new Color(255, 255, 0);
+                    return Cr(255, 255, 0);
                 }
             }
 
@@ -486,7 +475,7 @@ namespace IngameScript
             /// <summary>
             /// Cockpit WorldMatrix and Position if needed for calculations.
             /// </summary>
-            public Vector3D GetCockpitPosition() => _cockpit?.GetPosition() ?? Vector3D.Zero;
+            public Vector3D GetCockpitPosition() => _cockpit?.GetPosition() ?? VZ;
             public MatrixD GetCockpitMatrix() => _cockpit?.WorldMatrix ?? MatrixD.Identity;
 
             // ------------------------------
@@ -520,7 +509,7 @@ namespace IngameScript
                 percentage = Cl(percentage, 0f, 1f);
                 foreach (var thruster in _thrusters)
                 {
-                    if (Math.Abs(thruster.ThrustOverridePercentage - percentage) > 0.001f)
+                    if (Ab(thruster.ThrustOverridePercentage - percentage) > 0.001f)
                     {
                         thruster.ThrustOverridePercentage = percentage;
                     }

@@ -19,9 +19,9 @@ namespace IngameScript
                 out Vector3D aimPoint,
                 Vector3D targetAcceleration = default(Vector3D))
             {
-                interceptPoint = Vector3D.Zero;
+                interceptPoint = VZ;
                 timeToIntercept = -1;
-                aimPoint = Vector3D.Zero;
+                aimPoint = VZ;
 
                 Vector3D D = targetPosition - shooterPosition;
                 Vector3D V_rel = targetVelocity - shooterVelocity;
@@ -41,9 +41,9 @@ namespace IngameScript
                 double qC = D.LengthSquared();
 
                 double t = -1;
-                if (Math.Abs(qA) < 1e-6)
+                if (Ab(qA) < 1e-6)
                 {
-                    if (Math.Abs(qB) > 1e-6)
+                    if (Ab(qB) > 1e-6)
                         t = -qC / qB;
                 }
                 else
@@ -55,7 +55,7 @@ namespace IngameScript
                         double t1 = (-qB - sqrtDisc) / (2 * qA);
                         double t2 = (-qB + sqrtDisc) / (2 * qA);
 
-                        if (t1 > 0.001 && t2 > 0.001) t = Math.Min(t1, t2);
+                        if (t1 > 0.001 && t2 > 0.001) t = Mn(t1, t2);
                         else if (t1 > 0.001) t = t1;
                         else if (t2 > 0.001) t = t2;
                     }
@@ -74,7 +74,7 @@ namespace IngameScript
                     double f = a4 * t4 + a3 * t3 + a2 * t2 + a1 * t + a0;
                     double fPrime = 4 * a4 * t3 + 3 * a3 * t2 + 2 * a2 * t + a1;
 
-                    if (Math.Abs(fPrime) < 1e-10)
+                    if (Ab(fPrime) < 1e-10)
                         break;
 
                     double tNew = t - f / fPrime;
@@ -82,7 +82,7 @@ namespace IngameScript
                     if (tNew <= 0)
                         tNew = t * 0.5;
 
-                    double delta = Math.Abs(tNew - t);
+                    double delta = Ab(tNew - t);
                     t = tNew;
 
                     if (delta < tolerance)
@@ -94,7 +94,7 @@ namespace IngameScript
                 Vector3D requiredMuzzleVel = D / t + V_rel + 0.5 * A_net * t;
                 double actualSpeed = requiredMuzzleVel.Length();
 
-                if (Math.Abs(actualSpeed - muzzleSpeed) / muzzleSpeed > 0.02)
+                if (Ab(actualSpeed - muzzleSpeed) / muzzleSpeed > 0.02)
                     return false;
 
                 timeToIntercept = t;

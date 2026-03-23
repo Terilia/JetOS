@@ -11,31 +11,31 @@ namespace IngameScript
         // ── NYINAH CORP MFD Theme palette ──
         static class MFDTheme
         {
-            public static readonly Color BG            = new Color(5, 8, 5);
-            public static readonly Color PANEL_BG      = new Color(8, 14, 8);
-            public static readonly Color HEADER_BG     = new Color(10, 18, 10);
-            public static readonly Color BORDER        = new Color(24, 40, 24);
-            public static readonly Color BORDER_LIGHT  = new Color(20, 30, 20);
-            public static readonly Color DIM_TEXT      = new Color(42, 74, 42);
-            public static readonly Color DIM_TEXT_MID  = new Color(58, 90, 58);
-            public static readonly Color MID_TEXT      = new Color(74, 122, 74);
-            public static readonly Color NORMAL_TEXT   = new Color(90, 154, 90);
-            public static readonly Color BRIGHT_TEXT   = new Color(144, 208, 144);
-            public static readonly Color ACCENT        = new Color(64, 160, 64);
-            public static readonly Color CORP_GOLD     = new Color(138, 122, 80);
-            public static readonly Color GOLD_DIM      = new Color(55, 49, 32);
-            public static readonly Color GOLD_LINE     = new Color(58, 53, 32);
-            public static readonly Color SEL_FILL      = new Color(14, 28, 14);
-            public static readonly Color SEL_BORDER    = new Color(26, 48, 26);
-            public static readonly Color ROW_DIVIDER   = new Color(12, 20, 12);
-            public static readonly Color CORNER        = new Color(42, 74, 42);
-            public static readonly Color BC_BG         = new Color(8, 14, 8);
-            public static readonly Color BC_BORDER     = new Color(16, 26, 16);
-            public static readonly Color STATUS_RDY    = new Color(80, 160, 80);
-            public static readonly Color BAR_TRACK     = new Color(6, 10, 6);
-            public static readonly Color BAR_FILL      = new Color(48, 144, 48);
-            public static readonly Color STATUS_VAL    = new Color(80, 144, 80);
-            public static readonly Color WARN          = new Color(192, 160, 48);
+            public static readonly Color BG            = Cr(5, 8, 5);
+            public static readonly Color PANEL_BG      = Cr(8, 14, 8);
+            public static readonly Color HEADER_BG     = Cr(10, 18, 10);
+            public static readonly Color BORDER        = Cr(24, 40, 24);
+            public static readonly Color BORDER_LIGHT  = Cr(20, 30, 20);
+            public static readonly Color DIM_TEXT      = Cr(42, 74, 42);
+            public static readonly Color DIM_TEXT_MID  = Cr(58, 90, 58);
+            public static readonly Color MID_TEXT      = Cr(74, 122, 74);
+            public static readonly Color NORMAL_TEXT   = Cr(90, 154, 90);
+            public static readonly Color BRIGHT_TEXT   = Cr(144, 208, 144);
+            public static readonly Color ACCENT        = Cr(64, 160, 64);
+            public static readonly Color CORP_GOLD     = Cr(138, 122, 80);
+            public static readonly Color GOLD_DIM      = Cr(55, 49, 32);
+            public static readonly Color GOLD_LINE     = Cr(58, 53, 32);
+            public static readonly Color SEL_FILL      = Cr(14, 28, 14);
+            public static readonly Color SEL_BORDER    = Cr(26, 48, 26);
+            public static readonly Color ROW_DIVIDER   = Cr(12, 20, 12);
+            public static readonly Color CORNER        = Cr(42, 74, 42);
+            public static readonly Color BC_BG         = Cr(8, 14, 8);
+            public static readonly Color BC_BORDER     = Cr(16, 26, 16);
+            public static readonly Color STATUS_RDY    = Cr(80, 160, 80);
+            public static readonly Color BAR_TRACK     = Cr(6, 10, 6);
+            public static readonly Color BAR_FILL      = Cr(48, 144, 48);
+            public static readonly Color STATUS_VAL    = Cr(80, 144, 80);
+            public static readonly Color WARN          = Cr(192, 160, 48);
             public static readonly string FONT          = "Monospace";
             public static readonly string FONT_W        = "White";
             public static readonly string SQ            = "SquareSimple";
@@ -75,7 +75,7 @@ namespace IngameScript
                 mainViewport = new RectangleF(Vector2.Zero, mainScreen.SurfaceSize);
 
                 mainScreen.BackgroundColor = MFDTheme.BG;
-                extraScreen.BackgroundColor = new Color(0, 0, 0);
+                extraScreen.BackgroundColor = Cr(0, 0, 0);
 
                 ComputeLayout();
             }
@@ -91,7 +91,7 @@ namespace IngameScript
                 PAD_X     = SW * 0.019f;
                 PAD_Y     = SH * 0.020f;
                 CORNER_INSET = 4f;
-                CORNER_LEN   = Math.Min(SW, SH) * 0.03f;
+                CORNER_LEN   = Mn(SW, SH) * 0.03f;
                 ROW_H         = SH * 0.079f;
                 ROW_H_COMPACT = SH * 0.062f;
                 SIDEBAR_W  = SW * 0.347f;
@@ -116,7 +116,7 @@ namespace IngameScript
             {
                 var frame = mainScreen.DrawFrame();
                 bool inModule = moduleName != null;
-                bool hasSidebar = !inModule && statusPanelRenderer != null;
+                bool hasSidebar = statusPanelRenderer != null;
                 bool compact = options.Length > 7;
                 float rowH;
                 float txtScale;
@@ -188,8 +188,8 @@ namespace IngameScript
                     R(ref frame, sideX - 1f, contentTop, 1f, contentBot - contentTop - PAD_Y, MFDTheme.BORDER_LIGHT);
 
                     var sideArea = new RectangleF(
-                        new Vector2(sideX + 4f, contentTop),
-                        new Vector2(SIDEBAR_W - 4f, contentBot - contentTop - PAD_Y));
+                        V2(sideX + 4f, contentTop),
+                        V2(SIDEBAR_W - 4f, contentBot - contentTop - PAD_Y));
                     statusPanelRenderer(frame, sideArea);
                 }
 
@@ -340,14 +340,14 @@ namespace IngameScript
             private void R(ref MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
             {
                 f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
-                    Position = new Vector2(cx, cy), Size = new Vector2(w, h),
+                    Position = V2(cx, cy), Size = V2(w, h),
                     Color = c, Alignment = MFDTheme.AC });
             }
 
             private void T(ref MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
             {
                 f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
-                    Position = new Vector2(x, y), RotationOrScale = s,
+                    Position = V2(x, y), RotationOrScale = s,
                     Color = c, Alignment = a, FontId = MFDTheme.FONT });
             }
 
