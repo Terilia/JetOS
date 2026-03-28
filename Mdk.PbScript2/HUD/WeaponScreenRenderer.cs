@@ -112,11 +112,13 @@ namespace IngameScript
                 if (string.IsNullOrEmpty(name)) name = "UNKNOWN";
                 if (name.Length > 14) name = name.Substring(0, 14);
 
-                MFDFrame.Txt(frame, name, textX, textY, 0.7f, MFDTheme.BRIGHT_TEXT);
+                bool stale = contact.IsStale;
+                Color nameColor = stale ? MFDTheme.DIM_TEXT_MID : MFDTheme.BRIGHT_TEXT;
+                MFDFrame.Txt(frame, name, textX, textY, 0.7f, nameColor);
 
                 bool isSTT = radarControl != null && radarControl.IsTrackLocked;
-                string badgeText = isSTT ? "STT" : "TWS";
-                Color badgeColor = isSTT ? MFDTheme.ACCENT : MFDTheme.STATUS_RDY;
+                string badgeText = stale ? "STALE" : isSTT ? "STT" : "TWS";
+                Color badgeColor = stale ? MFDTheme.DIM_TEXT : isSTT ? MFDTheme.ACCENT : MFDTheme.STATUS_RDY;
 
                 float badgeWidth = 30f;
                 float badgeHeight = 14f;
@@ -234,7 +236,9 @@ namespace IngameScript
                             2f, LINE_HEIGHT, MFDTheme.ACCENT);
                     }
 
-                    Color contactColor = isSelected ? MFDTheme.BRIGHT_TEXT : myjet.GetEnemyContactColor(contact);
+                    Color contactColor = contact.IsStale
+                        ? (isSelected ? MFDTheme.DIM_TEXT_MID : MFDTheme.DIM_TEXT)
+                        : (isSelected ? MFDTheme.BRIGHT_TEXT : myjet.GetEnemyContactColor(contact));
 
                     string marker = isSelected ? "\u25C9" : "\u25CB";
                     MFDFrame.Txt(frame, marker, textX, textY, TEXT_SCALE, contactColor);
@@ -341,22 +345,13 @@ namespace IngameScript
 
                 SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, Cr(100, 100, 100, 150), 2f);
 
-                string statusText = "GUN AUTO-TRACK";
-                Color statusColor = HUD_PRIMARY;
-
-                if (gunControl.IsLeftCalibrating || gunControl.IsRightCalibrating)
-                {
-                    statusText = "CALIBRATING...";
-                    statusColor = HUD_EMPHASIS;
-                }
-
-                SpriteHelpers.Tt(frame, statusText, center.X, center.Y - coneRadius - 30f, 0.6f, statusColor, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(frame, "GUN AUTO-TRACK", center.X, center.Y - coneRadius - 30f, 0.6f, HUD_PRIMARY, MFDTheme.AC, MFDTheme.FONT_W);
 
                 Vector2 leftIndicatorPos = V2(center.X - coneRadius - 40f, center.Y);
-                DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking, gunControl.IsLeftCalibrating);
+                DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking);
 
                 Vector2 rightIndicatorPos = V2(center.X + coneRadius + 40f, center.Y);
-                DrawTurretIndicator(frame, rightIndicatorPos, "R", gunControl.IsRightTracking, gunControl.IsRightCalibrating);
+                DrawTurretIndicator(frame, rightIndicatorPos, "R", gunControl.IsRightTracking);
 
                 if (gunControl.IsLeftTracking && gunControl.IsRightTracking)
                 {
@@ -378,19 +373,13 @@ namespace IngameScript
                 }
             }
 
-            private void DrawTurretIndicator(MySpriteDrawFrame frame, Vector2 position, string label, bool isLocked, bool isCalibrating)
+            private void DrawTurretIndicator(MySpriteDrawFrame frame, Vector2 position, string label, bool isLocked)
             {
                 Color bgColor;
                 Color textColor;
                 string statusChar;
 
-                if (isCalibrating)
-                {
-                    bgColor = Cr(100, 100, 0, 200);
-                    textColor = HUD_EMPHASIS;
-                    statusChar = "?";
-                }
-                else if (isLocked)
+                if (isLocked)
                 {
                     bgColor = Cr(0, 100, 0, 200);
                     textColor = MFDTheme.ACCENT;

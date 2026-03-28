@@ -43,7 +43,7 @@ namespace IngameScript
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
             private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)PI / 180f;
-            private const int INTERCEPT_ITERATIONS = 10;
+            private const int INTERCEPT_ITERATIONS = 6;
 
             // --- Configurable (read from config) ---
             private float KP => SystemManager.GetConfigValue("gun_kp");
@@ -447,8 +447,6 @@ namespace IngameScript
             public bool IsControlEnabled => controlEnabled;
             public bool IsLeftTracking => leftTurret.IsTracking;
             public bool IsRightTracking => rightTurret.IsTracking;
-            public bool IsLeftCalibrating => false;
-            public bool IsRightCalibrating => false;
         }
     }
 }

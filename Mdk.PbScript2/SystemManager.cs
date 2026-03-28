@@ -28,8 +28,8 @@ namespace IngameScript
             private static Program.RadarControlModule radarControlModule;
             private static Program.AirtoAir airtoAirModule;
             private static Program.GunControlModule gunControlModule;
-            private static List<IMyThrust> thrusters = new List<IMyThrust>();
-
+            private static Program.TerrainModule terrainModule;
+            private static Program.AeroRecorderModule aeroRecorder;
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
 
@@ -65,7 +65,6 @@ namespace IngameScript
                     }
                 }
 
-                thrusters = _myJet._thrusters;
                 parentProgram = program;
                 modules = new List<ProgramModule>();
 
@@ -73,6 +72,7 @@ namespace IngameScript
                 CustomDataManager.Initialize(program.Me);
                 SoundManager.Initialize(program.GridTerminalSystem);
                 TerrainData.Probe(program.Me);
+                TerrainData.Init(program.Me);
 
                 // Initialize centralized radar control FIRST
                 radarControlModule = new RadarControlModule(parentProgram, _myJet);
@@ -93,7 +93,11 @@ namespace IngameScript
                 gunControlModule = new GunControlModule(parentProgram, _myJet);
                 modules.Add(gunControlModule);
 
-                modules.Add(new TerrainModule(parentProgram, _myJet));
+                terrainModule = new TerrainModule(parentProgram, _myJet);
+                modules.Add(terrainModule);
+
+                aeroRecorder = new AeroRecorderModule(parentProgram, _myJet);
+                modules.Add(aeroRecorder);
 
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
@@ -117,11 +121,6 @@ namespace IngameScript
             public static bool TryGetCustomDataValue(string key, out string value)
             {
                 return CustomDataManager.TryGetValue(key, out value);
-            }
-
-            public static void RemoveCustomDataValue(string key)
-            {
-                CustomDataManager.RemoveValue(key);
             }
 
             public static void MarkCustomDataDirty()
@@ -159,30 +158,12 @@ namespace IngameScript
                 if (_myJet._cockpit != null)
                     _myJet.CachedGravity = _myJet._cockpit.GetNaturalGravity();
 
-                Vector3D cockpitPosition = _myJet.GetCockpitPosition();
-                MatrixD cockpitMatrix = _myJet.GetCockpitMatrix();
-
                 double velocity = _myJet.GetVelocity();
                 double velocityKnots = velocity * 1.94384;
                 double altitude = _myJet.GetAltitude();
 
-                // Terrain heightmap async loading (predictive, centered ahead of travel)
-                TerrainData.Tick(parentProgram.Me);
-                Vector3D shipVel = _myJet._cockpit != null ? _myJet._cockpit.GetShipVelocities().LinearVelocity : VZ;
-                if (_myJet.CachedGravity.LengthSquared() > 0.01
-                    && TerrainData.NeedsRefresh(cockpitPosition, shipVel))
-                {
-                    Vector3D up = VN(-_myJet.CachedGravity);
-                    Vector3D fwd = cockpitMatrix.Forward;
-                    fwd = fwd - VD(fwd, up) * up;
-                    if (fwd.LengthSquared() > 0.01) fwd = VN(fwd);
-                    // Center grid 3km ahead of travel direction for proactive coverage
-                    Vector3D flatVel = shipVel - VD(shipVel, up) * up;
-                    Vector3D center = cockpitPosition;
-                    if (flatVel.LengthSquared() > 25) // >5m/s
-                        center = cockpitPosition + VN(flatVel) * 3000;
-                    TerrainData.Request(parentProgram.Me, center, fwd);
-                }
+                // Terrain: download chunks during init, update tangent vectors when ready
+                TerrainData.Tick(parentProgram.Me, _myJet.GetCockpitPosition());
 
                 // Altitude warning with hysteresis
                 float altWarn = GetConfigValue("altitude_warning");
@@ -239,6 +220,11 @@ namespace IngameScript
                 if (gunControlModule != null && currentModule != gunControlModule)
                 {
                     gunControlModule.Tick();
+                }
+
+                if (aeroRecorder != null && aeroRecorder.IsActive && currentModule != aeroRecorder)
+                {
+                    aeroRecorder.Tick();
                 }
 
                 HandleSpecialFunctionInputs(argument);
@@ -454,25 +440,11 @@ namespace IngameScript
                 currentMenuIndex = 0;
             }
 
-            public static IMyTextSurface GetMainLCD()
-            {
-                return lcdMain;
-            }
-
-            public static IMyTextSurface GetExtraLCD()
-            {
-                return lcdExtra;
-            }
-
             public static GunControlModule GetGunControl()
             {
                 return gunControlModule;
             }
 
-            public static HUDModule GetHUDModule()
-            {
-                return hudProgram;
-            }
         }
     }
 }

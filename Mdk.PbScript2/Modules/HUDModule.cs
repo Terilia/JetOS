@@ -144,7 +144,6 @@ namespace IngameScript
             internal const double STALL_AOA = 28.0;
             internal const double STALL_CAUTION_PERCENT = 0.80;
             internal const double STALL_WARNING_PERCENT = 0.90;
-            internal bool stallWarningActive = false;
             internal const int STALL_LEVEL_NORMAL = 0;
             internal const int STALL_LEVEL_CAUTION = 1;
             internal const int STALL_LEVEL_WARNING = 2;
@@ -635,10 +634,13 @@ namespace IngameScript
                 throttlePercent = throttle * 100;
             }
 
+            static float _lastTrimOffset = float.NaN;
+
             private void AdjustStabilizers(double aoa, Jet myjet)
             {
-                if (cockpit == null)
+                if (cockpit == null || myjet.offset == _lastTrimOffset)
                     return;
+                _lastTrimOffset = myjet.offset;
 
                 AdjustTrim(rightstab, myjet.offset);
                 AdjustTrim(leftstab, -myjet.offset);
@@ -649,7 +651,8 @@ namespace IngameScript
                 foreach (var item in stabilizers)
                 {
                     currentTrim = item.GetValueFloat("Trim");
-                    item.SetValue("Trim", desiredTrim);
+                    if (Ab(currentTrim - desiredTrim) > 0.001f)
+                        item.SetValue("Trim", desiredTrim);
                 }
             }
 

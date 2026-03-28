@@ -304,9 +304,6 @@ namespace IngameScript
                     DrawStallWarning(frame, currentStallLevel, absAoA);
                 }
 
-                // Update stall warning state for sound system
-                stallWarningActive = currentStallLevel == STALL_LEVEL_STALL;
-
                 double energyRate = acceleration.Length();
                 string energySymbol = energyRate > 5 ? "+" : energyRate < -5 ? "-" : "=";
                 Color energyColor = energyRate > 5 ? HUD_PRIMARY : energyRate < -5 ? HUD_WARNING : HUD_EMPHASIS;

@@ -182,6 +182,11 @@ namespace IngameScript
             /// <summary>
             /// Tells You Tracked Object Name
             /// </summary>
+            // Prefix used by SE's OffensiveCombatBlock DetailedInfo:
+            //   "Status: Attacking {GridDisplayName}"
+            // Also check hit-and-run variant which uses the same format.
+            const string ATK_PREFIX = "Status: Attacking ";
+
             public string TrackedObjectName
             {
                 get
@@ -190,18 +195,20 @@ namespace IngameScript
                     if (string.IsNullOrEmpty(detailedInfo))
                         return "";
 
-                    // Get first line without allocating a string[] via Split
-                    int nlIndex = detailedInfo.IndexOf('\n');
-                    string firstLine = nlIndex >= 0 ? detailedInfo.Substring(0, nlIndex) : detailedInfo;
-
-                    // SE format: "Status: Attacking (TargetName)" — extract name from parentheses
-                    int openParen = firstLine.IndexOf('(');
-                    if (openParen >= 0)
+                    // Scan each line for the attacking prefix
+                    int start = 0;
+                    while (start < detailedInfo.Length)
                     {
-                        int closeParen = firstLine.IndexOf(')', openParen);
-                        if (closeParen > openParen)
-                            return firstLine.Substring(openParen + 1, closeParen - openParen - 1);
-                        return firstLine.Substring(openParen + 1).Trim();
+                        int nl = detailedInfo.IndexOf('\n', start);
+                        int end = nl >= 0 ? nl : detailedInfo.Length;
+                        int len = end - start;
+
+                        if (len > ATK_PREFIX.Length &&
+                            detailedInfo.IndexOf(ATK_PREFIX, start, len) == start)
+                        {
+                            return detailedInfo.Substring(start + ATK_PREFIX.Length, len - ATK_PREFIX.Length).Trim();
+                        }
+                        start = end + 1;
                     }
 
                     return "";

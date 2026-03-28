@@ -8,104 +8,282 @@ namespace IngameScript
 {
     partial class Program
     {
+        /// <summary>
+        /// Downloads entire planet heightmap on compile via TerrainAPI,
+        /// then provides instant offline lookups forever.
+        /// Protocol: P;cellSize → grid info, C;offset;count → height chunks.
+        /// </summary>
         static class TerrainData
         {
-            enum S { IDLE, POLL, LOAD, READY, OFF }
-            static S _s; static bool _p;
-            static readonly StringBuilder _c = new StringBuilder(256);
+            const int CHUNK = 5000;
+            const int HOFF = 32768;
+            const double DEFAULT_CELL = 200;
 
-            struct HM { public short[] h; public int w, ht; public double cs, ba;
-                public Vector3D pc, rf, rr, og; }
-            static HM _a, _n;
-            static bool _hd;
-            static int _gen; // increments on each swap — renderers detect & recompute
+            static readonly System.Globalization.NumberFormatInfo _nfi =
+                new System.Globalization.NumberFormatInfo
+                { NumberDecimalSeparator = ".", NumberGroupSeparator = "" };
 
-            static int _lr; const int CK = 3;
-            public const int MW = 400, MH = 400, MC = 50;
+            // State
+            static bool _probed, _off;
+            static StringBuilder _sb;
+            static readonly StringBuilder _cmd = new StringBuilder(64);
 
-            public static bool Ready => _hd;
-            public static bool Loading => _s == S.POLL || _s == S.LOAD;
-            public static bool Available => _s != S.OFF;
-            public static double CellSize => _a.cs;
-            public static Vector3D GridFwd => _a.rf;
-            public static Vector3D GridRight => _a.rr;
+            // Planet grid
+            static short[] _grid;
+            static int _rows, _cols, _total;
+            static double _meanR, _cellSize;
+            static Vector3D _pc;
+            static int _offset;
+            static bool _ready, _downloading;
+            static int _gen;
+
+            // ── Tile min/max for spatial culling ──
+            const int TILE = 16;
+            static short[] _tileMin, _tileMax;
+            static int _tileRows, _tileCols;
+            static bool _tilesReady;
+            static int _tileOfs;
+            const int TILE_BATCH = 2500;
+
+            // Tangent vectors (recomputed each tick when ready)
+            static Vector3D _gridFwd, _gridRight;
+
+            // Public API
+            public static bool Available => !_off;
+            public static bool Ready => _ready;
+            public static bool Loading => _downloading;
+            public static double CellSize => _cellSize > 0 ? _cellSize : DEFAULT_CELL;
+            public static Vector3D GridFwd => _gridFwd;
+            public static Vector3D GridRight => _gridRight;
             public static int Gen => _gen;
+            public static bool TilesReady => _tilesReady;
+            public static double MeanR => _meanR;
+            public static float DownloadProgress => _total > 0 ? (float)_offset / _total : 0f;
+            public static int Rows => _rows;
+            public static int Cols => _cols;
 
             public static void Probe(IMyProgrammableBlock me)
-            { if (_p) return; _p = true; if (me.GetProperty("TerrainAPI") == null) _s = S.OFF; }
-
-            public static void Request(IMyProgrammableBlock me, Vector3D center, Vector3D fwd)
             {
-                if (_s == S.OFF) return; if (!_p) Probe(me); if (_s == S.OFF) return;
-                _c.Clear(); _c.Append("H;")
-                    .Append(center.X).Append(';').Append(center.Y).Append(';').Append(center.Z).Append(';')
-                    .Append(fwd.X).Append(';').Append(fwd.Y).Append(';').Append(fwd.Z).Append(';')
-                    .Append(MW).Append(';').Append(MH).Append(';').Append(MC);
-                try { me.SetValue<StringBuilder>("TerrainAPI", _c);
-                    _s = S.POLL; _n.og = center;
-                } catch { _s = S.OFF; }
+                if (_probed) return;
+                _probed = true;
+                if (me.GetProperty("TerrainAPI") == null) _off = true;
             }
 
-            public static void Tick(IMyProgrammableBlock me)
-            { if (_s == S.POLL) Poll(me); else if (_s == S.LOAD) Load(me); }
-
-            static void Poll(IMyProgrammableBlock me)
+            /// <summary>
+            /// Sends P;cellSize to the plugin, parses grid dimensions,
+            /// allocates the height array, and starts the download.
+            /// </summary>
+            public static void Init(IMyProgrammableBlock me)
             {
-                _c.Clear(); _c.Append('S');
-                try { me.SetValue<StringBuilder>("TerrainAPI", _c);
-                    var r = me.GetValue<StringBuilder>("TerrainAPI");
-                    if (r == null || r.Length < 6) return; string s = r.ToString();
-                    if (s[0] != 'S' || s[1] != ';' || s[2] != 'R') return;
-                    string[] p = s.Split(';'); if (p.Length < 15) return;
-                    _n.w = int.Parse(p[2]); _n.ht = int.Parse(p[3]);
-                    _n.cs = double.Parse(p[4]); _n.ba = double.Parse(p[5]);
-                    _n.pc = new Vector3D(double.Parse(p[6]), double.Parse(p[7]), double.Parse(p[8]));
-                    _n.rr = new Vector3D(double.Parse(p[9]), double.Parse(p[10]), double.Parse(p[11]));
-                    _n.rf = new Vector3D(double.Parse(p[12]), double.Parse(p[13]), double.Parse(p[14]));
-                    int t = _n.w * _n.ht;
-                    if (_n.h == null || _n.h.Length < t) _n.h = new short[t];
-                    _lr = 0; _s = S.LOAD; } catch { }
+                if (_off) return;
+                if (!_probed) { Probe(me); if (_off) return; }
+
+                _cmd.Clear();
+                _cmd.Append("P;").Append(DEFAULT_CELL);
+                me.SetValue<StringBuilder>("TerrainAPI", _cmd);
+                _sb = me.GetValue<StringBuilder>("TerrainAPI");
+                if (_sb == null) return;
+
+                string resp = _sb.ToString();
+                if (resp.Length < 3 || resp[0] == 'E') return;
+
+                // Parse: P;rows;cols;cellSize;meanRadius;pcX;pcY;pcZ
+                string[] p = resp.Split(';');
+                if (p.Length < 8) return;
+
+                try
+                {
+                    _rows = int.Parse(p[1]);
+                    _cols = int.Parse(p[2]);
+                    _cellSize = double.Parse(p[3], _nfi);
+                    _meanR = double.Parse(p[4], _nfi);
+                    _pc = new Vector3D(
+                        double.Parse(p[5], _nfi),
+                        double.Parse(p[6], _nfi),
+                        double.Parse(p[7], _nfi));
+                }
+                catch { return; }
+
+                _total = _rows * _cols;
+                _grid = new short[_total];
+                _offset = 0;
+                _downloading = true;
             }
 
-            static void Load(IMyProgrammableBlock me)
+            public static void Tick(IMyProgrammableBlock me, Vector3D shipPos)
             {
-                int n = Mn(CK, _n.ht - _lr); if (n <= 0) { Swap(); return; }
-                _c.Clear(); _c.Append("C;").Append(_lr).Append(';').Append(n);
-                try { me.SetValue<StringBuilder>("TerrainAPI", _c);
-                    var r = me.GetValue<StringBuilder>("TerrainAPI");
-                    if (r == null || r.Length == 0) return; string d = r.ToString();
-                    int b = _lr * _n.w, cnt = Mn(d.Length, n * _n.w);
-                    for (int i = 0; i < cnt; i++) _n.h[b + i] = (short)((int)d[i] - 32768);
-                    _lr += n; if (_lr >= _n.ht) Swap();
-                } catch { }
+                if (_off) return;
+
+                if (_downloading && _grid != null)
+                {
+                    DownloadChunk(me);
+                    return;
+                }
+
+                if (_ready && !_tilesReady)
+                    BuildTileChunk();
+
+                if (_ready)
+                    UpdateTangents(shipPos);
             }
 
-            static void Swap() { _a = _n; _hd = true; _gen++; _s = S.READY; }
-
-            /// <summary>Predictive refresh: checks where ship WILL be in 15s.</summary>
-            public static bool NeedsRefresh(Vector3D pos, Vector3D vel)
+            static void DownloadChunk(IMyProgrammableBlock me)
             {
-                if (_s == S.OFF) return false;
-                if (!_hd && _s == S.IDLE) return true;
-                if (_s != S.READY) return false;
-                // Check predicted position 15 seconds ahead
-                Vector3D future = pos + vel * 15;
-                double edge = MW * MC * 0.35; // trigger at 35% of coverage
-                return (future - _a.og).LengthSquared() > edge * edge;
+                _cmd.Clear();
+                _cmd.Append("C;").Append(_offset).Append(';').Append(CHUNK);
+                me.SetValue<StringBuilder>("TerrainAPI", _cmd);
+                // Re-fetch response SB — plugin may replace it after SetValue
+                _sb = me.GetValue<StringBuilder>("TerrainAPI");
+                if (_sb == null || _sb.Length < 2) return;
+
+                string resp = _sb.ToString();
+                int nl = resp.IndexOf('\n');
+                if (nl < 0) return;
+
+                int avail = resp.Length - nl - 1;
+                int count = Mn(avail, _total - _offset);
+                for (int i = 0; i < count; i++)
+                    _grid[_offset + i] = (short)((int)resp[nl + 1 + i] - HOFF);
+
+                _offset += count;
+                if (_offset >= _total)
+                {
+                    _ready = true;
+                    _downloading = false;
+                    _gen++;
+                }
             }
 
+            static void BuildTileChunk()
+            {
+                if (_tileMin == null)
+                {
+                    _tileRows = (_rows + TILE - 1) / TILE;
+                    _tileCols = (_cols + TILE - 1) / TILE;
+                    int n = _tileRows * _tileCols;
+                    _tileMin = new short[n];
+                    _tileMax = new short[n];
+                    for (int i = 0; i < n; i++) { _tileMin[i] = short.MaxValue; _tileMax[i] = short.MinValue; }
+                    _tileOfs = 0;
+                }
+                int end = Mn(_tileOfs + TILE_BATCH, _total);
+                int r = _tileOfs / _cols, c = _tileOfs % _cols;
+                for (int i = _tileOfs; i < end; i++)
+                {
+                    int ti = (r / TILE) * _tileCols + (c / TILE);
+                    short h = _grid[i];
+                    if (h < _tileMin[ti]) _tileMin[ti] = h;
+                    if (h > _tileMax[ti]) _tileMax[ti] = h;
+                    if (++c >= _cols) { c = 0; r++; }
+                }
+                _tileOfs = end;
+                if (_tileOfs >= _total) { _tilesReady = true; _gen++; }
+            }
+
+            /// <summary>
+            /// Computes north/east tangent vectors at ship position for
+            /// FillCl grid-to-world projection. East axis is scaled to
+            /// compensate for equirectangular longitude distortion.
+            /// </summary>
+            static void UpdateTangents(Vector3D shipPos)
+            {
+                Vector3D dir = VN(shipPos - _pc);
+                double lat = Math.Asin(dir.Y);
+                double lon = At2(dir.Z, dir.X);
+
+                double sinLat = Sn(lat), cosLat = Cs(lat);
+                double sinLon = Sn(lon), cosLon = Cs(lon);
+
+                // North (row+): unit tangent along latitude increase
+                _gridFwd = new Vector3D(-sinLat * cosLon, cosLat, -sinLat * sinLon);
+
+                // East (col+): scaled for equirectangular distortion
+                // At equator colScale=1, at higher latitudes colScale>1
+                // so FillCl steps more cols to cover the same physical distance
+                double colScale = cosLat > 0.01
+                    ? (double)_cols / (2.0 * _rows * cosLat) : 1.0;
+                _gridRight = new Vector3D(-sinLon * colScale, 0, cosLon * colScale);
+            }
+
+            // ── Lookup API ──
+
+            /// <summary>
+            /// Converts world position to planet grid row/col via lat/lon.
+            /// Always returns true (planet-wide grid covers everything).
+            /// </summary>
             public static bool W2G(Vector3D wp, out int row, out int col)
-            { Vector3D o = wp - _a.og; col = (int)(VD(o, _a.rr) / _a.cs + _a.w * 0.5);
-                row = (int)(VD(o, _a.rf) / _a.cs + _a.ht * 0.5);
-                return col >= 0 && col < _a.w && row >= 0 && row < _a.ht; }
+            {
+                Vector3D dir = VN(wp - _pc);
+                double lat = Math.Asin(dir.Y);
+                double lon = At2(dir.Z, dir.X);
 
+                row = (int)((lat / PI + 0.5) * _rows);
+                col = (int)((lon / (2.0 * PI) + 0.5) * _cols);
+
+                if (row < 0) row = 0; else if (row >= _rows) row = _rows - 1;
+                col = ((col % _cols) + _cols) % _cols;
+                return true;
+            }
+
+            /// <summary>
+            /// W2G with fractional sub-cell position for smooth contour scrolling.
+            /// fracR/fracC are 0..1 offsets within the cell.
+            /// </summary>
+            public static void W2GF(Vector3D wp, out int row, out int col, out double fracR, out double fracC)
+            {
+                Vector3D dir = VN(wp - _pc);
+                double lat = Math.Asin(dir.Y);
+                double lon = At2(dir.Z, dir.X);
+
+                double er = (lat / PI + 0.5) * _rows;
+                double ec = (lon / (2.0 * PI) + 0.5) * _cols;
+
+                row = (int)er; if (er < row) row--;
+                col = (int)ec; if (ec < col) col--;
+                fracR = er - row;
+                fracC = ec - col;
+
+                if (row < 0) { row = 0; fracR = 0; }
+                else if (row >= _rows) { row = _rows - 1; fracR = 0; }
+                col = ((col % _cols) + _cols) % _cols;
+            }
+
+            /// <summary>Surface radius at grid cell (clamped row, wrapped col).</summary>
             public static double Surf(int r, int c)
-            { return (r < 0 || r >= _a.ht || c < 0 || c >= _a.w) ? _a.ba : _a.ba + _a.h[r * _a.w + c]; }
+            {
+                if (r < 0) r = 0; else if (r >= _rows) r = _rows - 1;
+                c = ((c % _cols) + _cols) % _cols;
+                return _meanR + _grid[r * _cols + c];
+            }
 
-            public static double Alt(Vector3D wp) { return (wp - _a.pc).Length(); }
+            /// <summary>Unchecked surface lookup — caller must ensure valid indices.</summary>
+            public static double SurfRaw(int r, int c)
+            {
+                return _meanR + _grid[r * _cols + c];
+            }
+
+            public static double Alt(Vector3D wp) { return (wp - _pc).Length(); }
 
             public static double AGL(Vector3D wp)
-            { int r, c; return W2G(wp, out r, out c) ? Alt(wp) - Surf(r, c) : double.MaxValue; }
+            {
+                int r, c;
+                W2G(wp, out r, out c);
+                return Alt(wp) - Surf(r, c);
+            }
+
+            /// <summary>
+            /// Returns min/max surface height offsets (relative to MeanR) for
+            /// the tile containing grid cell (r,c). False if tiles not built yet.
+            /// </summary>
+            public static bool TileRange(int r, int c, out short mn, out short mx)
+            {
+                if (!_tilesReady) { mn = short.MinValue; mx = short.MaxValue; return false; }
+                if (r < 0) r = 0; else if (r >= _rows) r = _rows - 1;
+                c = ((c % _cols) + _cols) % _cols;
+                int ti = (r / TILE) * _tileCols + (c / TILE);
+                mn = _tileMin[ti]; mx = _tileMax[ti];
+                return true;
+            }
         }
     }
 }

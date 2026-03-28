@@ -25,11 +25,7 @@ namespace IngameScript
             }
 
             public T Dequeue() => _queue.Dequeue();
-            public T Peek() => _queue.Peek();
             public int Count => _queue.Count;
-            public void Clear() => _queue.Clear();
-
-            public T[] ToArray() => _queue.ToArray();
         }
     }
 }

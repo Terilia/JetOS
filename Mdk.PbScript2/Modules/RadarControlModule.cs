@@ -93,8 +93,6 @@ namespace IngameScript
             private int configuredRWRCount = 0;
             private bool anyThreatDetected = false;
 
-            public bool IsRWREnabled { get { return rwrEnabled; } }
-            public bool IsThreat { get { return anyThreatDetected; } }
             public List<RWRWarning> activeThreats = new List<RWRWarning>();
 
             // True when ANY pool radar in LOCKED state matches the selected enemy
@@ -653,12 +651,6 @@ namespace IngameScript
             public override string GetHotkeys()
             {
                 return "Radar Control is a status display";
-            }
-
-            // Get total count of available radars
-            public int GetRadarCount()
-            {
-                return allRadars.Count;
             }
 
             // ==== Pool / RWR Size Helpers ====

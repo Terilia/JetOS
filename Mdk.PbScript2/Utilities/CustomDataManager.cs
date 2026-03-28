@@ -12,6 +12,8 @@ namespace IngameScript
             private static bool customDataDirty = true;
             private static string lastCustomDataRaw = "";
             private static IMyProgrammableBlock programBlock;
+            private static int _cdCheckTicks;
+            private static StringBuilder _rebuildSb = new StringBuilder(256);
 
             public static void Initialize(IMyProgrammableBlock me)
             {
@@ -21,6 +23,10 @@ namespace IngameScript
 
             private static void ParseCustomData()
             {
+                if (!customDataDirty && ++_cdCheckTicks < 10)
+                    return;
+                _cdCheckTicks = 0;
+
                 string currentData = programBlock.CustomData;
 
                 if (currentData == lastCustomDataRaw && !customDataDirty)
@@ -50,7 +56,8 @@ namespace IngameScript
             public static string GetValue(string key)
             {
                 ParseCustomData();
-                return customDataCache.ContainsKey(key) ? customDataCache[key] : null;
+                string value;
+                return customDataCache.TryGetValue(key, out value) ? value : null;
             }
 
             public static void SetValue(string key, string value)
@@ -66,16 +73,6 @@ namespace IngameScript
                 return customDataCache.TryGetValue(key, out value);
             }
 
-            public static void RemoveValue(string key)
-            {
-                ParseCustomData();
-                if (customDataCache.ContainsKey(key))
-                {
-                    customDataCache.Remove(key);
-                    RebuildCustomData();
-                }
-            }
-
             public static void MarkDirty()
             {
                 customDataDirty = true;
@@ -83,13 +80,13 @@ namespace IngameScript
 
             private static void RebuildCustomData()
             {
-                var sb = new StringBuilder();
+                _rebuildSb.Clear();
                 foreach (var kvp in customDataCache)
                 {
-                    sb.Append(kvp.Key).Append(':').Append(kvp.Value).Append('\n');
+                    _rebuildSb.Append(kvp.Key).Append(':').Append(kvp.Value).Append('\n');
                 }
 
-                programBlock.CustomData = sb.ToString();
+                programBlock.CustomData = _rebuildSb.ToString();
                 lastCustomDataRaw = programBlock.CustomData;
             }
         }

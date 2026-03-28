@@ -63,6 +63,7 @@ namespace IngameScript
 
                 public long AgeTicks => GameTicks - LastSeenTicks;
                 public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
+                public bool IsStale => AgeTicks > 600; // Matches CONTACT_DECAY_TICKS
 
                 /// <summary>
                 /// Returns the 30-bit tracking history adjusted for current staleness.
@@ -89,7 +90,9 @@ namespace IngameScript
             }
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
+            Dictionary<long, int> _entityIdIndex = new Dictionary<long, int>();
             public const long CONTACT_DECAY_TICKS = 600; // ~10 seconds without update before removal
+            public const long SELECTED_DECAY_TICKS = 3600; // 60 seconds for selected target
             private int decayCheckCounter = 0;
             private const int DECAY_CHECK_INTERVAL = 60; // Check decay every 60 ticks (1 second)
 
@@ -104,7 +107,6 @@ namespace IngameScript
             public List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
             public IMyTerminalBlock hudBlock;
             public IMyTextSurface hud;
-            public IMyTextSurface hud2; // Back layer for parallax depth
             public List<IMyGasTank> tanks = new List<IMyGasTank>();
             public List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
             public int offset = 0;
@@ -209,21 +211,17 @@ namespace IngameScript
             /// </summary>
             public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex, long entityId = 0)
             {
-                const double PROXIMITY_THRESHOLD = 50.0; // Merge contacts within 50m
+                const double PROXIMITY_SQ = 50.0 * 50.0; // 50m merge threshold, squared
 
                 int existingIndex = -1;
 
-                // Priority 1: Match by EntityId (most reliable)
+                // Priority 1: Match by EntityId — O(1) dictionary lookup
+                // TryGetValue sets out param to 0 (not -1) on miss — use temp to avoid false match
                 if (entityId != 0)
                 {
-                    for (int i = 0; i < enemyList.Count; i++)
-                    {
-                        if (enemyList[i].EntityId == entityId)
-                        {
-                            existingIndex = i;
-                            break;
-                        }
-                    }
+                    int tmp;
+                    if (_entityIdIndex.TryGetValue(entityId, out tmp))
+                        existingIndex = tmp;
                 }
 
                 // Priority 2: Match by name
@@ -244,7 +242,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
-                        if (VDi(enemyList[i].Position, pos) < PROXIMITY_THRESHOLD)
+                        if ((enemyList[i].Position - pos).LengthSquared() < PROXIMITY_SQ)
                         {
                             existingIndex = i;
                             break;
@@ -270,6 +268,10 @@ namespace IngameScript
                 if (existingIndex >= 0)
                 {
                     var old = enemyList[existingIndex];
+                    // Update EntityId index: remove old mapping if EntityId changed
+                    if (old.EntityId != 0 && old.EntityId != entityId)
+                        _entityIdIndex.Remove(old.EntityId);
+
                     int elapsedSeconds = (int)((GameTicks - old.LastHistoryShiftTick) / 60);
                     if (elapsedSeconds > 0 && elapsedSeconds < 30)
                     {
@@ -283,9 +285,11 @@ namespace IngameScript
                     }
                     // else elapsedSeconds >= 30: history is all stale, new contact starts fresh with 1
                     enemyList[existingIndex] = contact;
+                    if (entityId != 0) _entityIdIndex[entityId] = existingIndex;
                 }
                 else
                 {
+                    if (entityId != 0) _entityIdIndex[entityId] = enemyList.Count;
                     enemyList.Add(contact);
                 }
             }
@@ -301,12 +305,29 @@ namespace IngameScript
                     return;
 
                 decayCheckCounter = 0;
+                int prevCount = enemyList.Count;
 
                 for (int i = enemyList.Count - 1; i >= 0; i--)
                 {
-                    if (enemyList[i].AgeTicks > CONTACT_DECAY_TICKS)
+                    var c = enemyList[i];
+                    bool isSelected = (c.EntityId != 0 && c.EntityId == selectedEnemyEntityId)
+                        || (!string.IsNullOrEmpty(c.Name) && c.Name == selectedEnemyName);
+                    long timeout = isSelected ? SELECTED_DECAY_TICKS : CONTACT_DECAY_TICKS;
+                    if (c.AgeTicks > timeout)
                     {
+                        if (isSelected) ClearSelection();
                         enemyList.RemoveAt(i);
+                    }
+                }
+
+                // Rebuild EntityId index if any contacts were removed (indices shifted)
+                if (enemyList.Count != prevCount)
+                {
+                    _entityIdIndex.Clear();
+                    for (int i = 0; i < enemyList.Count; i++)
+                    {
+                        long eid = enemyList[i].EntityId;
+                        if (eid != 0) _entityIdIndex[eid] = i;
                     }
                 }
             }
@@ -438,11 +459,6 @@ namespace IngameScript
             // ------------------------------
 
             /// <summary>
-            /// True if the cockpit is found and functional.
-            /// </summary>
-            public bool IsCockpitFunctional => _cockpit != null && _cockpit.IsFunctional;
-
-            /// <summary>
             /// Gets the current velocity in m/s of the ship.
             /// </summary>
             public double GetVelocity()
@@ -450,14 +466,6 @@ namespace IngameScript
                 if (_cockpit == null)
                     return 0.0;
                 return _cockpit.GetShipSpeed(); // m/s
-            }
-
-            /// <summary>
-            /// Gets the velocity in knots (for your HUD).
-            /// </summary>
-            public double GetVelocityKnots()
-            {
-                return GetVelocity() * 1.94384;
             }
 
             /// <summary>
@@ -483,11 +491,6 @@ namespace IngameScript
             // ------------------------------
 
             /// <summary>
-            /// Provides read-only access to the thrusters for advanced usage.
-            /// </summary>
-            public IReadOnlyList<IMyThrust> Thrusters => _thrusters;
-
-            /// <summary>
             /// Returns (functional, total) count for an engine group.
             /// </summary>
             public static void GetEngineHealth(List<IMyThrust> engines, out int functional, out int total)
@@ -498,21 +501,6 @@ namespace IngameScript
                 {
                     if (engines[i] != null && engines[i].IsFunctional)
                         functional++;
-                }
-            }
-
-            /// <summary>
-            /// Example: sets thrust override on all thrusters (0.0 -> 1.0).
-            /// </summary>
-            public void SetThrustOverride(float percentage)
-            {
-                percentage = Cl(percentage, 0f, 1f);
-                foreach (var thruster in _thrusters)
-                {
-                    if (Ab(thruster.ThrustOverridePercentage - percentage) > 0.001f)
-                    {
-                        thruster.ThrustOverridePercentage = percentage;
-                    }
                 }
             }
 
@@ -599,27 +587,6 @@ namespace IngameScript
                 return total;
             }
 
-            /// <summary>
-            /// Checks if any gatling gun has ammo and is functional.
-            /// </summary>
-            public bool HasGunAmmo()
-            {
-                return GetTotalGunAmmo() > 0;
-            }
-
-            /// <summary>
-            /// Gets the number of functional gatling guns.
-            /// </summary>
-            public int GetGunCount()
-            {
-                int count = 0;
-                for (int i = 0; i < _gatlings.Count; i++)
-                {
-                    if (_gatlings[i] != null && _gatlings[i].IsFunctional)
-                        count++;
-                }
-                return count;
-            }
         }
     }
 }

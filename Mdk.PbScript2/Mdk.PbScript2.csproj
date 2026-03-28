@@ -37,6 +37,7 @@
       <Compile Remove="Utilities\TerrainAPI.cs" />
       <Compile Remove="Modules\TerrainMapModule.cs" />
       <Compile Remove="UI\TerrainRenderer.cs" />
+      <Compile Remove="UI\StatusPanelRenderer.idle-slides.cs" />
     </ItemGroup>
 
 </Project>
