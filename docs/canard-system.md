@@ -42,9 +42,9 @@ flowchart TD
     CMD --> CLAMP["deflL = clamp(desiredL, -45°, +45°)<br/>deflR = clamp(desiredR, -45°, +45°)"]
     CLAMP --> SET["SetCanards(deflL, deflR)"]
     CLAMP --> SP["spillL = desiredL - deflL<br/>spillR = desiredR - deflR<br/>spillover = (spillL + spillR) / 2"]
-    SP --> CHK{|spillover| &gt; 0.1?}
+    SP --> CHK{"|spillover| > 0.1?"}
     CHK -- "Yes" --> STAB["Set stabilizers to<br/>jet.offset + spillover<br/>OwnsStabs = true"]
-    CHK -- "No" --> RST{Was OwnsStabs true?}
+    CHK -- "No" --> RST{"Was OwnsStabs true?"}
     RST -- "Yes" --> REL["Restore stabs to jet.offset<br/>OwnsStabs = false"]
     RST -- "No" --> DONE["Done"]
 ```
