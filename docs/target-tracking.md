@@ -1,33 +1,35 @@
-# Target Tracking & Data Flow
+# Target Tracking &amp; Data Flow
+
+> **Source:** `Jet.cs` (enemy list, selection, struct), `Modules/RadarControlModule.cs` (sole sensor), `SystemManager.cs` (FlipGPS, GPS sync), `Modules/AirtoAir.cs` (consumer)
+>
+> **Try it:** [interactive/radar-demo.html](interactive/radar-demo.html) — moving contacts, target cycling, color-coded threat assessment.
 
 ## Overview
 
-Targets flow from the radar system through a central enemy list to consumers (HUD, weapons, gun turrets). `RadarControlModule` is the sole target acquisition source, feeding into one shared `enemyList` on the `Jet` class.
+Targets flow from RadarControlModule through `Jet.UpdateOrAddEnemy()` into a single shared `enemyList`, then out to consumers (HUD lead pip, gun turrets, missile fire pipeline).
 
 ```mermaid
 flowchart TD
-    subgraph Sensors ["Acquisition Layer"]
-        RCM["RadarControlModule\n(scan + track + RWR)"]
+    subgraph Sensors ["Acquisition (sole source)"]
+        RCM["RadarControlModule<br/>scan + track + RWR"]
     end
 
-    subgraph Storage ["Central Storage"]
-        UOA["Jet.UpdateOrAddEnemy()\n3-tier deduplication"]
-        EL["Jet.enemyList\nList&lt;EnemyContact&gt;"]
-        SEL["Jet.GetSelectedEnemy()\nidentity-based lookup"]
+    subgraph Storage ["Central storage"]
+        UOA["Jet.UpdateOrAddEnemy()<br/>3-tier deduplication<br/>EntityId → Name → 50m proximity"]
+        EL["Jet.enemyList: List&lt;EnemyContact&gt;<br/>+ _entityIdIndex (O(1) lookup)"]
+        SEL["Jet.GetSelectedEnemy()<br/>by EntityId then Name"]
+        DEC["Jet.UpdateEnemyDecay()<br/>every 60 ticks"]
     end
 
-    subgraph Consumers ["Consumption Layer"]
-        HUD["HUDModule\nlead pip, radar scope,\ntarget brackets"]
-        GUN["GunControlModule\nclosest enemy in cone,\nauto-aim turrets"]
-        FIRE["AirtoAir / AirToGround\nmissile GPS programming"]
+    subgraph Consumers ["Read-only consumers"]
+        HUD["HUDModule<br/>lead pip, brackets, radar minimap, breakaway"]
+        GUN["GunControlModule<br/>closest enemy in 15° forward cone"]
+        FIRE["AirtoAir / AirToGround<br/>copy GPS to bay CustomData"]
     end
 
-    RCM --> UOA
-
-    UOA --> EL
-    EL --> |"decay every 60 ticks"| EL
+    RCM --> UOA --> EL
+    EL --> DEC
     EL --> SEL
-
     SEL --> HUD
     EL --> GUN
     SEL --> FIRE
@@ -35,122 +37,177 @@ flowchart TD
     style SEL fill:#2d5a2d
 ```
 
----
-
-## EnemyContact Structure
-
-Each contact in `enemyList` holds:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| Position | Vector3D | World position |
-| Velocity | Vector3D | Velocity vector |
-| Acceleration | Vector3D | EMA-filtered (60% old + 40% new) |
-| Name | string | Grid name (from AI block DetailedInfo) |
-| EntityId | long | SE entity ID (0 if unknown) |
-| LastSeenTicks | long | GameTicks when last updated |
-| SourceIndex | int | 0=scan, 1=track, 2+=RWR |
-| TrackHistory | uint | 30-bit timeline: 1 bit per second, bit 0 = most recent |
-
-**Source:** `Jet.cs` — `EnemyContact` struct
+> **AirtoAir is NOT a sensor** — it only reads from `enemyList`. RadarControlModule is the sole writer. AirtoAir auto-selects the closest enemy if no selection exists, then syncs that selection's GPS to CustomData.
 
 ---
 
-## Contact Deduplication
+## EnemyContact Struct
 
-When a sensor reports a target, `UpdateOrAddEnemy()` tries to match it against existing contacts using a 3-tier priority system:
+```csharp
+public struct EnemyContact
+{
+    public Vector3D Position;
+    public Vector3D Velocity;
+    public Vector3D Acceleration;     // EMA filtered (60% old + 40% new)
+    public string   Name;             // From AI block DetailedInfo
+    public long     EntityId;         // 0 if unknown
+    public long     LastSeenTicks;    // Jet.GameTicks when last fed
+    public int      SourceIndex;      // 0=primary, 1+=other radars
+    public uint     TrackHistory;     // 30-bit timeline, bit 0 = most recent second
+    public long     LastHistoryShiftTick;
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `Position` | `Vector3D` | World-space, fed every radar update |
+| `Velocity` | `Vector3D` | World-space, derived from waypoint deltas |
+| `Acceleration` | `Vector3D` | EMA-smoothed (α=0.4) — used for ballistics intercept |
+| `Name` | `string` | Grid name from `IMyOffensiveCombatBlock.DetailedInfo` |
+| `EntityId` | `long` | SE entity ID. **0 means unknown** — name+proximity dedup must take over |
+| `LastSeenTicks` | `long` | `Jet.GameTicks` snapshot — used for `AgeTicks`, `AgeSeconds`, `IsStale` |
+| `SourceIndex` | `int` | Which radar fed it (0..N) — drives source tag (RDR/RWR1/...) |
+| `TrackHistory` | `uint` | 30-bit log: bit 0 = current second has updates, bit 29 = 30s ago |
+| `LastHistoryShiftTick` | `long` | When the timeline was last shifted left |
+
+### Track History Bit Trick
+
+Each second, when a radar feeds the same contact, `TrackHistory` shifts left by the elapsed seconds and ORs `1` into the new bit. If no updates arrive for 30+ seconds, the entire history clears and the contact resets:
+
+```
+sec ago: 30  29  28  ...  3   2   1   0
+         ─────────────────────────────────
+fresh:    0   0   0  ...  1   1   1   1   (just acquired)
+gap:      0   0   0  ...  1   0   0   1   (lost briefly, reacquired)
+stale:    1   0   0  ...  0   0   0   0   (lost long ago, almost gone)
+```
+
+The weapons screen renders this as a horizontal bar — pilot sees at a glance how stable the track is.
+
+**Source:** `Jet.cs:36-90`
+
+---
+
+## Deduplication Pipeline
+
+When a sensor reports a target, `UpdateOrAddEnemy()` matches it against existing contacts using a 3-tier priority system:
 
 ```mermaid
 flowchart TD
-    NEW["New detection:\npos, vel, name, entityId"] --> P1{EntityId match?}
-    P1 -- "Yes" --> UPDATE["Update existing contact"]
-    P1 -- "No" --> P2{Name match?}
-    P2 -- "Yes" --> UPDATE
-    P2 -- "No" --> P3{"Position within 50m\nof existing contact?"}
-    P3 -- "Yes" --> UPDATE
-    P3 -- "No" --> ADD["Add new contact"]
+    NEW["UpdateOrAddEnemy(pos, vel, name, source, entityId)"] --> P1{entityId != 0?}
+    P1 -- Yes --> EID["Lookup _entityIdIndex<br/>(Dictionary, O(1))"]
+    EID -- "found" --> UPDATE
+    EID -- "miss" --> P2
+    P1 -- No --> P2{Name != empty?}
+    P2 -- Yes --> NAME["Linear scan enemyList[i].Name"]
+    NAME -- "match" --> UPDATE
+    NAME -- "no match" --> P3
+    P2 -- No --> P3
+    P3 --> PROX["Linear scan: |existing.Position - pos| &lt; 50m"]
+    PROX -- "match" --> UPDATE
+    PROX -- "no match" --> ADD["Append new contact<br/>_entityIdIndex[id] = newIdx"]
 
-    UPDATE --> ACCEL{"Time delta\n0-300 ticks?"}
-    ACCEL -- "Yes" --> EMA["Compute acceleration\nraw = (vel - prevVel) / dt\naccel = 0.6 * old + 0.4 * raw"]
-    ACCEL -- "No" --> SKIP["Keep existing acceleration"]
+    UPDATE --> ACCEL{tickDelta &lt; 300<br/>(5 sec)?}
+    ACCEL -- "Yes" --> EMA["raw = (vel - prevVel) / dt<br/>accel = 0.6*old + 0.4*raw"]
+    ACCEL -- "No" --> ZERO["accel = Vector3D.Zero"]
+    EMA --> HIST["Carry track history forward<br/>shift left by elapsedSeconds<br/>OR in 1 for current second"]
+    ZERO --> HIST
+    HIST --> WRITE["enemyList[idx] = new contact"]
 ```
 
-**Source:** `Jet.cs` — `UpdateOrAddEnemy()` method
+**Why 3 tiers?** EntityId is the most reliable but isn't always available (RWR detections often have name only). Name matches catch the same target across radars. Proximity is the fallback for unnamed/unknown contacts and prevents 5 radars from creating 5 duplicate entries for the same enemy.
+
+**Source:** `Jet.cs:212-295`
 
 ---
 
-## Contact Lifecycle
+## Decay & Cleanup
+
+`UpdateEnemyDecay()` runs every 60 ticks (1 second). It removes stale contacts and rebuilds the EntityId index.
 
 ```mermaid
 sequenceDiagram
-    participant Sensor as RadarControlModule
-    participant Jet as Jet.enemyList
-    participant Decay as UpdateEnemyDecay()
-    participant Consumer as HUD/Weapons
+    participant T as Tick (every 60)
+    participant J as Jet
+    participant L as enemyList
 
-    Sensor->>Jet: UpdateOrAddEnemy(pos, vel, name, source, entityId)
-    Note over Jet: Deduplicate (EntityId, Name, 50m proximity)
-    Note over Jet: Compute EMA acceleration if < 5s old
-    Jet->>Jet: Update LastSeenTicks = GameTicks
-
-    loop Every tick
-        Consumer->>Jet: GetSelectedEnemy() / GetClosestNEnemies()
-        Jet-->>Consumer: EnemyContact (or null)
+    T->>J: UpdateEnemyDecay()
+    loop For each contact (back to front)
+        J->>J: Is this the selected target?
+        alt Selected
+            Note over J: Use SELECTED_DECAY_TICKS = 3600 (60s)
+        else Not selected
+            Note over J: Use CONTACT_DECAY_TICKS = 600 (10s)
+        end
+        alt AgeTicks > timeout
+            J->>L: RemoveAt(i)
+            opt Was selected
+                J->>J: ClearSelection()
+            end
+        end
     end
-
-    loop Every 60 ticks
-        Decay->>Jet: Remove contacts where AgeTicks > CONTACT_DECAY_TICKS
-        Note over Jet: Stale contacts removed (CONTACT_DECAY_TICKS = 600)
+    opt Any removed
+        J->>J: Rebuild _entityIdIndex (indices shifted)
     end
 ```
 
-**Source:** `Jet.cs` — `UpdateOrAddEnemy()`, `UpdateEnemyDecay()`, `GetSelectedEnemy()`
+> **Selected targets get 6× longer lifetime.** This prevents the radar momentarily losing the lead target from clearing your selection — you can re-acquire after a brief gap without having to FlipGPS through the list again.
+
+**Source:** `Jet.cs:301-333`
 
 ---
 
-## Target Selection
+## Target Selection (FlipGPS)
 
-The pilot selects targets via `FlipGPS()` (toolbar key 8), which cycles through enemies sorted by distance:
-
-```mermaid
-flowchart TD
-    FLIP["FlipGPS() — toolbar key 8"] --> SORT["GetEnemiesSortedByDistance()"]
-    SORT --> FIND["Find current selection in sorted list\n(match by EntityId, then Name+Source)"]
-    FIND --> NEXT["Advance to next entry (wrapping)"]
-    NEXT --> SELEN["Jet.SelectEnemy(contact)\nsets selectedEnemyEntityId + selectedEnemyName"]
-    SELEN --> GPS["UpdateActiveTargetGPS()"]
-```
-
-### Selection Priority in GetSelectedEnemy()
+The pilot cycles through targets with **numpad 8** (`FlipGPS` in `SystemManager`):
 
 ```mermaid
 flowchart TD
-    GET["GetSelectedEnemy()"] --> EIDQ{"selectedEnemyEntityId != 0?"}
-    EIDQ -- "Yes (match in list)" --> RETEID["Return by EntityId"]
-    EIDQ -- "No" --> NAMEQ{"selectedEnemyName != empty?"}
-    NAMEQ -- "Yes (match in list)" --> RETNAME["Return by Name"]
-    NAMEQ -- "No" --> RETNULL["Return null"]
+    F["Toolbar 8 → FlipGPS()"] --> SORT["Jet.GetEnemiesSortedByDistance()"]
+    SORT --> EMP{Empty?}
+    EMP -- "Yes" --> CL["Jet.ClearSelection()"]
+    EMP -- "No" --> FIND["Find current selection in sorted list<br/>(by EntityId, then Name + SourceIndex)"]
+    FIND --> ADV["nextIndex = (currentIndex + 1) % count"]
+    ADV --> SE["Jet.SelectEnemy(sorted[nextIndex])<br/>sets selectedEnemyEntityId + selectedEnemyName"]
+    SE --> GPS["UpdateActiveTargetGPS()<br/>writes to CustomData"]
 ```
 
-**Source:** `Jet.cs` — `GetSelectedEnemy()`, `SelectEnemy()`, `ClearSelection()`; `SystemManager.cs` — `FlipGPS()`
+**Identity tracking, not index tracking** — `Jet.selectedEnemyEntityId` and `selectedEnemyName` together uniquely identify the selected target. If a radar refresh shuffles the list, the selection still resolves to the same physical target on the next `GetSelectedEnemy()` call.
+
+### GetSelectedEnemy Resolution Order
+
+```mermaid
+flowchart TD
+    G["GetSelectedEnemy()"] --> EID{selectedEnemyEntityId != 0?}
+    EID -- "Yes" --> LOOP1["Linear scan for matching EntityId"]
+    LOOP1 -- "found" --> R1["Return contact"]
+    LOOP1 -- "miss" --> NQ
+    EID -- "No" --> NQ{selectedEnemyName != empty?}
+    NQ -- "Yes" --> LOOP2["Linear scan for matching Name"]
+    LOOP2 -- "found" --> R2["Return contact"]
+    LOOP2 -- "miss" --> NULL
+    NQ -- "No" --> NULL["Return null"]
+```
+
+**Source:** `Jet.cs:375-396` (GetSelectedEnemy), `Jet.cs:406-410` (SelectEnemy), `SystemManager.cs:331-366` (FlipGPS)
 
 ---
 
 ## GPS Sync to CustomData
 
-When a target is selected, its GPS coordinates are written to the programmable block's CustomData so missile scripts can read them:
+When a target is selected, its GPS is written to the PB's CustomData so external missile scripts can read it.
 
 ```mermaid
 flowchart LR
-    SEL["Selected Enemy\n(pos + vel)"] --> UGPS["UpdateActiveTargetGPS()"]
-    UGPS --> CD_C["CustomData\nCached = GPS:Target:X:Y:Z:..."]
-    UGPS --> CD_S["CustomData\nCachedSpeed = X:Y:Z:..."]
+    SEL["Selected enemy<br/>(pos, vel)"] --> UGPS["UpdateActiveTargetGPS()"]
+    UGPS --> CD1["CustomData['Cached'] = GPS:Target:X:Y:Z:#FF75C9F1:"]
+    UGPS --> CD2["CustomData['CachedSpeed'] = X:Y:Z:#FF75C9F1:"]
 
-    subgraph Fire ["Missile Fire Sequence"]
-        CD_C --> BAY["Cache{N} = GPS string"]
-        BAY --> MERGE["bay.ApplyAction('Fire')"]
-        MERGE --> XFER["TransferCacheToSlots()\nCache N to slot N"]
-        XFER --> MSL["Missile script reads\nCustomData slot {N}"]
+    subgraph FIRE ["Missile fire (per bay)"]
+        CD1 --> BAY["Cache{N} = GPS string"]
+        BAY --> ACT["bay.ApplyAction('Fire')"]
+        ACT --> XF["MissileBayHelper.TransferCacheToSlots()<br/>copies Cache{N} → slot {N}"]
+        XF --> MS["External missile script reads slot {N}"]
     end
 ```
 
@@ -158,55 +215,72 @@ flowchart LR
 
 | Key | Format | Writers | Readers |
 |-----|--------|---------|---------|
-| `Cached` | `GPS:Target:X:Y:Z:#FF75C9F1:` | SystemManager, AirtoAir | Weapon modules (missile GPS) |
-| `CachedSpeed` | `X:Y:Z:#FF75C9F1:` | SystemManager, AirtoAir | External missile scripts |
-| `Cache0`-`CacheN` | GPS format | AirToGround, AirtoAir | Same modules (pre-fire staging) |
-| `0`-`4` | GPS format | AirToGround, AirtoAir | Detached missile scripts |
-| `Topdown` | `true`/`false` | AirToGround | AirToGround (persisted toggle) |
+| `Cached` | `GPS:Target:X:Y:Z:#FF75C9F1:` | `SystemManager.UpdateActiveTargetGPS`, `AirtoAir`, `AirToGround` | Missile scripts, gun ballistics fallback |
+| `CachedSpeed` | `X:Y:Z:#FF75C9F1:` | same | Missile scripts (lead computation) |
+| `Cache0`–`CacheN` | GPS format | `MissileBayHelper.FireSelectedBays` | `MissileBayHelper.TransferCacheToSlots` (post-fire) |
+| `0`–`N` | GPS format | `TransferCacheToSlots` | External missile scripts |
+| `Topdown` | `true`/`false` | `AirToGround.ToggleTopdownMode` | Missile scripts (steepen approach angle) |
+| `AntiAir` | `true`/`false` | `AirtoAir.UpdateTopdownCustomData` | Missile scripts (A/A guidance mode) |
+| `RWRCount` | integer | `RadarControlModule` | Self (persisted RWR allocation) |
 
-**Source:** `SystemManager.cs` — `UpdateActiveTargetGPS()`, `FlipGPS()`; `Utilities/CustomDataManager.cs` — cache layer
-
----
-
-## Sensor Details
-
-### Radar (RadarControlModule) — Sole Acquisition Source
-
-- Uses AI Flight + AI Combat block pairs
-- Sequential activation state machine: `IDLE → SEARCHING → LOCKED`
-- Only 1 pool radar SEARCHING at a time; when it finds a new target (not already locked), it transitions to LOCKED and activates the next IDLE as SEARCHING
-- Remaining pairs assigned as RWR (passive threat detection)
-- Auto-detects pairs named `"AI Flight"` / `"AI Combat"` through `"AI Flight 99"` / `"AI Combat 99"`
-- Each pair feeds `UpdateOrAddEnemy()` with its source index
-- `IsTrackLocked` is true when any LOCKED pool radar matches the currently selected enemy (by EntityId or Name)
-
-**Source:** `Modules/RadarControlModule.cs` — constructor (pair detection), `Tick()` (scan/track/RWR loop)
-
-### AirtoAir — Radar Consumer (Not a Sensor)
-
-- Does NOT directly feed `UpdateOrAddEnemy()` — reads from `Jet.enemyList` only
-- Auto-selects closest enemy via `GetClosestNEnemies(1)` if no selection exists
-- Syncs selected enemy GPS to CustomData via `UpdateActiveTargetGPS()`
-- Uses `RadarControlModule.IsTrackLocked` for lock detection (no separate tracker)
-- Seeker toggle only affects weapon tone sounds (lock/search), not radar blocks
-
-**Source:** `Modules/AirtoAir.cs` — `Tick()` method
+**Source:** `SystemManager.cs:368-382` (UpdateActiveTargetGPS), `Utilities/MissileBayHelper.cs` (cache → slot transfer)
 
 ---
 
 ## GunControlModule: Independent Targeting
 
-The gun turrets do **not** use the pilot's selected target. They independently find the closest enemy within a forward cone:
+Gun turrets do **not** use the pilot's selected target. They scan `enemyList` independently for the closest enemy within a 15° forward cone:
 
 ```mermaid
 flowchart TD
-    GUN["GunControlModule.Tick()"] --> CONE["Scan enemyList for closest\nenemy within 15 deg cone\nof cockpit.WorldMatrix.Forward"]
-    CONE --> FOUND{"Target found\nin cone?"}
-    FOUND -- "Yes" --> BALLI["BallisticsCalculator\ncompute intercept point"]
-    FOUND -- "No" --> CENTER["Center turrets forward"]
-    BALLI --> AIM["DriveTowardDirection()\nyaw rotor + pitch hinge"]
+    GT["GunControlModule.Tick()"] --> EN["enemyList → filter"]
+    EN --> CONE["Within 15° cone<br/>of cockpit.WorldMatrix.Forward"]
+    CONE --> RNG["Within MAX_ENGAGE_RANGE<br/>(default 6000m, configurable)"]
+    RNG --> CL["Pick closest"]
+    CL --> FOUND{Found?}
+    FOUND -- "No" --> CTR["Center turrets to forward"]
+    FOUND -- "Yes" --> BC["BallisticsCalculator<br/>muzzle 1100 m/s, 6 iterations"]
+    BC --> AIM["DriveTowardDirection()<br/>yaw rotor + pitch hinge"]
 ```
 
-> The cone check uses the ship's forward vector (not the gun's) to prevent feedback loops.
+> **Cone uses ship's forward, not the gun's.** Using the gun's forward would create a feedback loop — once the turret rotated off-center, the cone would follow it and chase any target. Using the cockpit forward keeps the cone fixed in jet-space.
 
-**Source:** `Modules/GunControlModule.cs` — `TrackTarget()`, `DriveTowardDirection()`
+**Source:** `Modules/GunControlModule.cs`, `Utilities/BallisticsCalculator.cs`
+
+---
+
+## AirtoAir: Read-Only Consumer
+
+```csharp
+public override void Tick()
+{
+    // Auto-select closest enemy if no selection exists
+    if (!myJet.HasSelectedEnemy() && myJet.enemyList.Count > 0)
+    {
+        var closest = myJet.GetClosestNEnemies(1);
+        if (closest.Count > 0)
+            myJet.SelectEnemy(closest[0]);
+    }
+
+    if (myJet.HasSelectedEnemy())
+        SystemManager.UpdateActiveTargetGPS();
+
+    // Seeker tones are independent of radar block control
+    if (!isAirtoAirenabled) return;
+
+    bool hasLock = myJet.radarControl != null && myJet.radarControl.IsTrackLocked;
+    SoundManager.RequestWeapon(
+        hasLock ? "AIM9Lock" : "AIM9Search",
+        hasLock ? SoundManager.PRIORITY_LOCK : SoundManager.PRIORITY_SEARCH,
+        300);
+}
+```
+
+| Behavior | Notes |
+|----------|-------|
+| Auto-select closest | Runs every tick — keeps a selection even if pilot didn't FlipGPS |
+| GPS sync | Writes `Cached` and `CachedSpeed` so missiles can fire any time |
+| Seeker tones | Only audio side-effects. Toggling the seeker does not control the radar — that's `RadarControlModule`'s job. |
+| `IsTrackLocked` | Reads from `radarControl`, true when any LOCKED pool radar matches the selected target by EntityId or Name |
+
+**Source:** `Modules/AirtoAir.cs:75-109`

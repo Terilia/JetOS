@@ -113,6 +113,30 @@ namespace IngameScript
                     mapAvail * 0.25f, new Color(MFDTheme.BORDER, 0.4f), 1f);
                 SpriteHelpers.Sp(frame, "Triangle", ccx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
 
+                // Enemy contacts
+                float mPerCell = ZOOM_STRIDE[zoomLevel] * (float)TerrainAPI.CellSize;
+                float ppm = cell / mPerCell;
+                var enemies = jet.enemyList;
+                for (int i = 0; i < enemies.Count; i++)
+                {
+                    var e = enemies[i];
+                    Vector3D off = e.Position - shipPos;
+                    float ex = ccx + (float)VD(off, jR) * ppm;
+                    float ey = ccy - (float)VD(off, jF) * ppm;
+                    if (ex < mapLeft || ex > mapLeft + mapAvail ||
+                        ey < mapTop || ey > mapTop + mapAvail) continue;
+
+                    Color ec = jet.GetEnemyContactColor(e);
+                    SpriteHelpers.Sp(frame, "Circle", ex, ey, 18f, 18f, ec);
+                    SpriteHelpers.Sp(frame, "Circle", ex, ey, 14f, 14f, MFDTheme.BG);
+                    SpriteHelpers.Sp(frame, "Triangle", ex, ey, 8f, 8f, ec);
+                    double dist = VDi(e.Position, shipPos);
+                    string lbl = string.IsNullOrEmpty(e.Name)
+                        ? $"{dist / 1000:F1}km"
+                        : $"{e.Name}\n{dist / 1000:F1}km";
+                    MFDFrame.Txt(frame, lbl, ex + 12f, ey - 6f, 0.25f, ec);
+                }
+
                 // Footer
                 float footY = mapTop + mapAvail + 2f;
                 double agl = TerrainAPI.AGL(shipPos);

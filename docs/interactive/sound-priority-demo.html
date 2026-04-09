@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>JetOS · SoundManager 1:1 Port</title>
+<style>
+:root{
+  --bg-deep:#020405;
+  --bg-panel:#0a1410;
+  --border:#1c3622;
+  --hud:#37b06b;
+  --hud-bright:#7fffaa;
+  --gold:#8a7a50;
+  --warn:#ffb938;
+  --danger:#ff5252;
+  --text:#9acaa0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  background:radial-gradient(ellipse at center,#0a1410 0%,#020405 100%);
+  color:var(--text);
+  min-height:100vh;
+  padding:24px;
+  display:flex;flex-direction:column;align-items:center;
+}
+header{text-align:center;margin-bottom:18px}
+h1{font-size:14px;letter-spacing:4px;color:var(--gold);text-transform:uppercase}
+h1 span{color:var(--hud)}
+.sub{font-size:10px;letter-spacing:2px;opacity:0.7;margin-top:4px}
+.layout{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+  width:920px;
+}
+@media (max-width:980px){.layout{grid-template-columns:1fr;width:auto;max-width:640px}}
+.controls-top{
+  background:var(--bg-panel);
+  border:1px solid var(--border);
+  padding:18px;
+  width:920px;
+  margin-bottom:20px;
+  display:flex;
+  align-items:center;
+  gap:30px;
+  font-size:11px;
+}
+@media (max-width:980px){.controls-top{width:auto;max-width:640px;flex-direction:column;align-items:stretch}}
+.controls-top label{
+  color:var(--gold);
+  text-transform:uppercase;
+  letter-spacing:1px;
+  font-size:10px;
+}
+.controls-top input{flex:1}
+.channel{
+  background:var(--bg-panel);
+  border:1px solid var(--border);
+  padding:18px;
+}
+.channel h2{
+  font-size:10px;margin:0 0 12px;
+  color:var(--gold);text-transform:uppercase;letter-spacing:3px;
+  border-bottom:1px solid var(--border);padding-bottom:6px;
+}
+.requesters{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px}
+button{
+  background:var(--bg-panel);color:var(--hud);
+  border:1px solid var(--border);
+  padding:10px;font-family:inherit;
+  font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  cursor:pointer;transition:all 0.15s;
+}
+button:hover{background:#1a4a2a;color:var(--hud-bright);border-color:var(--hud)}
+button.p1{border-left:3px solid #4a9a6a}
+button.p2{border-left:3px solid #6acaa0}
+button.p3{border-left:3px solid #ffb938}
+button.p4{border-left:3px solid #ff5252}
+.state-box{
+  background:#03070a;
+  border:1px solid var(--border);
+  padding:10px;
+  margin-bottom:12px;
+  font-size:11px;
+}
+.state-line{display:flex;justify-content:space-between;margin:3px 0}
+.state-line .v{color:var(--hud-bright)}
+.timeline{
+  height:50px;
+  background:#03070a;
+  border:1px solid var(--border);
+  position:relative;
+  overflow:hidden;
+  margin-bottom:8px;
+}
+.tl-band{position:absolute;top:0;bottom:0}
+.tl-band.IDLE{background:rgba(80,80,80,0.1);border-left:1px solid #444}
+.tl-band.STOP{background:rgba(255,80,80,0.2);border-left:1px solid #ff5252}
+.tl-band.SEL{background:rgba(255,180,50,0.2);border-left:1px solid #ffb938}
+.tl-band.PLAY{background:rgba(80,200,120,0.3);border-left:1px solid #7fffaa}
+.timeline-key{font-size:8px;display:flex;gap:14px;margin-bottom:8px;color:var(--text);opacity:0.7}
+.timeline-key .k{display:flex;align-items:center;gap:4px}
+.timeline-key .k .sw{width:10px;height:10px;border-left:1px solid}
+.timeline-key .k.IDLE .sw{background:rgba(80,80,80,0.1);border-color:#444}
+.timeline-key .k.STOP .sw{background:rgba(255,80,80,0.2);border-color:#ff5252}
+.timeline-key .k.SEL .sw{background:rgba(255,180,50,0.2);border-color:#ffb938}
+.timeline-key .k.PLAY .sw{background:rgba(80,200,120,0.3);border-color:#7fffaa}
+.legend{
+  font-size:9px;line-height:1.6;color:var(--text);opacity:0.7;
+  padding-top:12px;border-top:1px solid var(--border);margin-top:14px;
+}
+.legend code{color:var(--hud);font-family:inherit}
+a.back{display:inline-block;margin-top:18px;color:var(--hud);text-decoration:none;font-size:10px;letter-spacing:2px}
+a.back:hover{color:var(--hud-bright)}
+</style>
+</head>
+<body>
+<header>
+  <h1>NYINAH CORP <span>·</span> SOUND MANAGER</h1>
+  <div class="sub">1:1 port of Utilities/SoundManager.cs · same constants, same state machine</div>
+</header>
+
+<div class="controls-top">
+  <label>Sim Speed</label>
+  <input type="range" id="speed" min="1" max="20" value="6">
+  <span style="color:var(--hud-bright)" id="speedV">6 ticks/sec</span>
+  <span style="color:var(--gold);margin-left:auto;font-size:10px">FRAME_DELAY = 3</span>
+</div>
+
+<div class="layout">
+  <div class="channel">
+    <h2>Warning Channel · vol 1.0</h2>
+    <div class="requesters">
+      <button class="p4" id="bAlt">[P4] Hold = Altitude (Tief)</button>
+      <button class="p3" id="bRwr">[P3] Hold = RWR (RWRTone)</button>
+    </div>
+    <div class="state-box">
+      <div class="state-line"><span>state</span><span class="v" id="ws">0 (idle)</span></div>
+      <div class="state-line"><span>delay</span><span class="v" id="wd">0</span></div>
+      <div class="state-line"><span>activeSound</span><span class="v" id="wa">""</span></div>
+      <div class="state-line"><span>pendingSound</span><span class="v" id="wp">""</span></div>
+      <div class="state-line"><span>requestedSound</span><span class="v" id="wrs">""</span></div>
+      <div class="state-line"><span>requestedPriority</span><span class="v" id="wpr">0</span></div>
+      <div class="state-line"><span>playStartTick</span><span class="v" id="wpst">0</span></div>
+    </div>
+    <div class="timeline-key">
+      <div class="k IDLE"><div class="sw"></div>idle</div>
+      <div class="k STOP"><div class="sw"></div>stop</div>
+      <div class="k SEL"><div class="sw"></div>select</div>
+      <div class="k PLAY"><div class="sw"></div>play</div>
+    </div>
+    <div class="timeline" id="wtl"></div>
+  </div>
+  <div class="channel">
+    <h2>Weapon Channel · vol 0.3</h2>
+    <div class="requesters">
+      <button class="p2" id="bLock">[P2] Hold = AIM9Lock</button>
+      <button class="p1" id="bSrch">[P1] Hold = AIM9Search</button>
+    </div>
+    <div class="state-box">
+      <div class="state-line"><span>state</span><span class="v" id="es">0 (idle)</span></div>
+      <div class="state-line"><span>delay</span><span class="v" id="ed">0</span></div>
+      <div class="state-line"><span>activeSound</span><span class="v" id="ea">""</span></div>
+      <div class="state-line"><span>pendingSound</span><span class="v" id="ep">""</span></div>
+      <div class="state-line"><span>requestedSound</span><span class="v" id="ers">""</span></div>
+      <div class="state-line"><span>requestedPriority</span><span class="v" id="epr">0</span></div>
+      <div class="state-line"><span>playStartTick</span><span class="v" id="epst">0</span></div>
+    </div>
+    <div class="timeline-key">
+      <div class="k IDLE"><div class="sw"></div>idle</div>
+      <div class="k STOP"><div class="sw"></div>stop</div>
+      <div class="k SEL"><div class="sw"></div>select</div>
+      <div class="k PLAY"><div class="sw"></div>play</div>
+    </div>
+    <div class="timeline" id="etl"></div>
+  </div>
+</div>
+
+<div style="max-width:920px;margin-top:18px;font-size:11px;color:var(--text);opacity:0.85;line-height:1.7">
+  <strong style="color:var(--gold)">Press and hold</strong> a priority button to simulate a module continuously calling
+  <code>RequestWarning()</code>/<code>RequestWeapon()</code>. Highest priority per channel wins each tick. Lower priority requests
+  are silently dropped that tick. Releasing the button stops the requests, and after a few ticks the channel walks the state
+  machine back through STOP → SEL → IDLE.
+</div>
+
+<a class="back" href="../README.md">← back to docs</a>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 1:1 PORT — Utilities/SoundManager.cs
+//
+// Constants and method bodies match the C# line-by-line. Search
+// the corresponding line numbers in the source for cross-reference.
+// ═══════════════════════════════════════════════════════════════
+
+// SoundManager.cs:12-16
+const PRIORITY_NONE     = 0;
+const PRIORITY_SEARCH   = 1;
+const PRIORITY_LOCK     = 2;
+const PRIORITY_RWR      = 3;
+const PRIORITY_ALTITUDE = 4;
+
+// SoundManager.cs:122
+const FRAME_DELAY = 3;
+
+// SoundManager.cs:18-36 — SoundChannel class
+function newChannel(volume) {
+  return {
+    blocks: [],
+    volume,
+    state: 0,            // 0=idle, 1=stopping, 2=selecting, 3=playing
+    delay: 0,
+    pendingSound: "",
+    activeSound: "",
+    playStartTick: 0,
+    activeLoopInterval: 300,
+    requestedSound: "",
+    requestedPriority: PRIORITY_NONE,
+    requestedLoopInterval: 300,
+  };
+}
+
+const warningChannel = newChannel(1.0);
+const weaponChannel  = newChannel(0.3);
+
+let currentTick = 0;
+
+// SoundManager.cs:80 — RequestWarning
+function RequestWarning(sound, priority, loopInterval = 300) {
+  if (warningChannel == null) return;
+  if (priority >= warningChannel.requestedPriority) {
+    warningChannel.requestedSound = sound;
+    warningChannel.requestedPriority = priority;
+    warningChannel.requestedLoopInterval = loopInterval;
+  }
+}
+
+// SoundManager.cs:95 — RequestWeapon
+function RequestWeapon(sound, priority, loopInterval = 300) {
+  if (weaponChannel == null) return;
+  if (priority >= weaponChannel.requestedPriority) {
+    weaponChannel.requestedSound = sound;
+    weaponChannel.requestedPriority = priority;
+    weaponChannel.requestedLoopInterval = loopInterval;
+  }
+}
+
+// SoundManager.cs:106 — Tick
+function Tick(curTick) {
+  currentTick = curTick;
+  if (warningChannel != null) {
+    TickChannel(warningChannel, curTick);
+    warningChannel.requestedSound = "";
+    warningChannel.requestedPriority = PRIORITY_NONE;
+  }
+  if (weaponChannel != null) {
+    TickChannel(weaponChannel, curTick);
+    weaponChannel.requestedSound = "";
+    weaponChannel.requestedPriority = PRIORITY_NONE;
+  }
+}
+
+// SoundManager.cs:124 — TickChannel
+function TickChannel(ch, curTick) {
+  // 3-frame delay between each state ensures double Main() calls
+  // (Trigger + Update1 on same sim tick) never put two block
+  // operations in the same sim tick.
+  if (ch.delay > 0) {
+    ch.delay--;
+    return;
+  }
+
+  // Execute current state machine step
+  switch (ch.state) {
+    case 1: // Stopping — would call block.Stop() on each block
+      // (no-op in demo)
+      ch.state = 2;
+      ch.delay = FRAME_DELAY;
+      break;
+
+    case 2: // Selecting — would set block.SelectedSound = pendingSound
+      if (ch.pendingSound) {
+        ch.state = 3;
+        ch.delay = FRAME_DELAY;
+      } else {
+        ch.state = 0;
+        ch.activeSound = "";
+      }
+      break;
+
+    case 3: // Playing — would call block.Play()
+      ch.activeSound = ch.pendingSound;
+      ch.activeLoopInterval = ch.requestedLoopInterval;
+      ch.playStartTick = curTick;
+      ch.state = 0;
+      break;
+  }
+
+  // Check if sound should change (only when idle)
+  if (ch.state === 0) {
+    const desired = ch.requestedSound || "";
+    let needsChange = false;
+
+    if (desired !== ch.activeSound) {
+      if (desired) {
+        ch.pendingSound = desired;
+        needsChange = true;
+      } else if (ch.activeSound) {
+        ch.pendingSound = "";
+        needsChange = true;
+      }
+    } else if (desired && ch.activeSound) {
+      // Loop interval re-fire
+      if (curTick - ch.playStartTick >= ch.activeLoopInterval) {
+        ch.pendingSound = desired;
+        needsChange = true;
+      }
+    }
+
+    if (needsChange) {
+      ch.state = 1;
+      ch.delay = FRAME_DELAY;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Demo glue: button press/hold simulation + UI
+// ═══════════════════════════════════════════════════════════════
+
+// Hold-to-request: while a button is pressed (mousedown), each tick
+// re-issues the request. Releasing stops the requests.
+const heldRequests = {
+  alt:  { active: false, ch: 'warn', sound: 'Tief',       pri: PRIORITY_ALTITUDE },
+  rwr:  { active: false, ch: 'warn', sound: 'RWRTone',    pri: PRIORITY_RWR },
+  lock: { active: false, ch: 'weap', sound: 'AIM9Lock',   pri: PRIORITY_LOCK },
+  srch: { active: false, ch: 'weap', sound: 'AIM9Search', pri: PRIORITY_SEARCH },
+};
+
+function bindHold(buttonId, key) {
+  const btn = document.getElementById(buttonId);
+  const onDown = e => { e.preventDefault(); heldRequests[key].active = true; };
+  const onUp   = () => { heldRequests[key].active = false; };
+  btn.addEventListener('mousedown', onDown);
+  btn.addEventListener('touchstart', onDown);
+  btn.addEventListener('mouseup', onUp);
+  btn.addEventListener('mouseleave', onUp);
+  btn.addEventListener('touchend', onUp);
+}
+bindHold('bAlt', 'alt');
+bindHold('bRwr', 'rwr');
+bindHold('bLock', 'lock');
+bindHold('bSrch', 'srch');
+
+// Histories for the timelines
+const histW = [];
+const histE = [];
+
+function recordHistory() {
+  histW.push({
+    state: warningChannel.state,
+    active: warningChannel.activeSound,
+    delay: warningChannel.delay,
+  });
+  histE.push({
+    state: weaponChannel.state,
+    active: weaponChannel.activeSound,
+    delay: weaponChannel.delay,
+  });
+  if (histW.length > 30) histW.shift();
+  if (histE.length > 30) histE.shift();
+}
+
+const STATE_NAMES = ['idle', 'stop', 'sel', 'play'];
+
+function render() {
+  const ws = document.getElementById('ws');
+  const wd = document.getElementById('wd');
+  const wa = document.getElementById('wa');
+  const wp = document.getElementById('wp');
+  const wrs = document.getElementById('wrs');
+  const wpr = document.getElementById('wpr');
+  const wpst = document.getElementById('wpst');
+  ws.textContent = warningChannel.state + ' (' + STATE_NAMES[warningChannel.state] + ')';
+  wd.textContent = warningChannel.delay;
+  wa.textContent = `"${warningChannel.activeSound}"`;
+  wp.textContent = `"${warningChannel.pendingSound}"`;
+  wrs.textContent = `"${warningChannel.requestedSound}"`;
+  wpr.textContent = warningChannel.requestedPriority;
+  wpst.textContent = warningChannel.playStartTick;
+
+  document.getElementById('es').textContent  = weaponChannel.state + ' (' + STATE_NAMES[weaponChannel.state] + ')';
+  document.getElementById('ed').textContent  = weaponChannel.delay;
+  document.getElementById('ea').textContent  = `"${weaponChannel.activeSound}"`;
+  document.getElementById('ep').textContent  = `"${weaponChannel.pendingSound}"`;
+  document.getElementById('ers').textContent = `"${weaponChannel.requestedSound}"`;
+  document.getElementById('epr').textContent = weaponChannel.requestedPriority;
+  document.getElementById('epst').textContent = weaponChannel.playStartTick;
+
+  drawTimeline('wtl', histW);
+  drawTimeline('etl', histE);
+}
+
+function drawTimeline(id, hist) {
+  const el = document.getElementById(id);
+  el.innerHTML = '';
+  const w = el.clientWidth;
+  const cell = Math.max(8, w / 30);
+  for (let i = 0; i < hist.length; i++) {
+    const h = hist[i];
+    const cls = h.state === 0 && !h.active ? 'IDLE'
+              : h.state === 1 ? 'STOP'
+              : h.state === 2 ? 'SEL'
+              : h.state === 3 ? 'PLAY'
+              : (h.active ? 'PLAY' : 'IDLE');
+    const div = document.createElement('div');
+    div.className = 'tl-band ' + cls;
+    div.style.left = (i * cell) + 'px';
+    div.style.width = (cell - 1) + 'px';
+    div.title = `tick=${i} state=${STATE_NAMES[h.state]} active="${h.active}" delay=${h.delay}`;
+    el.appendChild(div);
+  }
+}
+
+const speedInp = document.getElementById('speed');
+const speedV = document.getElementById('speedV');
+
+let lastTick = performance.now();
+let tickCounter = 0;
+
+function loop() {
+  const tickRate = +speedInp.value;
+  speedV.textContent = tickRate + ' ticks/sec';
+  const interval = 1000 / tickRate;
+  const now = performance.now();
+  if (now - lastTick >= interval) {
+    lastTick = now;
+
+    // Each tick: drain held requests as if modules called Request*()
+    for (const key of Object.keys(heldRequests)) {
+      const r = heldRequests[key];
+      if (!r.active) continue;
+      if (r.ch === 'warn') RequestWarning(r.sound, r.pri);
+      else RequestWeapon(r.sound, r.pri);
+    }
+
+    // SystemManager.Main calls SoundManager.Tick last every tick
+    Tick(tickCounter);
+    tickCounter++;
+    recordHistory();
+    render();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

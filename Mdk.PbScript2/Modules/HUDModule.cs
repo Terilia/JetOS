@@ -638,7 +638,7 @@ namespace IngameScript
 
             private void AdjustStabilizers(double aoa, Jet myjet)
             {
-                if (cockpit == null || myjet.offset == _lastTrimOffset)
+                if (cockpit == null || CanardModule.OwnsStabs || myjet.offset == _lastTrimOffset)
                     return;
                 _lastTrimOffset = myjet.offset;
 

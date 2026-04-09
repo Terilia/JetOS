@@ -1,220 +1,255 @@
 # Propulsion System
 
-> **Source**: `Jet.cs` (engine grouping), `Modules/HUDModule.cs` (throttle control), `UI/StatusPanelRenderer.cs` (engine visualization)
+> **Source:** `Jet.cs` (engine grouping), `Modules/HUDModule.cs` (`UpdateThrottleControl()`), `UI/StatusPanelRenderer.cs` (engine card visualization)
+>
+> **Try it live:** [interactive/throttle-demo.html](interactive/throttle-demo.html) — drag the W slider, hit damage scenarios, watch equalization rebalance overrides in real time.
 
 ## Overview
 
-JetOS manages a twin-engine configuration with atmospheric thrusters for normal flight and hydrogen thrusters for afterburner boost. Engines are dynamically grouped by grid position relative to the cockpit, enabling per-side thrust balancing and asymmetric damage handling.
+JetOS manages a multi-engine configuration with **atmospheric thrusters** for normal flight and **hydrogen thrusters** for afterburner boost. Engines are dynamically grouped by grid position relative to the cockpit, enabling per-side balancing and asymmetric damage handling.
 
-The animation below is a 1:1 recreation of the in-game `StatusPanelRenderer`, with the throttle cycling through IDLE, MIL, and AB stages.
+The MFD sidebar continuously renders a 1:1 cross-section of each engine — turbine spin, particle airflow, exhaust plume, and damage state. See [propulsion-animation.html](propulsion-animation.html) for the live JavaScript port.
 
 ![Engine Animation](propulsion-animation.webp)
-
-> Interactive versions: [SVG](propulsion-animation.svg) and [HTML](propulsion-animation.html) — open locally in any browser for the live JavaScript-driven animation.
 
 ---
 
 ## Engine Classification
 
-At initialization, `Jet` scans all backward-facing thrusters on the grid (excluding `"Industrial"` named blocks) and classifies them into six groups based on two axes: **lateral position** and **fuel type**.
+At construction time, `Jet` scans every backward-facing thruster (excluding any with `Industrial` in the name) and sorts them into six lists by **lateral position** and **fuel type**.
 
 ```mermaid
 flowchart TD
-    subgraph scan ["Jet Constructor — Thruster Scan"]
-        ALL["All backward thrusters\n(excl. Industrial)"]
-        ALL --> POS{Grid X vs Cockpit X}
-        POS -- "X > cockpit" --> LEFT["LEFT side"]
-        POS -- "X < cockpit" --> RIGHT["RIGHT side"]
-        POS -- "X == cockpit" --> CENTER["CENTER"]
+    subgraph scan ["Jet constructor — backward thruster scan"]
+        ALL["All backward thrusters<br/>(GridThrustDirection == Vector3I.Backward,<br/>excludes 'Industrial' in name)"]
+        ALL --> POS{Position.X vs cockpit.Position.X}
+        POS -- "X &gt; cockpitX" --> LEFT["LEFT side"]
+        POS -- "X &lt; cockpitX" --> RIGHT["RIGHT side"]
+        POS -- "X == cockpitX" --> CENTER["CENTER (no yaw)"]
 
-        LEFT --> FUEL_L{SubtypeId contains\n'Hydrogen'?}
-        RIGHT --> FUEL_R{SubtypeId contains\n'Hydrogen'?}
-        CENTER --> FUEL_C{SubtypeId contains\n'Hydrogen'?}
+        LEFT --> FL{Subtype contains 'Hydrogen'?}
+        RIGHT --> FR{Subtype contains 'Hydrogen'?}
+        CENTER --> FC{Subtype contains 'Hydrogen'?}
 
-        FUEL_L -- No --> LA["leftEngines\n(atmospheric)"]
-        FUEL_L -- Yes --> LH["leftAB\n(hydrogen)"]
-        FUEL_R -- No --> RA["rightEngines\n(atmospheric)"]
-        FUEL_R -- Yes --> RH["rightAB\n(hydrogen)"]
-        FUEL_C -- No --> CA["centerEngines\n(atmospheric)"]
-        FUEL_C -- Yes --> CH["centerAB\n(hydrogen)"]
+        FL -- No --> LE["leftEngines"]
+        FL -- Yes --> LA["leftAB"]
+        FR -- No --> RE["rightEngines"]
+        FR -- Yes --> RA["rightAB"]
+        FC -- No --> CE["centerEngines"]
+        FC -- Yes --> CA["centerAB"]
     end
 
-    style LA fill:#1a3a1a,stroke:#40a040,color:#90cc90
-    style RA fill:#1a3a1a,stroke:#40a040,color:#90cc90
-    style CA fill:#1a3a1a,stroke:#40a040,color:#90cc90
-    style LH fill:#3a2a0a,stroke:#c09030,color:#e0c060
-    style RH fill:#3a2a0a,stroke:#c09030,color:#e0c060
-    style CH fill:#3a2a0a,stroke:#c09030,color:#e0c060
+    style LE fill:#1a3a1a,stroke:#40a040,color:#90cc90
+    style RE fill:#1a3a1a,stroke:#40a040,color:#90cc90
+    style CE fill:#1a3a1a,stroke:#40a040,color:#90cc90
+    style LA fill:#3a2a0a,stroke:#c09030,color:#e0c060
+    style RA fill:#3a2a0a,stroke:#c09030,color:#e0c060
+    style CA fill:#3a2a0a,stroke:#c09030,color:#e0c060
 ```
 
-> SE grid coordinate convention: looking from the cockpit forward, **X+ is LEFT**, X- is RIGHT. Center engines (same X as cockpit) participate in both sides' thrust calculations but are not balanced — they run at straight throttle.
+> **SE coordinate quirk:** looking from the cockpit forward, **X+ is LEFT**, X− is RIGHT. Cockpit X is the lateral midline. Center engines (`Position.X == cockpitX`) participate in throttle but are bypassed in equalization since they produce no yaw moment.
+
+**Source:** `Jet.cs:149-180`
 
 ---
 
 ## Throttle Stages
 
-The throttle system provides three distinct power stages with a safety gate preventing accidental afterburner engagement.
+The throttle system has three distinct stages with a safety gate preventing accidental afterburner engagement.
 
 ```mermaid
 stateDiagram-v2
     direction LR
-
-    state "NORMAL (0-80%)" as NORMAL
-    state "MIL (80% clamped)" as MIL
-    state "AFTERBURNER (80-100%)" as AB
-
     [*] --> NORMAL : Throttle up (W)
     NORMAL --> MIL : Reaches 80%
     MIL --> NORMAL : Throttle down (S)
-
     MIL --> AB : Gate passed
-    AB --> NORMAL : Below 78%
+    AB --> NORMAL : Below 78% (hysteresis)
+
+    NORMAL : NORMAL (0–80%)<br/>atmospheric proportional
+    MIL    : MIL (80% clamped)<br/>atmospheric @ 100%, no H2
+    AB     : AFTERBURNER (80–100%)<br/>atmospheric @ 100% + H2 enabled
 ```
 
-**MIL**: Throttle clamps at 80% until AB gate is passed. Green HUD bar. **AB**: H2 tanks enabled, full thrust. Yellow HUD bar.
-
-| Stage | Throttle Range | Thrust Sources | H2 Tanks | HUD Bar Color |
-|-------|---------------|----------------|----------|---------------|
-| **NORMAL** | 0% – 80% | Atmospheric only, proportional | Disabled | Green |
-| **MIL** (Military) | 80% (clamped) | Atmospheric at 100% | Disabled | Green |
-| **AFTERBURNER** | 80% – 100% | Atmospheric 100% + Hydrogen | Enabled | Yellow |
+| Stage | Throttle Range | Atmospheric | H2 Tanks | HUD Bar |
+|-------|----------------|-------------|----------|---------|
+| **NORMAL** | 0% – 80% | Proportional, balanced | Disabled | Green |
+| **MIL** | 80% (clamped) | 100%, balanced | Disabled | Green |
+| **AFTERBURNER** | 80% – 100% | 100%, balanced | Enabled | Yellow |
 
 ---
 
 ## MIL/AB Gate Mechanism
 
-The gate prevents accidentally engaging afterburner (which consumes hydrogen fuel) during normal maneuvering. There are two ways to break through the gate:
+The gate prevents accidental afterburner engagement (which costs hydrogen). Two ways to break through:
 
 ```mermaid
 flowchart TD
-    START["Throttle reaches 80%\n(MIL clamp active)"] --> CHOICE{Pilot action}
+    START["Throttle reaches 80%<br/>(MIL clamp active)"] --> CHOICE{Pilot action}
 
-    CHOICE --> PATH_A["Path A: Release and Re-engage\nRelease W at MIL"]
-    CHOICE --> PATH_B["Path B: Hold Through\nKeep W held at MIL"]
+    CHOICE --> PA["Path A: Release &amp; Re-press"]
+    CHOICE --> PB["Path B: Hold W"]
 
-    PATH_A --> ARMED["Gate ARMED\n(abGatePassed = true)"]
+    PA --> ARMED["Release W at MIL<br/>abGatePassed = true"]
     ARMED --> REPRESS["Press W again"]
-    REPRESS --> AB_ON["AB engages immediately\nH2 tanks ON"]
+    REPRESS --> AB["AB engages immediately<br/>SetTanksEnabled(true)<br/>hydrogenswitch = true"]
 
-    PATH_B --> COUNTER["abHoldCounter increments\neach tick"]
-    COUNTER --> CHECK{Counter > 40?\n(~0.67 seconds)}
-    CHECK -- No --> COUNTER
-    CHECK -- Yes --> AB_ON
+    PB --> COUNTER["abHoldCounter++<br/>each tick W is held"]
+    COUNTER --> CHK{Counter &gt; 40?<br/>(~0.67s @ 60fps)}
+    CHK -- "No" --> COUNTER
+    CHK -- "Yes" --> AB
 
-    AB_ON --> FLYING["Afterburner active\nFull atmospheric + hydrogen"]
-    FLYING --> THROTTLE_DN["Throttle drops\nbelow 78%"]
-    THROTTLE_DN --> RESET["H2 tanks OFF\nGate reset\nBack to NORMAL"]
+    AB --> FLY["Afterburner active<br/>full atmospheric + hydrogen"]
+    FLY --> DOWN["Throttle &lt; 78% (HYSTERESIS=0.02)"]
+    DOWN --> RESET["SetTanksEnabled(false)<br/>hydrogenswitch = false<br/>gate reset"]
 
-    style AB_ON fill:#3a3a0a,stroke:#c0a030,color:#e0c060
+    style AB fill:#3a3a0a,stroke:#c0a030,color:#e0c060
     style ARMED fill:#1a2a3a,stroke:#4080c0,color:#80c0e0
     style RESET fill:#1a3a1a,stroke:#40a040,color:#90cc90
 ```
 
-The 2% hysteresis (`HYDROGEN_HYSTERESIS = 0.02`) between the MIL engagement point (80%) and the AB disengage point (78%) prevents oscillation when the throttle hovers near the boundary.
+The 2% hysteresis between MIL engagement (80%) and AB disengagement (78%) prevents oscillation when throttle hovers near the boundary.
+
+**Source:** `HUDModule.cs:447-505`
+
+> **See it in action:** the [throttle demo](interactive/throttle-demo.html) shows the gate state, hold counter, and tank toggle in real time as you drag the W slider.
 
 ---
 
 ## Thrust Control Pipeline
 
-Every tick, `UpdateThrottleControl()` converts the pilot's W/S input into per-engine thrust overrides:
+Every tick, `UpdateThrottleControl()` converts pilot W/S input into per-engine thrust overrides:
 
 ```mermaid
 flowchart LR
-    subgraph input ["Pilot Input"]
-        W["W key\n(throttle up)"]
-        S["S key\n(throttle down)"]
+    subgraph input ["Pilot input (cockpit.MoveIndicator.Z)"]
+        W["throttle &gt; 0.5<br/>(W key)"]
+        S["throttle &lt; -0.5<br/>(S key)"]
     end
 
-    subgraph gate ["AB Gate Logic"]
-        TC["throttlecontrol\n(0.0 to 1.0)"]
-        CLAMP["Clamp at 0.80\nif AB not passed"]
-        AB_CHECK["AB gate check\n(release+re-engage\nor 40-tick hold)"]
+    subgraph gate ["Throttle accumulator + AB gate"]
+        TC["throttlecontrol += RATE * dt"]
+        CLAMP["if !hydrogenswitch &amp;&amp;<br/>throttlecontrol &gt; 0.8:<br/>throttlecontrol = 0.8"]
+        ABCHK["AB gate logic<br/>(gate or 40-tick hold)"]
     end
 
-    subgraph scale ["Throttle Scaling"]
-        SCALE["scaledThrottle =\nthrottle / 0.80\n(maps 0-80% to 0-1)"]
+    subgraph scale ["Scale 0..1 → 0..1"]
+        SCALE["scaledThrottle =<br/>throttle &lt;= 0.8 ? throttle/0.8 : 1.0"]
     end
 
-    subgraph balance ["Engine Balancing"]
-        READ["Read MaxEffectiveThrust\nper side (L / R)"]
-        WEAKER["weakerMax =\nmin(leftMax, rightMax)"]
-        TARGET["targetThrust =\nweakerMax × scaledThrottle"]
-        OVERRIDE_L["leftOverride =\ntargetThrust ÷ leftMax"]
-        OVERRIDE_R["rightOverride =\ntargetThrust ÷ rightMax"]
+    subgraph eq ["Equalization"]
+        READ["Sum MaxEffectiveThrust<br/>per side (skip null/non-functional)"]
+        WK["weakerMax =<br/>min(leftMax, rightMax)"]
+        TGT["targetThrust =<br/>weakerMax * scaledThrottle"]
+        OVL["leftOverride =<br/>targetThrust / leftMax"]
+        OVR["rightOverride =<br/>targetThrust / rightMax"]
     end
 
-    subgraph apply ["Apply Overrides"]
-        SET_L["leftEngines\n← leftOverride"]
-        SET_R["rightEngines\n← rightOverride"]
-        SET_C["centerEngines\n← scaledThrottle"]
-        SET_AB["AB engines\n← 1.0 (if AB on)"]
+    subgraph apply ["Apply with tolerance check"]
+        SETL["SetGroupOverride(leftEngines, leftOverride)"]
+        SETR["SetGroupOverride(rightEngines, rightOverride)"]
+        SETC["SetGroupOverride(centerEngines, scaledThrottle)"]
+        SETAB["if hydrogenswitch:<br/>SetGroupOverride(*AB, 1.0)"]
     end
 
     W --> TC
     S --> TC
-    TC --> CLAMP --> AB_CHECK --> SCALE
-    SCALE --> READ --> WEAKER --> TARGET
-    TARGET --> OVERRIDE_L --> SET_L
-    TARGET --> OVERRIDE_R --> SET_R
-    SCALE --> SET_C
-    AB_CHECK --> SET_AB
+    TC --> CLAMP --> ABCHK --> SCALE
+    SCALE --> READ --> WK --> TGT --> OVL
+    TGT --> OVR
+    OVL --> SETL
+    OVR --> SETR
+    SCALE --> SETC
+    ABCHK --> SETAB
 
-    style WEAKER fill:#2a1a1a,stroke:#c05050,color:#e08080
-    style SET_AB fill:#3a3a0a,stroke:#c0a030,color:#e0c060
+    style WK fill:#2a1a1a,stroke:#c05050,color:#e08080
+    style SETAB fill:#3a3a0a,stroke:#c0a030,color:#e0c060
 ```
 
-> **Why balance?** If one side has damaged or fewer engines, its `MaxEffectiveThrust` is lower. Without equalization, the stronger side would produce more thrust, causing unwanted yaw. See [Engine Equalization](engine-equalization.md) for the full algorithm.
+> **Why the weaker side?** If one side has damaged or fewer engines, its `MaxEffectiveThrust` is lower. Without equalization, the stronger side would generate more thrust, causing yaw drift. See [engine-equalization.md](engine-equalization.md) for the math.
+
+**Source:** `HUDModule.cs:542-585`
 
 ---
 
 ## Airbrakes
 
-Airbrakes are `IMyDoor` blocks that open/close based on the cockpit's vertical (jump/crouch) input:
+Airbrakes are `IMyDoor` blocks that open/close based on the cockpit's vertical input:
 
-- **Jump (Space)**: Opens all doors → aerodynamic braking
-- **Release**: Closes all doors
+| Pilot input | Airbrake state |
+|-------------|----------------|
+| Jump (Space) — `MoveIndicator.Y > 0.5` | All doors open → drag |
+| Released — Y near 0 | All doors close |
 
-The system tracks `airbrakesOpen` state to avoid redundant API calls.
+State is tracked in `airbrakesOpen` so we don't spam the API every tick when nothing changed.
+
+**Source:** `HUDModule.cs:507-518`
 
 ---
 
 ## Hydrogen Tank Management
 
-H2 tanks are toggled via `SetTanksEnabled()`:
+`SetTanksEnabled(bool)` toggles every tank with `Jet` in its name:
 
-- **AB engaged**: All tanks with `"Jet"` in name → `Enabled = true`
-- **AB disengaged**: → `Enabled = false`
-- **On startup**: Tanks disabled (prevents accidental fuel drain)
+| Throttle State | Action |
+|----------------|--------|
+| AB engages | Enable all `Jet` tanks |
+| AB disengages | Disable all `Jet` tanks |
+| Script startup | Tanks disabled (`HUDModule` constructor) |
 
-Only tanks whose `Enabled` state actually differs from the target value are touched (avoids redundant API calls that cost instruction cycles).
+The function only writes `Enabled` if the current state differs from the target. This avoids ~2 instructions per unchanged tank per tick.
+
+**Source:** `HUDModule.cs:587-594`
+
+---
+
+## Manual Fire Toggle
+
+Pressing crouch (`MoveIndicator.Y < -0.5`) toggles `Jet.manualfire`:
+
+| Mode | Behavior |
+|------|----------|
+| `manualfire = true` | Gatling guns stay enabled. Pilot fires manually. |
+| `manualfire = false` | Guns are enabled by `TargetingRenderer.DrawLeadingPip()` only when the lead pip is on-target. Auto-disable when off-target. |
+
+A `manualFireToggleCooldown` flag prevents the press from firing every tick the key is held.
+
+**Source:** `HUDModule.cs:520-540`
 
 ---
 
 ## Live Engine Visualization
 
-The engine animation below is a 1:1 JavaScript port of `StatusPanelRenderer.cs` — every drawing call, color, and formula is identical to the in-game MFD. The throttle cycles automatically through IDLE, NORMAL, MIL, and AB stages.
+The MFD sidebar's engine cards are rendered by `StatusPanelRenderer.DrawEngCol()`. Each side shows:
 
-![Engine Animation](propulsion-animation.webp)
+- **Functional/Total count** (red if any are damaged)
+- **Vertical thrust bar** with damage gradient
+- **Live thrust readout in kN** (`current / max`)
+- **Bar fills yellow when AB is active** (any AB thrust > 0.1 kN)
 
-> The animation shows: 3D-projected compressor blade discs with depth-sorted rendering, 48 golden-ratio-spaced air particles per engine with hermite smoothstep phasing, multi-tongue exhaust plume with per-stage coloring (blue/MIL white-blue/AB orange-yellow), combustion chamber glow proportional to thrust, and resource cards.
+The animation port at [propulsion-animation.html](propulsion-animation.html) is a pure-JS recreation showing the in-game schematic — compressor blade discs, particle airflow, exhaust plume coloring per stage.
+
+**Source:** `UI/StatusPanelRenderer.cs:62-93`
 
 ---
 
-## Engine Health Monitoring
+## Tunable Constants
 
-`Jet.GetEngineHealth()` returns `(functional, total)` counts for any engine group. `StatusPanelRenderer` visualizes this per-side with:
+| Constant | Value | Where | Purpose |
+|----------|-------|-------|---------|
+| `THROTTLE_RATE` | 0.6 | HUDModule | Throttle change per second (W or S) |
+| `THROTTLE_HYDROGEN_THRESHOLD` | 0.8 | HUDModule | MIL gate position |
+| `HYDROGEN_HYSTERESIS` | 0.02 | HUDModule | Gap between MIL engage / AB disengage |
+| `AB_AUTO_ENGAGE_TICKS` | 40 | HUDModule | Hold-W ticks to bypass gate |
+| `0.001f` | tolerance | SetGroupOverride | Skip API call if delta is below this |
 
-- **Segment coloring**: Damaged compressor segments blink red
-- **Thrust bars**: Live `currentThrust / maxThrust` readout in kN
-- **Animated turbine discs**: Spin speed proportional to thrust percentage
-- **Exhaust plume**: Color and length respond to thrust stage (blue → white → orange)
-
-The mini engine schematics on the MFD status panel show a real-time cross-section of each engine with 3D-projected compressor blade rotation, air particle flow, and maneuver-responsive exhaust drift.
+Tweak `AB_AUTO_ENGAGE_TICKS` to make the gate stricter (longer hold) or more permissive (shorter hold).
 
 ---
 
 ## Performance Notes
 
-- **Thrust override tolerance**: Only sets `ThrustOverridePercentage` when the delta exceeds `0.001` (avoids wasting instruction cycles on no-ops)
-- **Block cache refresh**: Engine lists are populated once at init, refreshed every 60 ticks in `GridVisualization`
-- **Tank toggle efficiency**: Only toggles `Enabled` when the current state differs from target
+- **Per-tick equalization** runs unconditionally — `MaxEffectiveThrust` changes with altitude (atmospheric density), so we re-read every frame.
+- **Tolerance-checked overrides** skip the API write when the delta is < 0.001. With ~12 thrusters this saves ~24 instructions per tick when the throttle is steady.
+- **No GC pressure** — equalization uses only stack-allocated floats. The same `for` loops mutate existing list entries.
+- **Center engines bypass the min/divide** entirely. They get raw `scaledThrottle`.

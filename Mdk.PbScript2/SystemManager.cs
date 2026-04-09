@@ -29,7 +29,7 @@ namespace IngameScript
             private static Program.AirtoAir airtoAirModule;
             private static Program.GunControlModule gunControlModule;
             private static Program.TerrainModule terrainModule;
-            private static Program.AeroRecorderModule aeroRecorder;
+            private static Program.CanardModule canardModule;
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
 
@@ -96,8 +96,8 @@ namespace IngameScript
                 terrainModule = new TerrainModule(parentProgram, _myJet);
                 modules.Add(terrainModule);
 
-                aeroRecorder = new AeroRecorderModule(parentProgram, _myJet);
-                modules.Add(aeroRecorder);
+                canardModule = new CanardModule(parentProgram, _myJet);
+                modules.Add(canardModule);
 
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)
@@ -126,6 +126,11 @@ namespace IngameScript
             public static void MarkCustomDataDirty()
             {
                 CustomDataManager.MarkDirty();
+            }
+
+            public static double GetSmoothedAoA()
+            {
+                return hudProgram != null ? hudProgram.smoothedAoA : 0;
             }
 
             public static float GetConfigValue(string configName)
@@ -222,9 +227,9 @@ namespace IngameScript
                     gunControlModule.Tick();
                 }
 
-                if (aeroRecorder != null && aeroRecorder.IsActive && currentModule != aeroRecorder)
+                if (canardModule != null && currentModule != canardModule)
                 {
-                    aeroRecorder.Tick();
+                    canardModule.Tick();
                 }
 
                 HandleSpecialFunctionInputs(argument);

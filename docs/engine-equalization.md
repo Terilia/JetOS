@@ -6,6 +6,8 @@
 
 Engine equalization prevents yaw drift caused by asymmetric thrust. Every tick, the system reads `MaxEffectiveThrust` from each side's engines, caps total output to what the weaker side can produce, and computes per-side override percentages that deliver equal Newtons of force. This runs continuously, adapting instantly to engine damage, atmospheric density changes, and altitude transitions.
 
+> **Try it live:** [interactive/throttle-demo.html](interactive/throttle-demo.html) — drag the throttle slider, click damage scenarios, watch the override percentages and yaw torque indicator rebalance in real time.
+
 **[Open the equalization diagram](engine-equalization.svg)** to see the balancing mechanism visualized.
 
 ---
@@ -53,7 +55,7 @@ Common causes of asymmetry:
 
 ## Algorithm Pipeline
 
-The equalization runs every tick inside `UpdateThrottleControl()` (lines 566-599 of `HUDModule.cs`):
+The equalization runs every tick inside `UpdateThrottleControl()` (`HUDModule.cs:542-585`):
 
 ```mermaid
 flowchart TD

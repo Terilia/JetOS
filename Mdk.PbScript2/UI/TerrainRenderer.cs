@@ -225,6 +225,25 @@ namespace IngameScript
                 SpriteHelpers.DrawRectangleOutline(frame, gridLeft, gridTop,
                     gridAvail, gridAvail, 1f, MFDTheme.BORDER);
 
+                // Enemy contacts
+                float mPerCell = SIDE_STRIDE * (float)TerrainAPI.CellSize;
+                float ppm = cell / mPerCell;
+                var enemies = jet.enemyList;
+                for (int i = 0; i < enemies.Count; i++)
+                {
+                    var e = enemies[i];
+                    Vector3D off = e.Position - shipPos;
+                    float ex = cx + (float)VD(off, jR) * ppm;
+                    float ey = cy - (float)VD(off, jF) * ppm;
+                    if (ex < gridLeft || ex > gridLeft + gridAvail ||
+                        ey < gridTop || ey > gridTop + gridAvail) continue;
+
+                    Color ec = jet.GetEnemyContactColor(e);
+                    SpriteHelpers.Sp(frame, "Circle", ex, ey, 14f, 14f, ec);
+                    SpriteHelpers.Sp(frame, "Circle", ex, ey, 10f, 10f, MFDTheme.BG);
+                    SpriteHelpers.Sp(frame, "Triangle", ex, ey, 6f, 6f, ec);
+                }
+
                 double agl = TerrainAPI.AGL(shipPos);
                 Color aglC = agl < 100 ? TC[0] : agl < 200 ? TC[1] : MFDTheme.STATUS_VAL;
                 MFDFrame.Txt(frame, $"AGL {agl:F0}m", ox + sw / 2f,
