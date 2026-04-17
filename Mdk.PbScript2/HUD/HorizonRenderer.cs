@@ -109,6 +109,9 @@ namespace IngameScript
 
             }
 
+            // F-18 style aircraft waterline / reference symbol — classic "W" shape:
+            // horizontal wings dipping into a center V. Pilot preference over the
+            // F-16 gun cross.
             private void DrawAircraftSymbol(MySpriteDrawFrame frame, float centerX, float centerY)
             {
                 float wingSpan = 35f;
@@ -160,6 +163,11 @@ namespace IngameScript
                 SpriteHelpers.Sp(frame, "Triangle", centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY, (float)PI);
             }
 
+            // F-18 Flight Path Marker (velocity vector symbol).
+            // Compact hollow circle + stumpy horizontal wings flush with the circle +
+            // a short vertical tail tick flush on top. Earth-stabilized: wings/tail
+            // counter-rotate with roll so they stay parallel to the true horizon.
+            // Drawn in HUD primary color (monochrome HUD convention).
             private void DrawFlightPathMarker(
                 MySpriteDrawFrame frame,
                 Vector3D currentVelocity,
@@ -172,10 +180,11 @@ namespace IngameScript
             {
                 if (currentVelocity.LengthSquared() < 1.0) return;
 
-                const float MarkerSize = 20f;
-                const float WingLength = 15f;
-                const float WingThickness = 2f;
-                const float WingOffsetX = 10f;
+                const float CircleSize = 11f;
+                const float WingLength = 13f;
+                const float WingThickness = 1.8f;
+                const float WingGap = 0f;    // F-18: wings touch circle edge
+                const float TailLength = 6f; // short tail tick, flush with top
 
                 // Use perspective projection (same as lead pip / target brackets)
                 // to get a physically correct screen position for the velocity vector.
@@ -190,7 +199,11 @@ namespace IngameScript
                 Vector2 surfaceSize = hud.SurfaceSize;
                 Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, V2(centerX, centerY), surfaceSize);
 
-                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, markerPosition.X, markerPosition.Y, MarkerSize, MarkerSize, Color.White);
+                Color fpmColor = HUD_PRIMARY;
+
+                // Hollow circle (CircleHollow texture)
+                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE, markerPosition.X, markerPosition.Y,
+                    CircleSize, CircleSize, fpmColor);
 
                 // Boresight-to-FPM connector — only when FPM is off-screen
                 bool fpmOnScreen = markerPosition.X >= 0 && markerPosition.X <= surfaceSize.X &&
@@ -198,23 +211,30 @@ namespace IngameScript
                 if (!fpmOnScreen)
                 {
                     Vector2 boresight = V2(centerX, centerY);
-                    SpriteHelpers.AddLineSprite(frame, boresight, markerPosition, 1f, Cr(Color.White, 0.35f));
+                    SpriteHelpers.AddLineSprite(frame, boresight, markerPosition, 1f, Cr(fpmColor, 0.35f));
                 }
 
-                // Wings counter-rotate by roll to stay horizon-aligned (like a real F-18 FPM)
+                // Wings + tail counter-rotate by roll to stay horizon-aligned (F-16 convention)
                 float rollRad = ToRad((float)roll);
+                float halfCircle = CircleSize * 0.5f;
 
-                Vector2 leftWingOffset = V2(-WingLength / 2 - WingOffsetX, 0f);
-                Vector2 rightWingOffset = V2(WingLength / 2 + WingOffsetX, 0f);
+                // Left wing: center is half-wing outside the circle
+                Vector2 leftWingOffset = V2(-(halfCircle + WingGap + WingLength / 2f), 0f);
+                Vector2 rotLeftWing = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
+                Vector2 lw = markerPosition + rotLeftWing;
+                SpriteHelpers.Bx(frame, lw.X, lw.Y, WingLength, WingThickness, fpmColor, -rollRad);
 
-                Vector2 rotatedLeftWingOffset = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
-                Vector2 rotatedRightWingOffset = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
+                // Right wing
+                Vector2 rightWingOffset = V2(halfCircle + WingGap + WingLength / 2f, 0f);
+                Vector2 rotRightWing = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
+                Vector2 rw = markerPosition + rotRightWing;
+                SpriteHelpers.Bx(frame, rw.X, rw.Y, WingLength, WingThickness, fpmColor, -rollRad);
 
-                Vector2 lw = markerPosition + rotatedLeftWingOffset;
-                SpriteHelpers.Bx(frame, lw.X, lw.Y, WingLength, WingThickness, Color.White, -rollRad);
-
-                Vector2 rw = markerPosition + rotatedRightWingOffset;
-                SpriteHelpers.Bx(frame, rw.X, rw.Y, WingLength, WingThickness, Color.White, -rollRad);
+                // Vertical stabilizer tick: center is half-tail above the circle
+                Vector2 tailOffset = V2(0f, -(halfCircle + TailLength / 2f));
+                Vector2 rotTail = SpriteHelpers.RotatePoint(tailOffset, Vector2.Zero, -rollRad);
+                Vector2 tp = markerPosition + rotTail;
+                SpriteHelpers.Bx(frame, tp.X, tp.Y, WingThickness, TailLength, fpmColor, -rollRad);
             }
         }
     }

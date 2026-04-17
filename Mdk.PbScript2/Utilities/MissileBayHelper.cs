@@ -2,6 +2,7 @@ using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
+using VRage;
 using VRageMath;
 
 namespace IngameScript
@@ -10,35 +11,7 @@ namespace IngameScript
     {
         static class MissileBayHelper
         {
-            public static void FireSelectedBays(List<IMyShipMergeBlock> bays, bool[] baySelected, Program program)
-            {
-                for (int i = 0; i < bays.Count; i++)
-                {
-                    if (baySelected[i])
-                    {
-                        FireMissileFromBay(bays, i, default(Vector3D), program);
-                    }
-                }
-            }
-
-            public static void FireNextAvailableBay(List<IMyShipMergeBlock> bays, Program program)
-            {
-                for (int i = 0; i < bays.Count; i++)
-                {
-                    if (IsBayReady(bays[i]))
-                    {
-                        try
-                        {
-                            FireMissileFromBay(bays, i, default(Vector3D), program);
-                            return;
-                        }
-                        catch (Exception e)
-                        {
-                            program.Echo($"Bay {i} fire failed: {e.Message}");
-                        }
-                    }
-                }
-            }
+            public const string IGC_CHANNEL_PREFIX = "JETOS_MSL_";
 
             public static bool IsBayReady(IMyShipMergeBlock bay)
             {
@@ -68,81 +41,185 @@ namespace IngameScript
                 }
             }
 
-            public static void TransferCacheToSlots(int bayCount)
+            public static int ExtractBayNumber(IMyShipMergeBlock bay, int fallback)
             {
-                for (int i = 0; i < bayCount; i++)
-                {
-                    string cacheKey = string.Format("Cache{0}", i);
-                    string cacheContent = SystemManager.GetCustomDataValue(cacheKey);
-
-                    if (!string.IsNullOrEmpty(cacheContent))
-                    {
-                        string slotKey = i.ToString();
-                        SystemManager.SetCustomDataValue(slotKey, cacheContent);
-                        SystemManager.SetCustomDataValue(cacheKey, "");
-                    }
-                }
+                if (bay == null) return fallback;
+                var parts = bay.CustomName.Split(' ');
+                int number;
+                if (parts.Length > 1 && int.TryParse(parts[1], out number))
+                    return number;
+                return fallback;
             }
 
-            public static void FireMissileFromBay(
-                List<IMyShipMergeBlock> bays,
-                int bayIndex,
-                Vector3D targetPosition,
-                Program program,
-                Jet jet = null)
+            public static bool TryGetTargetPosition(Jet jet, out Vector3D pos)
             {
-                try
+                pos = default(Vector3D);
+                if (jet != null)
                 {
-                    var bay = bays[bayIndex];
-                    if (bay == null || !bay.IsConnected)
-                        return;
-
-                    if (targetPosition.Equals(default(Vector3D)))
+                    var selected = jet.GetSelectedEnemy();
+                    if (selected.HasValue)
                     {
-                        // Try selected enemy first
-                        if (jet != null)
-                        {
-                            var selected = jet.GetSelectedEnemy();
-                            if (selected.HasValue)
-                            {
-                                targetPosition = selected.Value.Position;
-                            }
-                        }
-
-                        // Fallback: read from GPS cache
-                        if (targetPosition.Equals(default(Vector3D)))
-                        {
-                            if (!NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out targetPosition))
-                                return;
-                        }
+                        pos = selected.Value.Position;
+                        return true;
                     }
-
-                    string gpsData = NavigationHelper.FormatGps(targetPosition);
-                    string cacheKey = string.Format("Cache{0}", bayIndex);
-                    SystemManager.SetCustomDataValue(cacheKey, gpsData);
-                    bay.ApplyAction("Fire");
                 }
-                catch (Exception e)
-                {
-                    program.Echo($"FireMissile error: {e.Message}");
-                }
+                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out pos);
             }
 
-            public const string WEAPON_HOTKEYS = "5: Fire Next Available Bay\n6: Fire Selected Bays\n7: Toggle Selected Bays\n";
+            public static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)
+            {
+                pos = default(Vector3D);
+                vel = Vector3D.Zero;
+                if (jet != null)
+                {
+                    var selected = jet.GetSelectedEnemy();
+                    if (selected.HasValue)
+                    {
+                        pos = selected.Value.Position;
+                        vel = selected.Value.Velocity;
+                        return true;
+                    }
+                }
+                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out pos);
+            }
 
             /// <summary>
-            /// Shared hotkey handling for weapon modules (AirToGround and AirtoAir).
+            /// Writes the launch-time CustomData that the missile reads during CheckForGPSAndStart:
+            /// Topdown / AntiAir flags plus a per-bay GPS slot (1:GPS:..., 2:GPS:...). Missiles fly
+            /// straight at the target — no cone/salvo/approach setup is written since the geometry
+            /// asks for tighter turns than the missile can actually pull.
             /// </summary>
-            public static void HandleWeaponHotkey(int key, List<IMyShipMergeBlock> bays, Program program)
+            public static void WriteLaunchSetup(
+                List<IMyShipMergeBlock> bays,
+                bool[] baySelected,
+                Jet jet,
+                bool topdown)
+            {
+                Vector3D targetPos;
+                if (!TryGetTargetPosition(jet, out targetPos))
+                    return;
+
+                string gps = NavigationHelper.FormatGps(targetPos);
+
+                SystemManager.SetCustomDataValue("Topdown", topdown ? "true" : "false");
+                SystemManager.SetCustomDataValue("AntiAir", "true");
+                SystemManager.SetCustomDataValue("Cached", gps);
+
+                for (int i = 0; i < bays.Count; i++)
+                {
+                    if (i >= baySelected.Length || !baySelected[i] || !IsBayReady(bays[i]))
+                        continue;
+                    int bayNum = ExtractBayNumber(bays[i], i + 1);
+                    SystemManager.SetCustomDataValue(bayNum.ToString(), gps);
+                }
+            }
+
+            public static void FireSelectedBays(
+                List<IMyShipMergeBlock> bays,
+                bool[] baySelected,
+                Program program,
+                Jet jet,
+                bool topdown)
+            {
+                Vector3D targetPos;
+                if (!TryGetTargetPosition(jet, out targetPos))
+                    return;
+
+                WriteLaunchSetup(bays, baySelected, jet, topdown);
+
+                for (int i = 0; i < bays.Count; i++)
+                {
+                    if (i >= baySelected.Length || !baySelected[i])
+                        continue;
+                    var bay = bays[i];
+                    if (bay == null || !bay.IsConnected)
+                        continue;
+                    try
+                    {
+                        bay.ApplyAction("Fire");
+                    }
+                    catch (Exception e)
+                    {
+                        program?.Echo($"Bay {i} fire failed: {e.Message}");
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Quick-fire: pick the first connected bay and launch without needing a selection.
+            /// Re-writes the launch setup for just that bay so the slot GPS is correct.
+            /// </summary>
+            public static void FireNextAvailableBay(
+                List<IMyShipMergeBlock> bays,
+                Program program,
+                Jet jet,
+                bool topdown)
+            {
+                Vector3D targetPos;
+                if (!TryGetTargetPosition(jet, out targetPos))
+                    return;
+
+                for (int i = 0; i < bays.Count; i++)
+                {
+                    if (!IsBayReady(bays[i])) continue;
+
+                    string gps = NavigationHelper.FormatGps(targetPos);
+                    int bayNum = ExtractBayNumber(bays[i], i + 1);
+
+                    SystemManager.SetCustomDataValue("Topdown", topdown ? "true" : "false");
+                    SystemManager.SetCustomDataValue("AntiAir", "true");
+                    SystemManager.SetCustomDataValue("Cached", gps);
+                    SystemManager.SetCustomDataValue(bayNum.ToString(), gps);
+
+                    try
+                    {
+                        bays[i].ApplyAction("Fire");
+                    }
+                    catch (Exception e)
+                    {
+                        program?.Echo($"Bay {i} fire failed: {e.Message}");
+                    }
+                    return;
+                }
+            }
+
+            /// <summary>
+            /// Per-tick target stream on JETOS_MSL_&lt;bayNumber&gt;. We always pass Vector3D.Zero for the
+            /// approach offset so the missile flies straight at the target — the cone geometry would
+            /// demand sharper turns than the missile can actually pull at the waypoint.
+            /// </summary>
+            public static void BroadcastTargetUpdates(
+                Program program,
+                Jet jet,
+                List<IMyShipMergeBlock> bays)
+            {
+                if (program == null || jet == null || bays.Count == 0)
+                    return;
+
+                Vector3D targetPos, targetVel;
+                if (!TryGetTargetData(jet, out targetPos, out targetVel))
+                    return;
+
+                for (int i = 0; i < bays.Count; i++)
+                {
+                    int bayNum = ExtractBayNumber(bays[i], i + 1);
+                    var payload = MyTuple.Create(targetPos, targetVel, Vector3D.Zero);
+                    program.IGC.SendBroadcastMessage(IGC_CHANNEL_PREFIX + bayNum, payload);
+                }
+            }
+
+            public const string WEAPON_HOTKEYS = "5: Fire Next Available Bay\n";
+
+            public static void HandleWeaponHotkey(
+                int key,
+                List<IMyShipMergeBlock> bays,
+                Program program,
+                Jet jet,
+                bool topdown)
             {
                 if (key == 5)
                 {
-                    FireNextAvailableBay(bays, program);
-                    TransferCacheToSlots(bays.Count);
-                }
-                if (key == 7)
-                {
-                    TransferCacheToSlots(bays.Count);
+                    FireNextAvailableBay(bays, program, jet, topdown);
                 }
             }
 

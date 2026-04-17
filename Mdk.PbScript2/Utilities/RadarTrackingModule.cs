@@ -187,13 +187,27 @@ namespace IngameScript
             // Also check hit-and-run variant which uses the same format.
             const string ATK_PREFIX = "Status: Attacking ";
 
+            // DetailedInfo parsing is expensive (string allocation). Cache the name
+            // and only re-parse when FoundEnemyId changes (i.e. target actually changed).
+            long _cachedNameEntityId = -1;
+            string _cachedName = "";
+
             public string TrackedObjectName
             {
                 get
                 {
+                    long currentId = TrackedEntityId;
+                    if (currentId == _cachedNameEntityId)
+                        return _cachedName;
+
+                    _cachedNameEntityId = currentId;
+
                     string detailedInfo = L_CombatBLock.DetailedInfo;
                     if (string.IsNullOrEmpty(detailedInfo))
-                        return "";
+                    {
+                        _cachedName = "";
+                        return _cachedName;
+                    }
 
                     // Scan each line for the attacking prefix
                     int start = 0;
@@ -206,12 +220,14 @@ namespace IngameScript
                         if (len > ATK_PREFIX.Length &&
                             detailedInfo.IndexOf(ATK_PREFIX, start, len) == start)
                         {
-                            return detailedInfo.Substring(start + ATK_PREFIX.Length, len - ATK_PREFIX.Length).Trim();
+                            _cachedName = detailedInfo.Substring(start + ATK_PREFIX.Length, len - ATK_PREFIX.Length).Trim();
+                            return _cachedName;
                         }
                         start = end + 1;
                     }
 
-                    return "";
+                    _cachedName = "";
+                    return _cachedName;
                 }
             }
 

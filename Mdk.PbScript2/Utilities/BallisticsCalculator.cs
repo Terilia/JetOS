@@ -63,6 +63,10 @@ namespace IngameScript
 
                 if (t <= 0) return false;
 
+                // Save the pure-quadratic (no-accel) solution as a fallback
+                // in case Newton converges to the wrong root of the full quartic.
+                double tQuadratic = t;
+
                 const double tolerance = 0.0001;
 
                 for (int i = 0; i < maxIterations; i++)
@@ -77,10 +81,13 @@ namespace IngameScript
                     if (Ab(fPrime) < 1e-10)
                         break;
 
-                    double tNew = t - f / fPrime;
+                    double step = f / fPrime;
+                    double tNew = t - step;
 
-                    if (tNew <= 0)
-                        tNew = t * 0.5;
+                    // Bound the step to [t*0.1, t*2.0] to prevent Newton from
+                    // jumping to a distant root or going negative.
+                    if (tNew <= t * 0.1) tNew = t * 0.1;
+                    else if (tNew > t * 2.0) tNew = t * 2.0;
 
                     double delta = Ab(tNew - t);
                     t = tNew;
@@ -89,16 +96,28 @@ namespace IngameScript
                         break;
                 }
 
-                if (t <= 0) return false;
+                if (t <= 0) t = tQuadratic;
 
                 Vector3D requiredMuzzleVel = D / t + V_rel + 0.5 * A_net * t;
                 double actualSpeed = requiredMuzzleVel.Length();
 
-                if (Ab(actualSpeed - muzzleSpeed) / muzzleSpeed > 0.02)
-                    return false;
+                // If the acceleration-aware solution drifts from muzzle speed,
+                // fall back to the pure-quadratic solution (target moves in straight line).
+                bool useQuadratic = false;
+                if (Ab(actualSpeed - muzzleSpeed) / muzzleSpeed > 0.05)
+                {
+                    t = tQuadratic;
+                    requiredMuzzleVel = D / t + V_rel; // no accel term
+                    actualSpeed = requiredMuzzleVel.Length();
+                    if (Ab(actualSpeed - muzzleSpeed) / muzzleSpeed > 0.05)
+                        return false;
+                    useQuadratic = true;
+                }
 
                 timeToIntercept = t;
-                interceptPoint = targetPosition + targetVelocity * t + 0.5 * targetAcceleration * t * t;
+                interceptPoint = useQuadratic
+                    ? targetPosition + targetVelocity * t
+                    : targetPosition + targetVelocity * t + 0.5 * targetAcceleration * t * t;
 
                 Vector3D aimDirection = requiredMuzzleVel / actualSpeed;
                 double distanceToIntercept = (interceptPoint - shooterPosition).Length();

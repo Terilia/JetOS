@@ -43,11 +43,11 @@ namespace IngameScript
                 public RadarRole Role;
                 public long TrackedEntityId;
                 public string TrackedName;
-                public int TicksSinceLastSeen;
+                public double SecondsSinceLastSeen;
                 // True once we've called ActivateBehavior_On for this radar at runtime
                 public bool BehaviorActivated;
-                // Cooldown ticks after activation before we start reading data
-                public int ActivationCooldown;
+                // Wall-clock cooldown after activation before we start reading data
+                public double ActivationCooldown;
             }
 
             private List<RadarState> radarStates = new List<RadarState>();
@@ -64,10 +64,10 @@ namespace IngameScript
             private class RWRTrackingState
             {
                 public string CurrentEnemyName = "";
-                public int TicksSinceEnemyChange = 0;
+                public double SecondsSinceEnemyChange = 0;
                 public List<Vector3D> PositionHistory;
                 public int HistoryIndex = 0;
-                public int TickCounter = 0;
+                public double PositionSampleAccum = 0; // accumulator for sampling interval
 
                 public RWRTrackingState()
                 {
@@ -109,11 +109,15 @@ namespace IngameScript
             // Once RWR init is done, we activate the first pool radar as SEARCHING
             private bool poolChainStarted = false;
 
-            // Activation cooldown: after calling ActivateBehavior_On, wait this many ticks
-            // before reading data (SE needs time to process the action)
-            private const int ACTIVATION_COOLDOWN = 10;
-            // Ticks before a LOCKED radar that lost its target reverts to IDLE
-            private const int LOST_TARGET_TIMEOUT = 120;
+            // Activation cooldown: after calling ActivateBehavior_On, wait this long
+            // (wall-clock) before reading data (SE needs time to process the action)
+            private const double ACTIVATION_COOLDOWN_SECONDS = 0.167;
+            // Wall-clock seconds before a LOCKED radar that lost its target reverts to IDLE
+            private const double LOST_TARGET_TIMEOUT_SECONDS = 2.0;
+            // RWR sampling interval for position history
+            private const double RWR_POSITION_SAMPLE_SECONDS = 0.167;
+            // RWR stabilization delay before threat classification fires
+            private const double RWR_STABILIZATION_SECONDS = 0.5;
 
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
@@ -233,7 +237,7 @@ namespace IngameScript
                             {
                                 state.ClearHistory();
                                 state.CurrentEnemyName = "";
-                                state.TicksSinceEnemyChange = 0;
+                                state.SecondsSinceEnemyChange = 0;
                             }
                             activeThreats.Clear();
                         }
@@ -323,10 +327,10 @@ namespace IngameScript
                     var state = radarStates[i];
                     if (radar == null) continue;
 
-                    // Decrement activation cooldown
+                    // Decrement activation cooldown (wall-clock)
                     if (state.ActivationCooldown > 0)
                     {
-                        state.ActivationCooldown--;
+                        state.ActivationCooldown -= SystemManager.DeltaSeconds;
                         continue; // Skip processing until cooldown expires
                     }
 
@@ -452,7 +456,7 @@ namespace IngameScript
                     state.Role = RadarRole.LOCKED;
                     state.TrackedEntityId = entityId;
                     state.TrackedName = feedName;
-                    state.TicksSinceLastSeen = 0;
+                    state.SecondsSinceLastSeen = 0;
 
                     // Activate next IDLE radar as SEARCHING
                     ActivateNextSearcher(index, poolSize);
@@ -469,14 +473,15 @@ namespace IngameScript
                 var radar = allRadars[index];
                 var state = radarStates[index];
 
+                double dt = SystemManager.DeltaSeconds;
                 if (radar.IsTracking && radar.HasReceivedPosition)
                 {
                     Vector3D targetPos = radar.TargetPosition;
                     if (targetPos.LengthSquared() < 1.0)
                     {
                         // Position is zero/stale
-                        state.TicksSinceLastSeen++;
-                        if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                        state.SecondsSinceLastSeen += dt;
+                        if (state.SecondsSinceLastSeen > LOST_TARGET_TIMEOUT_SECONDS)
                         {
                             DemoteToIdle(index);
                         }
@@ -491,7 +496,7 @@ namespace IngameScript
                     {
                         // Same target — feed and reset
                         myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
-                        state.TicksSinceLastSeen = 0;
+                        state.SecondsSinceLastSeen = 0;
                         if (!string.IsNullOrEmpty(targetName))
                             state.TrackedName = targetName;
                     }
@@ -506,14 +511,14 @@ namespace IngameScript
                             myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, newTargetName, index, entityId);
                             state.TrackedEntityId = entityId;
                             state.TrackedName = newTargetName;
-                            state.TicksSinceLastSeen = 0;
+                            state.SecondsSinceLastSeen = 0;
                         }
                         else
                         {
                             // Already locked by another — stay LOCKED, feed data, wait for SE to cycle back
                             myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, newTargetName, index, entityId);
-                            state.TicksSinceLastSeen++;
-                            if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                            state.SecondsSinceLastSeen += dt;
+                            if (state.SecondsSinceLastSeen > LOST_TARGET_TIMEOUT_SECONDS)
                             {
                                 DemoteToIdle(index);
                             }
@@ -523,8 +528,8 @@ namespace IngameScript
                 else
                 {
                     // Lost tracking
-                    state.TicksSinceLastSeen++;
-                    if (state.TicksSinceLastSeen > LOST_TARGET_TIMEOUT)
+                    state.SecondsSinceLastSeen += dt;
+                    if (state.SecondsSinceLastSeen > LOST_TARGET_TIMEOUT_SECONDS)
                     {
                         DemoteToIdle(index);
                     }
@@ -569,7 +574,7 @@ namespace IngameScript
                     radar.L_CombatBLock.ApplyAction("SetTargetingGroup_Weapons");
 
                     state.BehaviorActivated = true;
-                    state.ActivationCooldown = ACTIVATION_COOLDOWN;
+                    state.ActivationCooldown = ACTIVATION_COOLDOWN_SECONDS;
                 }
 
                 // Always apply priority — safe anytime, doesn't toggle behavior
@@ -585,7 +590,7 @@ namespace IngameScript
                 state.Role = RadarRole.SEARCHING;
                 state.TrackedEntityId = 0;
                 state.TrackedName = "";
-                state.TicksSinceLastSeen = 0;
+                state.SecondsSinceLastSeen = 0;
 
                 // Rotate priority so each searcher looks for different targets
                 string priority = TargetPriorityActions[nextPriorityIndex % TargetPriorityActions.Length];
@@ -604,7 +609,7 @@ namespace IngameScript
                 state.Role = RadarRole.IDLE;
                 state.TrackedEntityId = 0;
                 state.TrackedName = "";
-                state.TicksSinceLastSeen = 0;
+                state.SecondsSinceLastSeen = 0;
             }
 
             // ============================================================
@@ -673,7 +678,7 @@ namespace IngameScript
                             radarStates[i].Role = RadarRole.IDLE;
                             radarStates[i].TrackedEntityId = 0;
                             radarStates[i].TrackedName = "";
-                            radarStates[i].TicksSinceLastSeen = 0;
+                            radarStates[i].SecondsSinceLastSeen = 0;
                         }
                     }
                     else
@@ -682,7 +687,7 @@ namespace IngameScript
                         radarStates[i].Role = RadarRole.RWR;
                         radarStates[i].TrackedEntityId = 0;
                         radarStates[i].TrackedName = "";
-                        radarStates[i].TicksSinceLastSeen = 0;
+                        radarStates[i].SecondsSinceLastSeen = 0;
                     }
                 }
                 // Reset chain — will re-pick a SEARCHING radar next tick
@@ -718,7 +723,8 @@ namespace IngameScript
                 var radar = allRadars[radarIndex];
                 var state = rwrStates[rwrIndex];
 
-                state.TickCounter++;
+                double dt = SystemManager.DeltaSeconds;
+                state.PositionSampleAccum += dt;
 
                 if (radar.IsTracking && radar.HasReceivedPosition)
                 {
@@ -731,7 +737,7 @@ namespace IngameScript
                         if (state.CurrentEnemyName != "")
                         {
                             state.CurrentEnemyName = "";
-                            state.TicksSinceEnemyChange = 0;
+                            state.SecondsSinceEnemyChange = 0;
                             state.ClearHistory();
                         }
                         return;
@@ -740,21 +746,22 @@ namespace IngameScript
                     if (enemyName != state.CurrentEnemyName)
                     {
                         state.CurrentEnemyName = enemyName;
-                        state.TicksSinceEnemyChange = 0;
+                        state.SecondsSinceEnemyChange = 0;
                         state.ClearHistory();
                     }
                     else
                     {
-                        state.TicksSinceEnemyChange++;
+                        state.SecondsSinceEnemyChange += dt;
                     }
 
-                    if (state.TickCounter % 10 == 0)
+                    if (state.PositionSampleAccum >= RWR_POSITION_SAMPLE_SECONDS)
                     {
                         state.PositionHistory[state.HistoryIndex] = enemyPos;
                         state.HistoryIndex = (state.HistoryIndex + 1) % state.PositionHistory.Count;
+                        state.PositionSampleAccum = 0;
                     }
 
-                    if (state.TicksSinceEnemyChange >= 30)
+                    if (state.SecondsSinceEnemyChange >= RWR_STABILIZATION_SECONDS)
                     {
                         bool isThreatening = IsThreatening(enemyPos, enemyVel, playerPos, playerVel, gravity, state.PositionHistory);
 
@@ -774,7 +781,7 @@ namespace IngameScript
                     if (state.CurrentEnemyName != "")
                     {
                         state.CurrentEnemyName = "";
-                        state.TicksSinceEnemyChange = 0;
+                        state.SecondsSinceEnemyChange = 0;
                         state.ClearHistory();
                     }
                 }
@@ -823,7 +830,7 @@ namespace IngameScript
             {
                 if (anyThreatDetected)
                 {
-                    SoundManager.RequestWarning("Alert 2", SoundManager.PRIORITY_RWR, 60);
+                    SoundManager.RequestWarning("Alert 2", SoundManager.PRIORITY_RWR, 1.0);
                 }
             }
 

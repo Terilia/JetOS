@@ -94,10 +94,16 @@ namespace IngameScript
             private const float THROTTLE_RATE = 0.6f;
             private const float HYDROGEN_HYSTERESIS = 0.02f;
             // AB gate: requires releasing W once at MIL, then re-engaging to activate AB.
-            // Or hold at MIL for 40 ticks to auto-engage.
-            private const int AB_AUTO_ENGAGE_TICKS = 40;
-            private int abHoldCounter = 0;
+            // Or hold at MIL for AB_AUTO_ENGAGE_SECONDS to auto-engage.
+            private const float AB_AUTO_ENGAGE_SECONDS = 0.667f;
+            private float abHoldTimer = 0f;
             private bool abGatePassed = false; // true after pilot released W once at MIL
+
+            // --- Thrust Balancing Cache ---
+            // MaxEffectiveThrust changes slowly with atmosphere; refresh at 0.5s intervals.
+            private float cachedLeftMax = 0f, cachedRightMax = 0f;
+            private double thrustCacheAge = double.MaxValue;
+            private const double THRUST_CACHE_REFRESH_SECONDS = 0.5;
 
             // --- Airbrake State ---
             private bool airbrakesOpen = false;
@@ -329,9 +335,11 @@ namespace IngameScript
                         // Compensate for 1-tick spawn delay: in the tick between calculation
                         // and bullet spawn, both objects move. Adjust target by V_rel * dt
                         // to reflect the shorter range at spawn time.
+                        // Spawn-delay compensation: one dt of relative motion between
+                        // computing the lead and the bullet actually spawning.
                         Vector3D activeTargetPos = selectedEnemy.Value.Position
-                            + (activeTargetVel - currentVelocity) * (1.0 / 60.0);
-                        double muzzleVelocity = 910;
+                            + (activeTargetVel - currentVelocity) * deltaTime;
+                        double muzzleVelocity = SystemManager.GetConfigValue("gun_muzzle_velocity");
                         double range = VDi(shooterPosition, activeTargetPos);
 
                         Vector3D interceptPoint;
@@ -461,19 +469,19 @@ namespace IngameScript
 
                     if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD && !hydrogenswitch)
                     {
-                        abHoldCounter++;
-                        // AB engages if: pilot released W once and re-pushed, OR held for 40 ticks
-                        if (abGatePassed || abHoldCounter > AB_AUTO_ENGAGE_TICKS)
+                        abHoldTimer += (float)deltaTime;
+                        // AB engages if: pilot released W once and re-pushed, OR held at MIL long enough.
+                        if (abGatePassed || abHoldTimer > AB_AUTO_ENGAGE_SECONDS)
                         {
                             SetTanksEnabled(true);
                             hydrogenswitch = true;
                             abGatePassed = false;
-                            abHoldCounter = 0;
+                            abHoldTimer = 0f;
                         }
                     }
                     else if (throttlecontrol < THROTTLE_HYDROGEN_THRESHOLD)
                     {
-                        abHoldCounter = 0;
+                        abHoldTimer = 0f;
                     }
                 }
                 else if (throttle < -0.5)
@@ -491,7 +499,7 @@ namespace IngameScript
                     if (throttlecontrol < THROTTLE_HYDROGEN_THRESHOLD)
                     {
                         abGatePassed = false;
-                        abHoldCounter = 0;
+                        abHoldTimer = 0f;
                     }
                 }
                 else
@@ -500,7 +508,7 @@ namespace IngameScript
                     if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD && !hydrogenswitch)
                     {
                         abGatePassed = true;
-                        abHoldCounter = 0;
+                        abHoldTimer = 0f;
                     }
                 }
 
@@ -543,14 +551,22 @@ namespace IngameScript
                     ? throttlecontrol / THROTTLE_HYDROGEN_THRESHOLD
                     : 1.0f;
 
-                // Read current max thrust capacity per side (center excluded — they don't cause yaw)
-                float leftMax = 0f, rightMax = 0f;
-                for (int i = 0; i < myjet.leftEngines.Count; i++)
-                    if (myjet.leftEngines[i] != null && myjet.leftEngines[i].IsFunctional)
-                        leftMax += myjet.leftEngines[i].MaxEffectiveThrust;
-                for (int i = 0; i < myjet.rightEngines.Count; i++)
-                    if (myjet.rightEngines[i] != null && myjet.rightEngines[i].IsFunctional)
-                        rightMax += myjet.rightEngines[i].MaxEffectiveThrust;
+                // Read current max thrust capacity per side (center excluded — they don't cause yaw).
+                // MaxEffectiveThrust changes slowly with atmosphere, so cache for THRUST_CACHE_REFRESH_SECONDS.
+                thrustCacheAge += deltaTime;
+                if (thrustCacheAge >= THRUST_CACHE_REFRESH_SECONDS)
+                {
+                    cachedLeftMax = 0f;
+                    cachedRightMax = 0f;
+                    for (int i = 0; i < myjet.leftEngines.Count; i++)
+                        if (myjet.leftEngines[i] != null && myjet.leftEngines[i].IsFunctional)
+                            cachedLeftMax += myjet.leftEngines[i].MaxEffectiveThrust;
+                    for (int i = 0; i < myjet.rightEngines.Count; i++)
+                        if (myjet.rightEngines[i] != null && myjet.rightEngines[i].IsFunctional)
+                            cachedRightMax += myjet.rightEngines[i].MaxEffectiveThrust;
+                    thrustCacheAge = 0;
+                }
+                float leftMax = cachedLeftMax, rightMax = cachedRightMax;
 
                 // Target thrust = weakest side * throttle percentage
                 float weakerMax = Mn(leftMax, rightMax);

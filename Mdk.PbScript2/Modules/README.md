@@ -44,22 +44,14 @@ Features:
 - Threat detection and warning
 
 ### AirtoAir.cs
-Air-to-air combat module for missile engagements.
+Consolidated missile weapons module (air-to-air and air-to-ground).
 
 Features:
-- Radar lock/search using AI blocks
-- Target velocity tracking
-- Audio cues (AIM-9 lock/search tones)
-- GPS coordinate caching for missiles
-
-### AirToGround.cs
-Ground attack module for bombing and missile strikes.
-
-Features:
-- Missile bay management
-- Bombardment pattern generation
-- Top-down attack mode toggle
-- GPS target caching and transfer
+- AntiAir / Topdown mode flags written to missile CustomData on launch
+- Cone / ApproachRadius presets that shape a multi-bay approach pattern
+- Per-bay CustomData slots (`1:GPS:…`, `2:GPS:…`) for one-shot launch setup
+- Per-bay IGC target stream on `JETOS_MSL_<bayNumber>` for in-flight updates
+- Seeker toggle for AIM-9 lock/search tones (sound only)
 
 ### RaycastCameraControl.cs
 Targeting pod control using camera raycasting.

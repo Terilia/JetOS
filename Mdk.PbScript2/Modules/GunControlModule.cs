@@ -26,6 +26,9 @@ namespace IngameScript
                 // Ship rotation compensation (feedforward)
                 public MatrixD LastShipMatrix;
                 public bool HasPreviousMatrix;
+                // Target LOS rate (D-term): derivative of aim direction
+                public Vector3D LastAimDir;
+                public bool HasLastAimDir;
             }
 
             // --- Turret References ---
@@ -38,12 +41,14 @@ namespace IngameScript
 
             // --- Control State ---
             private bool controlEnabled = false;
-            private int tickCounter = 0;
 
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
             private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)PI / 180f;
             private const int INTERCEPT_ITERATIONS = 6;
+            // D-term gain: how aggressively we track target LOS rate.
+            // 1.0 = full feedforward; tune up for fast-moving targets, down for jitter.
+            private const float KD_LOS = 1.0f;
 
             // --- Configurable (read from config) ---
             private float KP => SystemManager.GetConfigValue("gun_kp");
@@ -235,14 +240,9 @@ namespace IngameScript
 
             public override void Tick()
             {
-                tickCounter++;
-
-                // Recalculate motor signs periodically (handles rotor movement changing geometry)
-                if (tickCounter % 60 == 0)
-                {
-                    DetermineMotorSigns(leftTurret);
-                    DetermineMotorSigns(rightTurret);
-                }
+                // Motor signs depend on static mounting geometry (hinge axis relative
+                // to rotor axis) — these don't change during flight. Calculated once
+                // in constructor; no periodic recalc needed.
 
                 if (!controlEnabled)
                 {
@@ -296,11 +296,14 @@ namespace IngameScript
                 float pitchDeg = (float)ToDeg((desiredPitch - currentPitch) * turret.ElevationSign);
 
                 // Ship rotation feedforward using cockpit matrix (ship-only rotation,
-                // avoids self-coupling from turret's own yaw included in rotor matrix)
+                // avoids self-coupling from turret's own yaw included in rotor matrix).
+                // rad/s → RPM: RPM = rad/s * 60 / (2π)
                 float yawFeedforward = 0f;
                 float pitchFeedforward = 0f;
                 MatrixD currentShipMatrix = cockpit.WorldMatrix;
-                if (turret.HasPreviousMatrix)
+                double dt = SystemManager.DeltaSeconds;
+                double radPerSecToRpm = 60.0 / (2.0 * PI);
+                if (turret.HasPreviousMatrix && dt > 0)
                 {
                     Vector3D lastFwd = turret.LastShipMatrix.Forward;
                     Vector3D lastUp = turret.LastShipMatrix.Up;
@@ -315,7 +318,7 @@ namespace IngameScript
                         Vector3D driftCross = VX(flatCurFwd, lastFwd);
                         double driftAngle = At2(driftCross.Length(), VD(flatCurFwd, lastFwd));
                         driftAngle *= Math.Sign(VD(driftCross, lastUp));
-                        yawFeedforward = (float)(driftAngle * 3600.0 / (2.0 * PI));
+                        yawFeedforward = (float)(driftAngle / dt * radPerSecToRpm);
                     }
 
                     // Pitch drift: similar for elevation axis
@@ -326,19 +329,44 @@ namespace IngameScript
                         Vector3D elevCross = VX(flatCurFwdElev, lastFwd);
                         double elevAngle = At2(elevCross.Length(), VD(flatCurFwdElev, lastFwd));
                         elevAngle *= Math.Sign(VD(elevCross, lastLeft));
-                        pitchFeedforward = (float)(elevAngle * turret.ElevationSign * 3600.0 / (2.0 * PI));
+                        pitchFeedforward = (float)(elevAngle / dt * turret.ElevationSign * radPerSecToRpm);
                     }
                 }
                 turret.LastShipMatrix = currentShipMatrix;
                 turret.HasPreviousMatrix = true;
 
-                // Compute final commands, applying deadband before writing
-                float yawCmd = Cl(-KP * yawDeg + yawFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
-                float pitchCmd = Cl(KP * pitchDeg + pitchFeedforward, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+                // Target LOS rate D-term: differentiate aim direction itself.
+                // This captures target lateral motion that the ship-rotation feedforward misses.
+                float yawLosRate = 0f;
+                float pitchLosRate = 0f;
+                if (turret.HasLastAimDir && dt > 0)
+                {
+                    Vector3D lastAim = turret.LastAimDir;
+                    // Yaw component: angular rate around rotorUp
+                    Vector3D flatLastAim = lastAim - VD(lastAim, rotorUp) * rotorUp;
+                    Vector3D flatCurAim = targetWorldDir - VD(targetWorldDir, rotorUp) * rotorUp;
+                    if (flatLastAim.LengthSquared() > 1e-10 && flatCurAim.LengthSquared() > 1e-10)
+                    {
+                        double losRate = SignedAngleBetween(flatLastAim, flatCurAim, rotorUp) / dt;
+                        yawLosRate = (float)(-losRate * radPerSecToRpm) * KD_LOS;
+                    }
+                    // Pitch component: elevation rate
+                    double lastPitch = GetElevationAngle(lastAim, rotorUp, baseForward, baseLeft);
+                    double curPitch = GetElevationAngle(targetWorldDir, rotorUp, baseForward, baseLeft);
+                    double pitchRate = (curPitch - lastPitch) / dt;
+                    pitchLosRate = (float)(pitchRate * turret.ElevationSign * radPerSecToRpm) * KD_LOS;
+                }
+                turret.LastAimDir = targetWorldDir;
+                turret.HasLastAimDir = true;
+
+                // Compute final commands: P (error) + ship-rotation FF + target-LOS D
+                float yawCmd = Cl(-KP * yawDeg + yawFeedforward + yawLosRate, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
+                float pitchCmd = Cl(KP * pitchDeg + pitchFeedforward + pitchLosRate, -MAX_VELOCITY_RPM, MAX_VELOCITY_RPM);
 
                 // Deadband: zero out when close enough to prevent jitter
                 if (Ab(yawDeg) < 0.5f && Ab(pitchDeg) < 0.5f
-                    && Ab(yawFeedforward) < 0.5f && Ab(pitchFeedforward) < 0.5f)
+                    && Ab(yawFeedforward) < 0.5f && Ab(pitchFeedforward) < 0.5f
+                    && Ab(yawLosRate) < 0.5f && Ab(pitchLosRate) < 0.5f)
                 {
                     yawCmd = 0f;
                     pitchCmd = 0f;
@@ -403,7 +431,11 @@ namespace IngameScript
                     return;
                 }
 
-                turret.TargetPosition = bestTargetPos.Value;
+                // Spawn-delay compensation: one dt of relative motion between computing
+                // the lead and the bullet actually spawning. Matches HUD lead pip.
+                Vector3D spawnAdjustedTargetPos = bestTargetPos.Value
+                    + (bestTargetVel - shooterVelocity) * SystemManager.DeltaSeconds;
+                turret.TargetPosition = spawnAdjustedTargetPos;
 
                 // Lead prediction
                 Vector3D aimPoint;
@@ -412,13 +444,13 @@ namespace IngameScript
 
                 bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(
                     gunPosition, shooterVelocity, MUZZLE_VELOCITY,
-                    bestTargetPos.Value, bestTargetVel,
+                    spawnAdjustedTargetPos, bestTargetVel,
                     INTERCEPT_ITERATIONS,
                     out interceptPoint, out timeToIntercept, out aimPoint,
                     bestTargetAccel);
 
                 if (!hasIntercept)
-                    aimPoint = bestTargetPos.Value;
+                    aimPoint = spawnAdjustedTargetPos;
 
                 // Drive toward computed aim direction
                 Vector3D aimDir = VN(aimPoint - gunPosition);
@@ -430,11 +462,22 @@ namespace IngameScript
                 }
             }
 
+            // Ammo display cache — inventory iteration every tick is wasteful.
+            private int _cachedAmmo = 0;
+            private double _ammoCacheAge = double.MaxValue;
+            private const double AMMO_CACHE_REFRESH_SECONDS = 0.5;
+
             private int GetTotalAmmo()
             {
+                _ammoCacheAge += SystemManager.DeltaSeconds;
+                if (_ammoCacheAge < AMMO_CACHE_REFRESH_SECONDS)
+                    return _cachedAmmo;
+
                 int total = 0;
                 total += GetGunAmmo(leftTurret.Gun);
                 total += GetGunAmmo(rightTurret.Gun);
+                _cachedAmmo = total;
+                _ammoCacheAge = 0;
                 return total;
             }
 

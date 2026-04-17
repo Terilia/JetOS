@@ -24,8 +24,10 @@ namespace IngameScript
             public List<IMyThrust> rightAB = new List<IMyThrust>();
             public List<IMyThrust> centerAB = new List<IMyThrust>();
 
-            // Game tick counter for consistent timing (updated by SystemManager)
+            // Game tick counter for consistent timing (updated by SystemManager).
+            // GameTicks is a raw call counter; GameSeconds is wall-clock elapsed (lag-resistant).
             public static long GameTicks = 0;
+            public static double GameSeconds = 0.0;
             public static int IC, IP, IA;
 
             // Identity-based target selection
@@ -39,14 +41,14 @@ namespace IngameScript
                 public Vector3D Velocity;
                 public Vector3D Acceleration;
                 public string Name;
-                public long EntityId;      // For reliable matching (0 if unknown)
-                public long LastSeenTicks; // Uses GameTicks
-                public int SourceIndex;    // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
+                public long EntityId;        // For reliable matching (0 if unknown)
+                public double LastSeen;      // Wall-clock seconds (GameSeconds at last update)
+                public int SourceIndex;      // Which AI combo detected this (0=primary, 1=RWR, 2=third combo, etc.)
 
                 // 30-second tracking timeline: each bit = 1 second, bit 0 = most recent
                 // 1 = radar update received, 0 = no update (stale)
                 public uint TrackHistory;
-                public long LastHistoryShiftTick; // GameTick when history was last shifted
+                public double LastHistoryShift; // GameSeconds when history was last shifted
 
                 public EnemyContact(Vector3D pos, Vector3D vel, string name, int source, long entityId = 0, Vector3D accel = default(Vector3D))
                 {
@@ -55,15 +57,14 @@ namespace IngameScript
                     Acceleration = accel;
                     Name = name;
                     EntityId = entityId;
-                    LastSeenTicks = GameTicks;
+                    LastSeen = GameSeconds;
                     SourceIndex = source;
                     TrackHistory = 0x3FFFFFFF; // all 30 bits set — new contact starts fully green
-                    LastHistoryShiftTick = GameTicks;
+                    LastHistoryShift = GameSeconds;
                 }
 
-                public long AgeTicks => GameTicks - LastSeenTicks;
-                public double AgeSeconds => AgeTicks / 60.0; // Assuming 60 ticks per second
-                public bool IsStale => AgeTicks > 600; // Matches CONTACT_DECAY_TICKS
+                public double AgeSeconds => GameSeconds - LastSeen;
+                public bool IsStale => AgeSeconds > CONTACT_DECAY_SECONDS;
 
                 /// <summary>
                 /// Returns the 30-bit tracking history adjusted for current staleness.
@@ -80,8 +81,8 @@ namespace IngameScript
 
                 public uint GetDisplayHistory()
                 {
-                    long elapsedTicks = GameTicks - LastHistoryShiftTick;
-                    int elapsedSeconds = (int)(elapsedTicks / 60);
+                    double elapsed = GameSeconds - LastHistoryShift;
+                    int elapsedSeconds = (int)elapsed;
                     if (elapsedSeconds <= 0) return TrackHistory;
                     if (elapsedSeconds >= 30) return 0;
                     // Shift left to insert stale gap for seconds since last shift
@@ -91,10 +92,10 @@ namespace IngameScript
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
             Dictionary<long, int> _entityIdIndex = new Dictionary<long, int>();
-            public const long CONTACT_DECAY_TICKS = 600; // ~10 seconds without update before removal
-            public const long SELECTED_DECAY_TICKS = 3600; // 60 seconds for selected target
-            private int decayCheckCounter = 0;
-            private const int DECAY_CHECK_INTERVAL = 60; // Check decay every 60 ticks (1 second)
+            public const double CONTACT_DECAY_SECONDS = 30.0;   // wall-clock seconds without update before removal
+            public const double SELECTED_DECAY_SECONDS = 60.0;  // longer timeout for the pilot-selected target
+            private double decayCheckAccum = 0;
+            private const double DECAY_CHECK_SECONDS = 1.0;      // re-check decay once per wall-clock second
 
             // Centralized radar control
             public RadarControlModule radarControl;
@@ -253,10 +254,9 @@ namespace IngameScript
                 Vector3D accel = VZ;
                 if (existingIndex >= 0)
                 {
-                    long tickDelta = GameTicks - enemyList[existingIndex].LastSeenTicks;
-                    if (tickDelta > 0 && tickDelta < 300) // <5 seconds old
+                    double dt = GameSeconds - enemyList[existingIndex].LastSeen;
+                    if (dt > 0 && dt < 5.0) // <5s old
                     {
-                        double dt = tickDelta / 60.0;
                         Vector3D rawAccel = (vel - enemyList[existingIndex].Velocity) / dt;
                         accel = enemyList[existingIndex].Acceleration * 0.6 + rawAccel * 0.4; // EMA α=0.4
                     }
@@ -272,16 +272,16 @@ namespace IngameScript
                     if (old.EntityId != 0 && old.EntityId != entityId)
                         _entityIdIndex.Remove(old.EntityId);
 
-                    int elapsedSeconds = (int)((GameTicks - old.LastHistoryShiftTick) / 60);
+                    int elapsedSeconds = (int)(GameSeconds - old.LastHistoryShift);
                     if (elapsedSeconds > 0 && elapsedSeconds < 30)
                     {
                         contact.TrackHistory = (old.TrackHistory << elapsedSeconds) | 1;
-                        contact.LastHistoryShiftTick = GameTicks;
+                        contact.LastHistoryShift = GameSeconds;
                     }
                     else if (elapsedSeconds == 0)
                     {
                         contact.TrackHistory = old.TrackHistory | 1;
-                        contact.LastHistoryShiftTick = old.LastHistoryShiftTick; // keep old reference
+                        contact.LastHistoryShift = old.LastHistoryShift; // keep old reference
                     }
                     // else elapsedSeconds >= 30: history is all stale, new contact starts fresh with 1
                     enemyList[existingIndex] = contact;
@@ -295,16 +295,16 @@ namespace IngameScript
             }
 
             /// <summary>
-            /// Removes contacts older than CONTACT_DECAY_TICKS (3 minutes).
-            /// Optimized to only check every DECAY_CHECK_INTERVAL ticks.
+            /// Removes contacts older than CONTACT_DECAY_SECONDS (or SELECTED_DECAY_SECONDS if selected).
+            /// Throttled to run at most once per DECAY_CHECK_SECONDS of wall-clock time.
             /// </summary>
             public void UpdateEnemyDecay()
             {
-                decayCheckCounter++;
-                if (decayCheckCounter < DECAY_CHECK_INTERVAL)
+                decayCheckAccum += SystemManager.DeltaSeconds;
+                if (decayCheckAccum < DECAY_CHECK_SECONDS)
                     return;
 
-                decayCheckCounter = 0;
+                decayCheckAccum = 0;
                 int prevCount = enemyList.Count;
 
                 for (int i = enemyList.Count - 1; i >= 0; i--)
@@ -312,8 +312,8 @@ namespace IngameScript
                     var c = enemyList[i];
                     bool isSelected = (c.EntityId != 0 && c.EntityId == selectedEnemyEntityId)
                         || (!string.IsNullOrEmpty(c.Name) && c.Name == selectedEnemyName);
-                    long timeout = isSelected ? SELECTED_DECAY_TICKS : CONTACT_DECAY_TICKS;
-                    if (c.AgeTicks > timeout)
+                    double timeout = isSelected ? SELECTED_DECAY_SECONDS : CONTACT_DECAY_SECONDS;
+                    if (c.AgeSeconds > timeout)
                     {
                         if (isSelected) ClearSelection();
                         enemyList.RemoveAt(i);
@@ -576,14 +576,26 @@ namespace IngameScript
 
             /// <summary>
             /// Gets total ammo count across all gatling guns.
+            /// Cached for CachedAmmoMaxAgeSeconds — inventory iteration is relatively expensive
+            /// and ammo count is only used for display.
             /// </summary>
+            private int _cachedTotalAmmo = 0;
+            private double _cachedAmmoAgeSeconds = double.MaxValue;
+            private const double CachedAmmoMaxAgeSeconds = 0.5;
+
             public int GetTotalGunAmmo()
             {
+                _cachedAmmoAgeSeconds += SystemManager.DeltaSeconds;
+                if (_cachedAmmoAgeSeconds < CachedAmmoMaxAgeSeconds)
+                    return _cachedTotalAmmo;
+
                 int total = 0;
                 for (int i = 0; i < _gatlings.Count; i++)
                 {
                     total += GetGunAmmo(_gatlings[i]);
                 }
+                _cachedTotalAmmo = total;
+                _cachedAmmoAgeSeconds = 0;
                 return total;
             }
 

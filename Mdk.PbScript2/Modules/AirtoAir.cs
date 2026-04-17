@@ -10,9 +10,9 @@ namespace IngameScript
     {
         class AirtoAir : ProgramModule
         {
-            private List<IMyShipMergeBlock> missileBays = new List<IMyShipMergeBlock>();
+            private List<IMyShipMergeBlock> missileBays;
             private bool[] baySelected;
-            private bool isAirtoAirenabled = false;
+            private bool isTopdownEnabled = false;
             private Jet myJet;
 
             public AirtoAir(Program program, Jet jet) : base(program)
@@ -20,97 +20,82 @@ namespace IngameScript
                 myJet = jet;
                 missileBays = jet._bays;
                 baySelected = new bool[missileBays.Count];
-                name = "Air To Air";
+                isTopdownEnabled = SystemManager.GetCustomDataValue("Topdown") == "true";
+                // AntiAir is always on — the protocol expects it and we want live target updates regardless of mode.
+                SystemManager.SetCustomDataValue("AntiAir", "true");
+                name = "Weapons";
+            }
+
+            private void EnsureBayArraySynced()
+            {
+                if (baySelected == null || baySelected.Length != missileBays.Count)
+                {
+                    var oldArray = baySelected;
+                    baySelected = new bool[missileBays.Count];
+                    if (oldArray != null)
+                    {
+                        int copyLength = Mn(oldArray.Length, baySelected.Length);
+                        for (int i = 0; i < copyLength; i++) baySelected[i] = oldArray[i];
+                    }
+                }
             }
 
             public override string[] GetOptions()
             {
+                EnsureBayArraySynced();
+
                 var options = new List<string>
                 {
                     "Fire Selected Bays",
                     "Toggle Selected Bays",
-                    string.Format("Seeker [{0}]", isAirtoAirenabled ? "ON" : "OFF")
+                    string.Format("Topdown [{0}]", isTopdownEnabled ? "ON" : "OFF"),
                 };
 
                 MissileBayHelper.BuildBayOptionList(options, missileBays, baySelected);
                 return options.ToArray();
             }
 
+            private const int BayOffset = 3;
+
             public override void ExecuteOption(int index)
             {
-                if (index == 0)
+                EnsureBayArraySynced();
+                switch (index)
                 {
-                    MissileBayHelper.FireSelectedBays(missileBays, baySelected, ParentProgram);
-                    MissileBayHelper.TransferCacheToSlots(missileBays.Count);
+                    case 0:
+                        MissileBayHelper.FireSelectedBays(
+                            missileBays, baySelected, ParentProgram, myJet, isTopdownEnabled);
+                        break;
+                    case 1:
+                        MissileBayHelper.ToggleSelectedBays(missileBays, baySelected);
+                        break;
+                    case 2:
+                        isTopdownEnabled = !isTopdownEnabled;
+                        SystemManager.SetCustomDataValue("Topdown", isTopdownEnabled ? "true" : "false");
+                        break;
+                    default:
+                        if (index >= BayOffset && index - BayOffset < missileBays.Count)
+                            MissileBayHelper.ToggleBaySelection(baySelected, index - BayOffset);
+                        break;
                 }
-                else if (index == 1)
-                {
-                    MissileBayHelper.ToggleSelectedBays(missileBays, baySelected);
-                }
-                else if (index == 2)
-                {
-                    ToggleAirtoAirMode();
-                }
-                else
-                {
-                    int bayOffset = 3;
-                    if (index >= bayOffset && index - bayOffset < missileBays.Count)
-                    {
-                        MissileBayHelper.ToggleBaySelection(baySelected, index - bayOffset);
-                    }
-                }
-            }
-
-            private void ToggleAirtoAirMode()
-            {
-                isAirtoAirenabled = !isAirtoAirenabled;
-                UpdateTopdownCustomData();
-            }
-
-            private void UpdateTopdownCustomData()
-            {
-                SystemManager.SetCustomDataValue("AntiAir", isAirtoAirenabled ? "true" : "false");
             }
 
             public override void Tick()
             {
-                // ===== ALWAYS: auto-select and GPS sync from RadarControlModule contacts =====
                 if (!myJet.HasSelectedEnemy() && myJet.enemyList.Count > 0)
                 {
                     var closest = myJet.GetClosestNEnemies(1);
-                    if (closest.Count > 0)
-                    {
-                        myJet.SelectEnemy(closest[0]);
-                    }
+                    if (closest.Count > 0) myJet.SelectEnemy(closest[0]);
                 }
+                if (myJet.HasSelectedEnemy()) SystemManager.UpdateActiveTargetGPS();
 
-                if (myJet.HasSelectedEnemy())
-                {
-                    SystemManager.UpdateActiveTargetGPS();
-                }
-
-                // ===== SEEKER OFF: skip active tracking and sounds =====
-                if (!isAirtoAirenabled)
-                {
-                    return;
-                }
-
-                // ===== SEEKER ON: weapon tones based on centralized radar lock =====
-                bool hasLock = myJet.radarControl != null && myJet.radarControl.IsTrackLocked;
-
-                if (hasLock)
-                {
-                    SoundManager.RequestWeapon("AIM9Lock", SoundManager.PRIORITY_LOCK, 300);
-                }
-                else
-                {
-                    SoundManager.RequestWeapon("AIM9Search", SoundManager.PRIORITY_SEARCH, 300);
-                }
+                MissileBayHelper.BroadcastTargetUpdates(ParentProgram, myJet, missileBays);
             }
 
             public override void HandleSpecialFunction(int key)
             {
-                MissileBayHelper.HandleWeaponHotkey(key, missileBays, ParentProgram);
+                MissileBayHelper.HandleWeaponHotkey(
+                    key, missileBays, ParentProgram, myJet, isTopdownEnabled);
             }
 
             public override string GetHotkeys()

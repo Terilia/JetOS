@@ -33,6 +33,13 @@ namespace IngameScript
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
 
+            // Timing foundation — lag-resistant, uses wall-clock delta.
+            // DeltaSeconds: seconds between this Main() call and the last.
+            // ElapsedSeconds: accumulated wall-clock time since script start.
+            // Both are clamped per-tick to avoid huge jumps when the script resumes after pause.
+            public static double DeltaSeconds = 1.0 / 60.0;
+            public static double ElapsedSeconds = 0.0;
+
             private static Jet _myJet;
 
             public static void Initialize(Program program)
@@ -79,7 +86,6 @@ namespace IngameScript
                 _myJet.radarControl = radarControlModule;
                 modules.Add(radarControlModule);
 
-                modules.Add(new AirToGround(parentProgram, _myJet));
                 airtoAirModule = new AirtoAir(parentProgram, _myJet);
                 modules.Add(airtoAirModule);
 
@@ -158,6 +164,13 @@ namespace IngameScript
 
                 currentTick++;
                 Jet.GameTicks++;
+
+                // Update wall-clock timing. Clamp to avoid huge jumps after pause.
+                double dt = parentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
+                if (dt <= 0 || dt > 1.0) dt = 1.0 / 60.0;
+                DeltaSeconds = dt;
+                ElapsedSeconds += dt;
+                Jet.GameSeconds = ElapsedSeconds;
 
                 // Cache gravity once per tick for all modules
                 if (_myJet._cockpit != null)
@@ -238,7 +251,7 @@ namespace IngameScript
                 // Previously this ran before module Tick() calls, which meant
                 // RadarControlModule and AirtoAir sound requests were delayed
                 // by one tick (they'd be processed next tick instead of this one).
-                SoundManager.Tick(currentTick);
+                SoundManager.Tick(ElapsedSeconds);
                 Jet.IC = parentProgram.Runtime.CurrentInstructionCount;
                 if (Jet.IC > Jet.IP) Jet.IP = Jet.IC;
                 Jet.IA = (Jet.IA * 59 + Jet.IC) / 60;

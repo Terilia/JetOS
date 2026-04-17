@@ -22,17 +22,19 @@ namespace IngameScript
 
                 // State machine: 0=idle, 1=stopping, 2=selecting, 3=playing
                 // Each state waits FRAME_DELAY calls before advancing to survive double Main() calls.
+                // (FRAME_DELAY stays as a PB-call count — it's about ordering SE block-API
+                // operations across sim ticks, not wall-clock time.)
                 internal int state = 0;
                 internal int delay = 0;
                 internal string pendingSound = "";
                 internal string activeSound = "";
-                internal int playStartTick = 0;
-                internal int activeLoopInterval = 300;
+                internal double playStartSeconds = 0.0;
+                internal double activeLoopSeconds = 5.0;
 
                 // Per-tick request (reset each tick)
                 internal string requestedSound = "";
                 internal int requestedPriority = PRIORITY_NONE;
-                internal int requestedLoopInterval = 300;
+                internal double requestedLoopSeconds = 5.0;
             }
 
             private static SoundChannel warningChannel;
@@ -77,14 +79,14 @@ namespace IngameScript
             /// Request a sound on the warning channel (altitude, RWR).
             /// Highest priority request each tick wins.
             /// </summary>
-            public static void RequestWarning(string sound, int priority, int loopInterval = 300)
+            public static void RequestWarning(string sound, int priority, double loopSeconds = 5.0)
             {
                 if (warningChannel == null) return;
                 if (priority >= warningChannel.requestedPriority)
                 {
                     warningChannel.requestedSound = sound;
                     warningChannel.requestedPriority = priority;
-                    warningChannel.requestedLoopInterval = loopInterval;
+                    warningChannel.requestedLoopSeconds = loopSeconds;
                 }
             }
 
@@ -92,28 +94,28 @@ namespace IngameScript
             /// Request a sound on the weapon channel (AIM9 lock/search tones).
             /// Highest priority request each tick wins.
             /// </summary>
-            public static void RequestWeapon(string sound, int priority, int loopInterval = 300)
+            public static void RequestWeapon(string sound, int priority, double loopSeconds = 5.0)
             {
                 if (weaponChannel == null) return;
                 if (priority >= weaponChannel.requestedPriority)
                 {
                     weaponChannel.requestedSound = sound;
                     weaponChannel.requestedPriority = priority;
-                    weaponChannel.requestedLoopInterval = loopInterval;
+                    weaponChannel.requestedLoopSeconds = loopSeconds;
                 }
             }
 
-            public static void Tick(int currentTick)
+            public static void Tick(double currentSeconds)
             {
                 if (warningChannel != null)
                 {
-                    TickChannel(warningChannel, currentTick);
+                    TickChannel(warningChannel, currentSeconds);
                     warningChannel.requestedSound = "";
                     warningChannel.requestedPriority = PRIORITY_NONE;
                 }
                 if (weaponChannel != null)
                 {
-                    TickChannel(weaponChannel, currentTick);
+                    TickChannel(weaponChannel, currentSeconds);
                     weaponChannel.requestedSound = "";
                     weaponChannel.requestedPriority = PRIORITY_NONE;
                 }
@@ -121,7 +123,7 @@ namespace IngameScript
 
             const int FRAME_DELAY = 3;
 
-            private static void TickChannel(SoundChannel ch, int currentTick)
+            private static void TickChannel(SoundChannel ch, double currentSeconds)
             {
                 // 3-frame delay between each state ensures double Main() calls
                 // (Trigger + Update1 on same sim tick) never put two block
@@ -174,8 +176,8 @@ namespace IngameScript
                                 b.Play();
                         }
                         ch.activeSound = ch.pendingSound;
-                        ch.activeLoopInterval = ch.requestedLoopInterval;
-                        ch.playStartTick = currentTick;
+                        ch.activeLoopSeconds = ch.requestedLoopSeconds;
+                        ch.playStartSeconds = currentSeconds;
                         ch.state = 0;
                         break;
                 }
@@ -201,7 +203,7 @@ namespace IngameScript
                     }
                     else if (!string.IsNullOrEmpty(desired) && !string.IsNullOrEmpty(ch.activeSound))
                     {
-                        if (currentTick - ch.playStartTick >= ch.activeLoopInterval)
+                        if (currentSeconds - ch.playStartSeconds >= ch.activeLoopSeconds)
                         {
                             ch.pendingSound = desired;
                             needsChange = true;
