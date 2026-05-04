@@ -188,7 +188,7 @@ namespace IngameScript
             static void UpdateTangents(Vector3D shipPos)
             {
                 Vector3D dir = VN(shipPos - _pc);
-                double lat = Math.Asin(dir.Y);
+                double lat = As(dir.Y);
                 double lon = At2(dir.Z, dir.X);
 
                 double sinLat = Sn(lat), cosLat = Cs(lat);
@@ -214,7 +214,7 @@ namespace IngameScript
             public static bool W2G(Vector3D wp, out int row, out int col)
             {
                 Vector3D dir = VN(wp - _pc);
-                double lat = Math.Asin(dir.Y);
+                double lat = As(dir.Y);
                 double lon = At2(dir.Z, dir.X);
 
                 row = (int)((lat / PI + 0.5) * _rows);
@@ -232,7 +232,7 @@ namespace IngameScript
             public static void W2GF(Vector3D wp, out int row, out int col, out double fracR, out double fracC)
             {
                 Vector3D dir = VN(wp - _pc);
-                double lat = Math.Asin(dir.Y);
+                double lat = As(dir.Y);
                 double lon = At2(dir.Z, dir.X);
 
                 double er = (lat / PI + 0.5) * _rows;

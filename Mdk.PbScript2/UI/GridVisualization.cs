@@ -3,6 +3,7 @@ using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -39,14 +40,21 @@ namespace IngameScript
             static double BINGO_FUEL => SystemManager.GetConfigValue("bingo_fuel");
             static double LOW_FUEL => SystemManager.GetConfigValue("low_fuel");
 
-            public static void Render(MySpriteDrawFrame frame, RectangleF area,
+            // Animated bar values — keep the visuals smooth even when underlying values jitter.
+            static AnimatedValue _animFuelBar = new AnimatedValue();
+            static AnimatedValue _animGForce = new AnimatedValue();
+
+            public static void Render(MSDF frame, Vector2 surfaceSize, RectangleF contentArea,
                 Program program, Jet jet, RadarControlModule radarModule, HUDModule hud = null)
             {
-                float sw = area.Width;
-                float sh = area.Height;
-
-                float contentY = MFDFrame.DrawChrome(frame, sw, sh, headerRight: "STATUS", drawFooterNav: false);
-                float contentBot = MFDFrame.ContentBottom(sh);
+                // surfaceSize covers the full text surface (used for centering / right-edge anchoring).
+                // contentArea is the post-chrome inner rect (top..bot), supplied by the host MfdPage.
+                float sw = surfaceSize.X;
+                float sh = surfaceSize.Y;
+                float contentY = contentArea.Position.Y;
+                float contentBot = contentArea.Position.Y + contentArea.Height;
+                // 'area' kept as a local for the existing rebuild-phase cache below.
+                var area = new RectangleF(0, 0, sw, sh);
 
                 // Staggered rebuild state machine
                 if (rebuildPhase > 0)
@@ -200,7 +208,7 @@ namespace IngameScript
                 }
             }
 
-            static void DrawMslPips(MySpriteDrawFrame f, List<IMyShipMergeBlock> bays)
+            static void DrawMslPips(MSDF f, List<IMyShipMergeBlock> bays)
             {
                 if (bays == null || bays.Count == 0) return;
                 SpriteHelpers.Tt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
@@ -213,21 +221,23 @@ namespace IngameScript
                 }
             }
 
-            static void DrawBlockCount(MySpriteDrawFrame f, RectangleF area, float contentY)
+            static void DrawBlockCount(MSDF f, RectangleF area, float contentY)
             {
                 int cur = gridBlocks.Count, orig = originalBlockCount > 0 ? originalBlockCount : cur;
                 Color c = cur >= orig ? MFDTheme.DIM_TEXT_MID : cur > orig * 0.7 ? MFDTheme.WARN : Cr(180, 50, 40);
                 SpriteHelpers.Tt(f, $"{cur}/{orig}", area.Width / 2f, contentY + 4f, 0.45f, c);
             }
 
-            static void DrawFlightData(MySpriteDrawFrame f, RectangleF area, HUDModule hud, Jet jet, float contentY)
+            static void DrawFlightData(MSDF f, RectangleF area, HUDModule hud, Jet jet, float contentY)
             {
                 float rx = area.Width - 6f, y = contentY + 8f, lh = 18f;
                 if (hud != null)
                 {
                     SpriteHelpers.Tt(f, $"SPD {hud.smoothedVelocity:F0} kph", rx, y, 0.45f, MFDTheme.STATUS_VAL, MFDTheme.AR);
-                    SpriteHelpers.Tt(f, $"ALT {hud.smoothedAltitude:F0} m", rx, y + lh, 0.45f,
-                        hud.smoothedAltitude < 200 ? Cr(180, 50, 40) : MFDTheme.STATUS_VAL, MFDTheme.AR);
+                    Color altC = hud.smoothedAltitude < 200
+                        ? Anim.WithAlpha(Cr(180, 50, 40), Anim.WarnAlpha())
+                        : MFDTheme.STATUS_VAL;
+                    SpriteHelpers.Tt(f, $"ALT {hud.smoothedAltitude:F0} m", rx, y + lh, 0.45f, altC, MFDTheme.AR);
                     double aoa = hud.smoothedAoA;
                     SpriteHelpers.Tt(f, $"AoA {aoa:F1}\u00B0", rx, y + lh * 2, 0.45f,
                         Ab(aoa) > 15 ? Cr(180, 50, 40) : Ab(aoa) > 10 ? MFDTheme.WARN : MFDTheme.STATUS_VAL, MFDTheme.AR);
@@ -247,7 +257,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
             }
 
-            static void DrawFuelBar(MySpriteDrawFrame f, RectangleF area, List<IMyGasTank> tanks,
+            static void DrawFuelBar(MSDF f, RectangleF area, List<IMyGasTank> tanks,
                 float contentY, float contentBot)
             {
                 if (tanks == null || tanks.Count == 0) return;
@@ -257,7 +267,8 @@ namespace IngameScript
                     { cap += t.Capacity; filled += t.Capacity * t.FilledRatio; }
                 if (cap <= 0) return;
 
-                double pct = filled / cap;
+                _animFuelBar.SetTarget(filled / cap);
+                double pct = _animFuelBar.Value;
                 float bx = 27f;
                 float top = contentY + 30f;
                 float bot = contentBot - 30f;
@@ -277,10 +288,11 @@ namespace IngameScript
                     SpriteHelpers.Tt(f, $"{(int)(tr / 60):D2}:{(int)(tr % 60):D2}", bx + 11f, top + bh / 2f - 8f, 0.35f,
                         MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 }
-                SpriteHelpers.Tt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, fc);
+                Color bingoColor = pct < BINGO_FUEL ? Anim.WithAlpha(fc, Anim.WarnAlpha()) : fc;
+                SpriteHelpers.Tt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, bingoColor);
             }
 
-            static void DrawGMeter(MySpriteDrawFrame f, RectangleF area, HUDModule hud,
+            static void DrawGMeter(MSDF f, RectangleF area, HUDModule hud,
                 float contentY, float contentBot)
             {
                 if (hud == null) return;
@@ -289,7 +301,8 @@ namespace IngameScript
                 float bh = contentBot - top - 40f;
                 if (bh < 30f) return;
                 float cy = top + bh / 2f;
-                double g = hud.smoothedGForces, pk = hud.peakGForce;
+                _animGForce.SetTarget(hud.smoothedGForces);
+                double g = _animGForce.Value, pk = hud.peakGForce;
 
                 SpriteHelpers.Tt(f, "+9", mx, top - 16f, 0.35f, MFDTheme.DIM_TEXT);
                 SpriteHelpers.Bx(f, mx, cy, 14f, bh + 2f, MFDTheme.BORDER);

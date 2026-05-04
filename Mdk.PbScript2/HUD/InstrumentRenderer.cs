@@ -4,6 +4,7 @@ using System.Text;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 
 namespace IngameScript
 {
@@ -11,13 +12,13 @@ namespace IngameScript
     {
         partial class HUDModule
         {
-            private void DrawSpeedIndicatorF18StyleKph(MySpriteDrawFrame frame, double currentSpeedKph)
+            private void DrawSpeedIndicatorF18StyleKph(MSDF frame, double currentSpeedKph)
             {
                 currentSpeedKph = Mx(0, currentSpeedKph);
                 const float PIXELS_PER_SPEED_UNIT = 800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT;
 
-                float screenWidth = hud.SurfaceSize.X;
-                float screenHeight = hud.SurfaceSize.Y;
+                float screenWidth = SX(hud);
+                float screenHeight = SY(hud);
                 float centerY = screenHeight / 2.25f;
 
                 float tapeLeftMargin = 10f;
@@ -84,11 +85,11 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, ">", digitalSpeedBoxX - 10f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AR);
             }
 
-            private void DrawCompass(MySpriteDrawFrame frame, double heading)
+            private void DrawCompass(MSDF frame, double heading)
             {
-                float centerX = hud.SurfaceSize.X / 2f;
+                float centerX = SX(hud) / 2f;
                 float compassY = 40f;
-                float compassWidth = hud.SurfaceSize.X * 0.9f;
+                float compassWidth = SX(hud) * 0.9f;
                 float compassHeight = 30f;
                 float viewAngle = 90f;
                 float halfViewAngle = viewAngle / 2f;
@@ -116,7 +117,7 @@ namespace IngameScript
                     }
                 }
 
-                SpriteHelpers.Sp(frame, "Triangle", centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)PI);
+                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)PI);
 
                 // Digital heading readout box
                 float headingBoxWidth = 50f;
@@ -143,13 +144,13 @@ namespace IngameScript
                 else return "NW";
             }
 
-            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
+            private void DrawAltitudeIndicatorF18Style(MSDF frame, double currentAltitude, TimeSpan currentTime)
             {
                 // VVI from gravity-projected velocity (computed in UpdateFlightData)
                 double verticalVelocity = verticalVelocityMps;
 
-                float screenWidth = hud.SurfaceSize.X;
-                float screenHeight = hud.SurfaceSize.Y;
+                float screenWidth = SX(hud);
+                float screenHeight = SY(hud);
                 float centerY = screenHeight / 2f;
 
                 float tapeRightMargin = 10f;
@@ -216,23 +217,23 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
             }
 
-            private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
+            private void DrawGForceIndicator(MSDF frame, double gForces, double peakGForce)
             {
                 const float PADDING = 10f;
                 const float TEXT_SCALE = 0.8f;
                 const float LINE_HEIGHT = 20f;
 
                 string gForceText = $"G: {gForces:F1}";
-                SpriteHelpers.Tt(frame, gForceText, PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(frame, gForceText, PADDING, SY(hud) - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
 
                 string peakGText = $"Max G: {peakGForce:F1}";
-                SpriteHelpers.Tt(frame, peakGText, PADDING, hud.SurfaceSize.Y - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(frame, peakGText, PADDING, SY(hud) - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
             }
 
-            private void DrawAOAIndexer(MySpriteDrawFrame frame, double aoa, Vector3D acceleration, double velocity)
+            private void DrawAOAIndexer(MSDF frame, double aoa, Vector3D acceleration, double velocity)
             {
                 const float INDEXER_X = 100f;
-                float indexerY = hud.SurfaceSize.Y / 2f;
+                float indexerY = SY(hud) / 2f;
                 const float SYMBOL_SIZE = 18f;
 
                 const double OPTIMAL_AOA_MIN = 8.0;
@@ -274,7 +275,7 @@ namespace IngameScript
                 if (aoa < OPTIMAL_AOA_MIN)
                 {
                     indexerColor = HUD_PRIMARY;
-                    spriteType = "Triangle";
+                    spriteType = TEXTURE_TRIANGLE;
                     SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor);
                 }
                 else if (aoa > OPTIMAL_AOA_MAX)
@@ -289,7 +290,7 @@ namespace IngameScript
                     else
                         indexerColor = HUD_WARNING;
 
-                    spriteType = "Triangle";
+                    spriteType = TEXTURE_TRIANGLE;
                     SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor, MathHelper.Pi);
                 }
                 else
@@ -311,10 +312,10 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, $"E{energySymbol}", INDEXER_X, indexerY + 25f, 0.5f, energyColor);
             }
 
-            private void DrawStallWarning(MySpriteDrawFrame frame, int level, double currentAoA)
+            private void DrawStallWarning(MSDF frame, int level, double currentAoA)
             {
 
-                Vector2 center = hud.SurfaceSize / 2f;
+                Vector2 center = SS(hud) / 2f;
                 float textY = center.Y - 80f;
 
                 Color warningColor;
@@ -359,7 +360,7 @@ namespace IngameScript
                 if (level >= 2)
                 {
                     float bracketX = 100f;
-                    float bracketY = hud.SurfaceSize.Y / 2f - 30f;
+                    float bracketY = SY(hud) / 2f - 30f;
                     float bracketHeight = 60f;
 
                     if (flash || level < 3)
@@ -376,7 +377,7 @@ namespace IngameScript
             }
 
             private void DrawLeftInfoBox(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 double airspeed,
                 float centerX,
                 float centerY,
@@ -407,7 +408,7 @@ namespace IngameScript
             }
 
             private void DrawFlightInfo(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 double throttle
             )
             {
@@ -418,7 +419,7 @@ namespace IngameScript
                 const float BORDER = 1.5f;
 
                 float barX = 5f;
-                float barY = hud.SurfaceSize.Y - 170f;
+                float barY = SY(hud) - 170f;
                 float cx = barX + BAR_W / 2f;
 
                 // Track outline

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -31,26 +32,22 @@ namespace IngameScript
             static short _clMin, _clMax;
 
             public TerrainModule(Program p, Jet j) : base(p) { jet = j; name = "Terrain Map"; }
-            public override bool HasCustomScreen => true;
             public override string[] GetOptions() => new string[] { "Back to Main Menu" };
             public override void ExecuteOption(int i) { if (i == 0) SystemManager.ReturnToMainMenu(); }
             public override bool HandleNavigation(bool u)
             { if (u && zoom > 0) zoom--; else if (!u && zoom < ZS.Length - 1) zoom++; return true; }
+            public override MfdPage GetPage() => new TerrainMfdPage(this);
 
-            // ═══ FULL-SCREEN RENDER (every frame) ═══
-            public override void RenderCustomScreen(MySpriteDrawFrame frame, RectangleF area)
+            // ═══ FULL-SCREEN MAP RENDER (called by TerrainMfdPage.RenderContent) ═══
+            // Receives the post-chrome content rect. The screen-coord origin is still 0,0
+            // because sprites position absolutely on the surface — we use SystemManager's
+            // surface size for total bounds, but only draw inside `area`.
+            internal void DrawMap(MSDF frame, RectangleF area, float surfaceW, float surfaceH)
             {
-                float sw = area.Width, sh = area.Height, px = sw * 0.019f;
-                float cy = MFDFrame.DrawChrome(frame, sw, sh, headerRight: "TERRAIN MAP");
-                float cb = MFDFrame.ContentBottom(sh);
-                float bh = sh * 0.044f;
-                MFDFrame.Rect(frame, sw / 2f, cy + bh / 2f, sw, bh, MFDTheme.BC_BG);
-                MFDFrame.Rect(frame, sw / 2f, cy + bh, sw, 1f, MFDTheme.BC_BORDER);
-                float bs = sh * 0.00055f * 1.1f;
-                MFDFrame.Txt(frame, "SYSTEM MENU", px, cy + bh * 0.15f, bs, MFDTheme.DIM_TEXT);
-                MFDFrame.Txt(frame, ">", px + sw * 0.16f, cy + bh * 0.15f, bs, MFDTheme.BORDER);
-                MFDFrame.Txt(frame, "TERRAIN MAP", px + sw * 0.18f, cy + bh * 0.15f, bs, MFDTheme.NORMAL_TEXT);
-                cy += bh + 2f;
+                float sw = surfaceW, sh = surfaceH, px = sw * 0.019f;
+                float cy = area.Position.Y;
+                float cb = area.Position.Y + area.Height;
+
                 if (jet.CachedGravity.LengthSquared() < 0.01)
                 { MFDFrame.Txt(frame, "NO PLANET", sw / 2f, sh / 2f, 0.7f, MFDTheme.DIM_TEXT, MFDTheme.AC); return; }
                 if (!TerrainData.Available)
@@ -79,7 +76,7 @@ namespace IngameScript
                 float ml = (sw - ma) / 2f;
                 MFDFrame.Txt(frame, "FWD", ml + ma / 2f, mt - 10f, 0.3f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
 
-                Vector3D sp = jet._cockpit.GetPosition();
+                Vector3D sp = GP(jet._cockpit);
                 int sr, sc; double fr, fc;
                 TerrainData.W2GF(sp, out sr, out sc, out fr, out fc);
                 Vector3D jF, jR; JA(jet, out jF, out jR);
@@ -92,7 +89,7 @@ namespace IngameScript
                 SpriteHelpers.DrawRectangleOutline(frame, ml, mt, ma, ma, 1f, MFDTheme.BORDER);
                 float cx = ml + ma / 2f, ccy = mt + ma / 2f;
                 SpriteHelpers.DrawCircleOutline(frame, V2(cx, ccy), ma * 0.25f, Cr(MFDTheme.BORDER, 0.4f), 1f);
-                SpriteHelpers.Sp(frame, "Triangle", cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
+                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
                 float fy = mt + ma + 2f;
                 double agl = TerrainData.AGL(sp);
                 Color ac = agl < 50 ? TC[2] : agl < 200 ? TC[3] : MFDTheme.STATUS_VAL;
@@ -101,13 +98,28 @@ namespace IngameScript
                 MFDFrame.Txt(frame, vm >= 1000 ? $"{vm / 1000f:F1}km" : $"{vm}m", sw - px, fy, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AR);
             }
 
+            // Page wrapper — supplies chrome metadata, delegates content draw to DrawMap.
+            class TerrainMfdPage : MfdPage
+            {
+                readonly TerrainModule _mod;
+                public TerrainMfdPage(TerrainModule m) { _mod = m; }
+                public override string HeaderRight => "TERRAIN MAP";
+                public override bool ShowFooterNav => true;
+                public override bool ShowBreadcrumb => true;
+                public override string BreadcrumbPath => "TERRAIN MAP";
+                public override void RenderContent(MSDF frame, RectangleF area, Vector2 surfaceSize)
+                {
+                    _mod.DrawMap(frame, area, surfaceSize.X, surfaceSize.Y);
+                }
+            }
+
             // ═══ SIDEBAR — direct render every call ═══
-            public static void RenderMinimap(MySpriteDrawFrame frame, RectangleF area, Jet jet)
+            public static void RenderMinimap(MSDF frame, RectangleF area, Jet jet)
             {
                 if (jet._cockpit == null || !TerrainData.Ready || jet.CachedGravity.LengthSquared() < 0.01) return;
                 float ox = area.Position.X, oy = area.Position.Y, sw = area.Width, sh = area.Height;
                 float gt = oy + 14f, ga = Mn(sw, sh - 30f), gl = ox + (sw - ga) / 2f;
-                Vector3D sp = jet._cockpit.GetPosition();
+                Vector3D sp = GP(jet._cockpit);
                 int sr, sc; double fr, fc;
                 TerrainData.W2GF(sp, out sr, out sc, out fr, out fc);
                 Vector3D jF, jR; JA(jet, out jF, out jR);
@@ -118,7 +130,7 @@ namespace IngameScript
                 DrawContours(frame, gl, gt, cel, SD, 1.5f, 0, 4);
 
                 float cx = gl + ga / 2f, cy = gt + ga / 2f;
-                SpriteHelpers.Sp(frame, "Triangle", cx, cy, 8f, 8f, MFDTheme.BRIGHT_TEXT);
+                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, cx, cy, 8f, 8f, MFDTheme.BRIGHT_TEXT);
                 SpriteHelpers.DrawRectangleOutline(frame, gl, gt, ga, ga, 1f, MFDTheme.BORDER);
                 double agl = TerrainData.AGL(sp);
                 Color ac = agl < 50 ? TC[2] : agl < 200 ? TC[3] : MFDTheme.STATUS_VAL;
@@ -162,7 +174,7 @@ namespace IngameScript
             // Threshold-major contour renderer. Each threshold gets full front-to-back
             // grid coverage before the next, so danger contours (terrain above/at altitude)
             // always complete. Shape contours degrade gracefully under sprite budget.
-            static void DrawContours(MySpriteDrawFrame frame, float mx, float my, float cs, int d, float lt,
+            static void DrawContours(MSDF frame, float mx, float my, float cs, int d, float lt,
                 int tStart, int tCount)
             {
                 int g = d - 1;
@@ -243,19 +255,19 @@ namespace IngameScript
             static float Lp(short a, short b, short t)
             { int d = b - a; if (d > -1 && d < 1) return 0.5f; float v = (float)(t - a) / d; return v < 0f ? 0f : v > 1f ? 1f : v; }
 
-            static void AF(MySpriteDrawFrame f, Vector2 a, Vector2 b, float t, Color c)
+            static void AF(MSDF f, Vector2 a, Vector2 b, float t, Color c)
             { Vector2 d = b - a; float ls = d.X * d.X + d.Y * d.Y;
                 if (ls < 0.25f) return; float l = (float)Math.Sqrt(ls);
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = (a + b) * 0.5f,
-                    Size = V2(t, l), Color = c, Alignment = MFDTheme.AC, RotationOrScale = (float)At2(d.Y, d.X) - HP }); }
+                Vector2 mid = (a + b) * 0.5f;
+                Sq(mid.X, mid.Y, t, l, c, (float)At2(d.Y, d.X) - HP); }
 
             static void JA(Jet j, out Vector3D jF, out Vector3D jR)
-            { Vector3D u = VN(-j.CachedGravity); jF = j._cockpit.WorldMatrix.Forward;
+            { Vector3D u = VN(-j.CachedGravity); jF = WF(j._cockpit);
                 jF = jF - VD(jF, u) * u;
-                if (jF.LengthSquared() < 0.01) { Vector3D r = j._cockpit.WorldMatrix.Right;
-                    r = r - VD(r, u) * u; jF = r.LengthSquared() > 0.01 ? VX(u, VN(r)) : j._cockpit.WorldMatrix.Forward; }
+                if (jF.LengthSquared() < 0.01) { Vector3D r = WR(j._cockpit);
+                    r = r - VD(r, u) * u; jF = r.LengthSquared() > 0.01 ? VX(u, VN(r)) : WF(j._cockpit); }
                 jF = VN(jF); jR = VX(jF, u);
-                jR = jR.LengthSquared() > 0.01 ? VN(jR) : j._cockpit.WorldMatrix.Right; }
+                jR = jR.LengthSquared() > 0.01 ? VN(jR) : WR(j._cockpit); }
         }
     }
 }

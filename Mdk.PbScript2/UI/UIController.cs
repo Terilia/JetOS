@@ -2,6 +2,7 @@ using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -51,17 +52,6 @@ namespace IngameScript
         {
             private IMyTextSurface mainScreen;
             private IMyTextSurface extraScreen;
-            private RectangleF mainViewport;
-
-            // Layout cache (recomputed if surface size changes)
-            private float SW, SH;
-            private float HEADER_H, ACCENT_H, BC_H, FOOTER_H;
-            private float PAD_X, PAD_Y;
-            private float CORNER_INSET, CORNER_LEN;
-            private float ROW_H, ROW_H_COMPACT;
-            private float SIDEBAR_W;
-            private float TITLE_SCALE, TEXT_SCALE, TEXT_SCALE_COMPACT;
-            private float SMALL_SCALE, TINY_SCALE;
 
             public IMyTextSurface MainScreen => mainScreen;
             public IMyTextSurface ExtraScreen => extraScreen;
@@ -72,284 +62,249 @@ namespace IngameScript
                 this.extraScreen = extraScreen;
                 PrepareTextSurfaceForSprites(mainScreen);
                 PrepareTextSurfaceForSprites(extraScreen);
-                mainViewport = new RectangleF(Vector2.Zero, mainScreen.SurfaceSize);
-
                 mainScreen.BackgroundColor = MFDTheme.BG;
                 extraScreen.BackgroundColor = Cr(0, 0, 0);
-
-                ComputeLayout();
             }
 
-            private void ComputeLayout()
-            {
-                SW = mainViewport.Width;
-                SH = mainViewport.Height;
-                HEADER_H  = SH * 0.069f;
-                ACCENT_H  = 1f;
-                BC_H      = SH * 0.044f;
-                FOOTER_H  = SH * 0.054f;
-                PAD_X     = SW * 0.019f;
-                PAD_Y     = SH * 0.020f;
-                CORNER_INSET = 4f;
-                CORNER_LEN   = Mn(SW, SH) * 0.03f;
-                ROW_H         = SH * 0.079f;
-                ROW_H_COMPACT = SH * 0.062f;
-                SIDEBAR_W  = SW * 0.347f;
+            private const double PAGE_FADE_DURATION = 0.300;
+            private const double SELECTION_TWEEN_DURATION = 0.080;
 
-                // Font scales (SE Monospace: scale 1.0 ~ 28px tall)
-                TITLE_SCALE        = SH * 0.00085f; // ~0.35 at 405
-                TEXT_SCALE         = SH * 0.00104f;  // ~0.42 at 405
-                TEXT_SCALE_COMPACT = SH * 0.00094f;  // ~0.38 at 405
-                SMALL_SCALE        = SH * 0.00069f;  // ~0.28 at 405
-                TINY_SCALE         = SH * 0.00055f;  // ~0.22 at 405
+            // Per-controller selection animation state (the controller drives one menu surface).
+            private int _selPrevIndex = -1;
+            private float _selAnimFromY;
+            private double _selAnimStart = -1;
+
+            // ────────────────────────────────────────────
+            // SINGLE RENDER ENTRY POINT
+            // ────────────────────────────────────────────
+            // Draws chrome → breadcrumb → section title → (menu | content) → sidebar → footer.
+            // selectedIndex is only consulted when the page exposes a menu.
+            // captureInto: optional list to tee every sprite into (for the transition system).
+            // prevFrame + transitionStart: when set, the previous frame's captured sprites
+            //   are replayed on top with shader-style transforms decaying over PAGE_FADE_DURATION.
+            public void Render(MfdPage page, IMyTextSurface surface, int selectedIndex = 0,
+                double transitionStart = -1, List<MySprite> captureInto = null, List<MySprite> prevFrame = null)
+            {
+                if (page == null || surface == null) return;
+                var frame = surface.DrawFrame();
+                SpriteBus.Begin(frame, captureInto);
+                try
+                {
+                    float sw = SX(surface);
+                    float sh = SY(surface);
+
+                    float chromeTop = MFDFrame.DrawChrome(
+                        frame, sw, sh,
+                        headerRight: page.HeaderRight,
+                        drawFooterNav: page.ShowFooterNav,
+                        footerRight: page.FooterRight);
+                    float contentBot = MFDFrame.ContentBottom(sh);
+
+                    float padX = sw * 0.019f;
+                    float menuLeft = padX;
+                    float sidebarW = sw * 0.347f;
+                    float sideX = sw - sidebarW - padX;
+                    float menuWidth = page.HasSidebar ? (sw - sidebarW - padX * 3) : (sw - padX * 2);
+                    // Breadcrumb spans only the menu column so it doesn't push the sidebar down.
+                    float bcWidth = page.HasSidebar ? sideX : sw;
+
+                    float menuTop = chromeTop;
+                    if (page.ShowBreadcrumb)
+                        menuTop = DrawBreadcrumb(frame, sh, chromeTop, page.BreadcrumbPath, bcWidth);
+
+                    float titleScale = sh * 0.00069f * 1.05f;
+                    // Only pad the body when there's a title to breathe around. Custom-content
+                    // pages (Weapons, Grid, Terrain) self-pad and want every pixel below chrome.
+                    float bodyTop = menuTop;
+                    if (!string.IsNullOrEmpty(page.Title))
+                    {
+                        bodyTop += sh * 0.020f;
+                        DrawSectionTitle(frame, sw, sh, bodyTop, menuLeft, menuWidth, page.Title, titleScale);
+                        bodyTop += sh * 0.045f;
+                    }
+
+                    var contentArea = new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop);
+
+                    if (page.HasMenu && page.MenuItems != null)
+                    {
+                        bool inTransition = transitionStart >= 0
+                            && (SystemManager.ElapsedSeconds - transitionStart) < PAGE_FADE_DURATION;
+                        DrawMenuList(frame, sh, page.CompactRows, page.MenuItems, selectedIndex,
+                            menuLeft, bodyTop, menuWidth, contentBot, inTransition);
+                    }
+                    else
+                        page.RenderContent(frame, contentArea, SS(surface));
+
+                    if (page.HasSidebar)
+                    {
+                        // Sidebar anchors to chromeTop so it never shifts when a breadcrumb appears.
+                        Rect(frame, sideX - 1f, chromeTop, 1f, contentBot - chromeTop - sh * 0.020f, MFDTheme.BORDER_LIGHT);
+                        var sideArea = new RectangleF(
+                            V2(sideX + 4f, chromeTop),
+                            V2(sidebarW - 4f, contentBot - chromeTop - sh * 0.020f));
+                        page.RenderSidebar(frame, sideArea);
+                    }
+
+                    DrawScreenBorder(frame, sw, sh);
+
+                    // Shader-style transition replay — re-emit the previous page's sprites with
+                    // per-sprite radial dispersion + desaturate + alpha decay. Stops capturing
+                    // first so replayed sprites don't leak into next tick's snapshot.
+                    if (prevFrame != null && transitionStart >= 0)
+                    {
+                        double elapsed = SystemManager.ElapsedSeconds - transitionStart;
+                        if (elapsed < PAGE_FADE_DURATION)
+                        {
+                            SpriteBus.End();
+                            ReplayWithTransform(prevFrame, sw, sh, elapsed / PAGE_FADE_DURATION);
+                            SpriteBus.Begin(frame, captureInto);
+                        }
+                    }
+                }
+                finally { SpriteBus.End(); frame.Dispose(); }
             }
 
-            // ════════════════════════════════════════
-            // MAIN SCREEN RENDER
-            // ════════════════════════════════════════
-            public void RenderMainScreen(
-                string title,
-                string[] options,
-                int currentMenuIndex,
-                string moduleName,
-                Action<MySpriteDrawFrame, RectangleF> statusPanelRenderer = null)
+            // Re-emits cached sprites with shader-like per-sprite math: each sprite drifts
+            // radially outward from screen center, desaturates toward gray, and fades out.
+            // progress 0→1 over PAGE_FADE_DURATION. Uses AddRaw so the replay isn't recaptured.
+            private static void ReplayWithTransform(List<MySprite> prev, float sw, float sh, double progress)
             {
-                var frame = mainScreen.DrawFrame();
-                bool inModule = moduleName != null;
-                bool hasSidebar = statusPanelRenderer != null;
-                bool compact = options.Length > 7;
-                float rowH;
-                float txtScale;
-                if (inModule)
+                float ep = (float)Anim.EaseOut(progress);
+                float alpha = 1f - ep;
+                float disp = ep * 0.35f;       // up to 35% extra radial offset
+                float desatT = ep * 0.7f;      // mostly desaturated by end
+                Vector2 center = V2(sw / 2f, sh / 2f);
+
+                for (int i = 0; i < prev.Count; i++)
                 {
-                    // Tighter rows inside modules
-                    rowH = compact ? ROW_H_COMPACT * 0.5f : ROW_H * 0.5f;
-                    txtScale = compact ? TEXT_SCALE_COMPACT : TEXT_SCALE;
+                    var s = prev[i];
+                    if (!s.Position.HasValue || !s.Color.HasValue) { SpriteBus.AddRaw(s); continue; }
+                    Vector2 pos = s.Position.Value;
+                    Vector2 dir = pos - center;
+                    s.Position = pos + dir * disp;
+
+                    Color c = s.Color.Value;
+                    float gray = (c.R + c.G + c.B) / (3f * 255f);
+                    Color grayC = new Color(gray, gray, gray);
+                    Color mixed = Anim.LerpColor(c, grayC, desatT);
+                    s.Color = Anim.WithAlpha(mixed, mixed.A / 255f * alpha);
+                    SpriteBus.AddRaw(s);
                 }
-                else
-                {
-                    rowH = compact ? ROW_H_COMPACT : ROW_H;
-                    txtScale = compact ? TEXT_SCALE_COMPACT : TEXT_SCALE;
-                }
-
-                // 1. Background
-                R(ref frame, SW / 2f, SH / 2f, SW, SH, MFDTheme.BG);
-
-                // 2. Corner brackets
-                DrawCornerBrackets(ref frame);
-
-                // 3. Header (offset down so top border doesn't clip at viewing angles)
-                float headerY = 15f;
-                DrawHeader(ref frame, headerY);
-                float curY = HEADER_H + ACCENT_H;
-
-                // 4. Breadcrumb (module only)
-                if (inModule)
-                {
-                    DrawBreadcrumb(ref frame, curY, moduleName);
-                    curY += BC_H;
-                }
-
-                // 5. Content area
-                float contentTop = curY + PAD_Y;
-                float contentBot = SH - FOOTER_H;
-                float menuLeft = PAD_X;
-                float menuWidth = hasSidebar ? (SW - SIDEBAR_W - PAD_X * 3) : (SW - PAD_X * 2);
-
-                // 6. Section title
-                DrawSectionTitle(ref frame, contentTop, menuLeft, menuWidth, title);
-                float menuTop = contentTop + SH * 0.045f;
-
-                // 7. Menu rows
-                float rowY = menuTop;
-                for (int i = 0; i < options.Length; i++)
-                {
-                    bool selected = (i == currentMenuIndex);
-                    float thisRowY = rowY;
-
-                    if (selected)
-                        DrawSelection(ref frame, menuLeft, thisRowY, menuWidth, rowH);
-
-                    // Row text
-                    Color txtColor = selected ? MFDTheme.BRIGHT_TEXT : MFDTheme.NORMAL_TEXT;
-                    T(ref frame, options[i], menuLeft + 10f, thisRowY + rowH * 0.2f, txtScale, txtColor);
-
-                    // Row divider
-                    R(ref frame, menuLeft + menuWidth / 2f, thisRowY + rowH, menuWidth, 1f, MFDTheme.ROW_DIVIDER);
-
-                    rowY += rowH;
-                }
-
-                // 8. Sidebar (main menu only)
-                if (hasSidebar)
-                {
-                    float sideX = SW - SIDEBAR_W - PAD_X;
-                    // Vertical divider
-                    R(ref frame, sideX - 1f, contentTop, 1f, contentBot - contentTop - PAD_Y, MFDTheme.BORDER_LIGHT);
-
-                    var sideArea = new RectangleF(
-                        V2(sideX + 4f, contentTop),
-                        V2(SIDEBAR_W - 4f, contentBot - contentTop - PAD_Y));
-                    statusPanelRenderer(frame, sideArea);
-                }
-
-                // 9. Footer
-                DrawFooter(ref frame, SH - FOOTER_H);
-
-                // 10. Screen border (4 edges, on top of everything)
-                DrawScreenBorder(ref frame);
-
-                frame.Dispose();
             }
 
-            // ── Header ──
-            private void DrawHeader(ref MySpriteDrawFrame frame, float y)
+            // ── Breadcrumb (returns new content top Y) ──
+            // bcWidth lets the breadcrumb stop short of the sidebar column so the sidebar
+            // can anchor to chromeTop without being pushed down when a module is entered.
+            private static float DrawBreadcrumb(MSDF frame, float sh, float y, string path, float bcWidth)
             {
-                R(ref frame, SW / 2f, y + HEADER_H / 2f, SW, HEADER_H, MFDTheme.HEADER_BG);
-                // Bottom border
-                R(ref frame, SW / 2f, y + HEADER_H, SW, 1f, MFDTheme.BORDER);
-                // Gold accent
-                R(ref frame, SW / 2f, y + HEADER_H + 0.5f, SW, ACCENT_H, MFDTheme.GOLD_LINE);
+                float bcH = sh * 0.044f;
+                Rect(frame, bcWidth / 2f, y + bcH / 2f, bcWidth, bcH, MFDTheme.BC_BG);
+                Rect(frame, bcWidth / 2f, y + bcH, bcWidth, 1f, MFDTheme.BC_BORDER);
 
-                // Brand: NYINAH CORP + TACTICAL SYSTEM
-                T(ref frame, MFDTheme.NC, PAD_X, y + HEADER_H * 0.15f, TITLE_SCALE, MFDTheme.CORP_GOLD);
-                float corpTextW = SW * 0.22f; // approx width of "NYINAH CORP" text
-                T(ref frame, "TACTICAL SYSTEM " + Jet.IC + "/" + Jet.IA + "/" + Jet.IP, PAD_X + corpTextW, y + HEADER_H * 0.22f, SMALL_SCALE, MFDTheme.MID_TEXT);
+                float padX = bcWidth * 0.019f;
+                float scale = sh * 0.00055f * 1.1f;
+                float ty = y + bcH * 0.15f;
+                Txt(frame, "SYSTEM MENU", padX, ty, scale, MFDTheme.DIM_TEXT);
+                Txt(frame, ">", padX + bcWidth * 0.20f, ty, scale, MFDTheme.BORDER);
+                Txt(frame, (path ?? "").ToUpper(), padX + bcWidth * 0.23f, ty, scale, MFDTheme.NORMAL_TEXT);
 
-                // Right: RDY . MFD-1
-                T(ref frame, "RDY", SW - PAD_X - SW * 0.08f, y + HEADER_H * 0.2f, SMALL_SCALE, MFDTheme.STATUS_RDY);
-                T(ref frame, "MFD-1", SW - PAD_X, y + HEADER_H * 0.2f, SMALL_SCALE, MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
-            }
-
-            // ── Breadcrumb ──
-            private void DrawBreadcrumb(ref MySpriteDrawFrame frame, float y, string moduleName)
-            {
-                R(ref frame, SW / 2f, y + BC_H / 2f, SW, BC_H, MFDTheme.BC_BG);
-                R(ref frame, SW / 2f, y + BC_H, SW, 1f, MFDTheme.BC_BORDER);
-
-                float tx = PAD_X;
-                float ty = y + BC_H * 0.15f;
-                float bcScale = TINY_SCALE * 1.1f;
-                T(ref frame, "SYSTEM MENU", tx, ty, bcScale, MFDTheme.DIM_TEXT);
-                tx += SW * 0.16f;
-                T(ref frame, ">", tx, ty, bcScale, MFDTheme.BORDER);
-                tx += SW * 0.02f;
-                T(ref frame, moduleName.ToUpper(), tx, ty, bcScale, MFDTheme.NORMAL_TEXT);
+                return y + bcH + 2f;
             }
 
             // ── Section title with flanking lines ──
-            private void DrawSectionTitle(ref MySpriteDrawFrame frame, float y, float left, float width, string text)
+            private static void DrawSectionTitle(MSDF frame, float sw, float sh,
+                float y, float left, float width, string text, float scale)
             {
-                float lineY = y + SH * 0.012f;
-                float textW = text.Length * SW * 0.012f; // rough text width estimate
+                float lineY = y + sh * 0.012f;
+                float textW = text.Length * sw * 0.012f;
                 float centerX = left + width / 2f;
                 float halfGap = textW / 2f + 8f;
 
-                // Left line
                 float leftLineW = centerX - halfGap - left;
                 if (leftLineW > 2f)
-                    R(ref frame, left + leftLineW / 2f, lineY, leftLineW, 1f, MFDTheme.BORDER);
+                    Rect(frame, left + leftLineW / 2f, lineY, leftLineW, 1f, MFDTheme.BORDER);
 
-                // Right line
                 float rightStart = centerX + halfGap;
                 float rightLineW = (left + width) - rightStart;
                 if (rightLineW > 2f)
-                    R(ref frame, rightStart + rightLineW / 2f, lineY, rightLineW, 1f, MFDTheme.BORDER);
+                    Rect(frame, rightStart + rightLineW / 2f, lineY, rightLineW, 1f, MFDTheme.BORDER);
 
-                // Center text
-                T(ref frame, text, centerX, y, SMALL_SCALE * 1.05f, MFDTheme.MID_TEXT, MFDTheme.AC);
+                Txt(frame, text, centerX, y, scale, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
-            // ── Selection indicator ──
-            private void DrawSelection(ref MySpriteDrawFrame frame, float x, float y, float width, float rowH)
+            // ── Menu list ──
+            private void DrawMenuList(MSDF frame, float sh, bool compactRows,
+                string[] items, int selectedIndex, float left, float top, float width, float contentBot,
+                bool snapSelection)
             {
-                // Fill rectangle
-                R(ref frame, x + width / 2f, y + rowH / 2f, width, rowH, MFDTheme.SEL_FILL);
-                // Left accent bar
-                R(ref frame, x + 1f, y + rowH / 2f, 2f, rowH, MFDTheme.ACCENT);
-                // Top border line
-                R(ref frame, x + width / 2f, y, width, 1f, MFDTheme.SEL_BORDER);
-                // Bottom border line
-                R(ref frame, x + width / 2f, y + rowH, width, 1f, MFDTheme.SEL_BORDER);
+                bool tightItems = items.Length > 7;
+                float rowH = tightItems ? sh * 0.062f : sh * 0.079f;
+                if (compactRows) rowH *= 0.5f;
+                float txtScale = tightItems ? sh * 0.00094f : sh * 0.00104f;
+
+                float targetY = top + selectedIndex * rowH;
+
+                // First-frame init or page-transition snap.
+                if (snapSelection || _selPrevIndex < 0)
+                {
+                    _selPrevIndex = selectedIndex;
+                    _selAnimStart = -1;
+                }
+                else if (selectedIndex != _selPrevIndex)
+                {
+                    // Snapshot whatever Y the bar is currently at, so a fast double-press doesn't teleport.
+                    _selAnimFromY = CurrentSelectionY(top, rowH);
+                    _selPrevIndex = selectedIndex;
+                    _selAnimStart = SystemManager.ElapsedSeconds;
+                }
+
+                float animY;
+                if (_selAnimStart >= 0)
+                {
+                    double t = (SystemManager.ElapsedSeconds - _selAnimStart) / SELECTION_TWEEN_DURATION;
+                    if (t >= 1) { _selAnimStart = -1; animY = targetY; }
+                    else animY = (float)Anim.Lerp(_selAnimFromY, targetY, Anim.EaseOut(t));
+                }
+                else animY = targetY;
+
+                // Selection chrome (animated position).
+                Rect(frame, left + width / 2f, animY + rowH / 2f, width, rowH, MFDTheme.SEL_FILL);
+                Rect(frame, left + 1f, animY + rowH / 2f, 2f, rowH, MFDTheme.ACCENT);
+                Rect(frame, left + width / 2f, animY, width, 1f, MFDTheme.SEL_BORDER);
+                Rect(frame, left + width / 2f, animY + rowH, width, 1f, MFDTheme.SEL_BORDER);
+
+                // Row text + dividers (deterministic positions — only the highlight moves).
+                float rowY = top;
+                for (int i = 0; i < items.Length; i++)
+                {
+                    Color tc = (i == selectedIndex) ? MFDTheme.BRIGHT_TEXT : MFDTheme.NORMAL_TEXT;
+                    Txt(frame, items[i], left + 10f, rowY + rowH * 0.2f, txtScale, tc);
+                    Rect(frame, left + width / 2f, rowY + rowH, width, 1f, MFDTheme.ROW_DIVIDER);
+                    rowY += rowH;
+                }
             }
 
-            // ── Corner brackets ──
-            private void DrawCornerBrackets(ref MySpriteDrawFrame frame)
+            // Resolves the bar's current Y mid-animation so an interrupted tween doesn't snap.
+            private float CurrentSelectionY(float top, float rowH)
             {
-                float i = CORNER_INSET;
-                float l = CORNER_LEN;
-                // Top-left
-                R(ref frame, i + l / 2f, i, l, 1f, MFDTheme.CORNER);
-                R(ref frame, i, i + l / 2f, 1f, l, MFDTheme.CORNER);
-                // Top-right
-                R(ref frame, SW - i - l / 2f, i, l, 1f, MFDTheme.CORNER);
-                R(ref frame, SW - i, i + l / 2f, 1f, l, MFDTheme.CORNER);
-                // Bottom-left
-                R(ref frame, i + l / 2f, SH - i, l, 1f, MFDTheme.CORNER);
-                R(ref frame, i, SH - i - l / 2f, 1f, l, MFDTheme.CORNER);
-                // Bottom-right
-                R(ref frame, SW - i - l / 2f, SH - i, l, 1f, MFDTheme.CORNER);
-                R(ref frame, SW - i, SH - i - l / 2f, 1f, l, MFDTheme.CORNER);
+                float prevTarget = top + _selPrevIndex * rowH;
+                if (_selAnimStart < 0) return prevTarget;
+                double t = (SystemManager.ElapsedSeconds - _selAnimStart) / SELECTION_TWEEN_DURATION;
+                if (t >= 1) return prevTarget;
+                return (float)Anim.Lerp(_selAnimFromY, prevTarget, Anim.EaseOut(t));
             }
 
-            // ── Screen border ──
-            private void DrawScreenBorder(ref MySpriteDrawFrame frame)
+            private static void DrawScreenBorder(MSDF frame, float sw, float sh)
             {
-                R(ref frame, SW / 2f, 1f, SW, 2f, MFDTheme.BORDER);     // top
-                R(ref frame, SW / 2f, SH - 1f, SW, 2f, MFDTheme.BORDER); // bottom
-                R(ref frame, 1f, SH / 2f, 2f, SH, MFDTheme.BORDER);     // left
-                R(ref frame, SW - 1f, SH / 2f, 2f, SH, MFDTheme.BORDER); // right
+                Rect(frame, sw / 2f, 1f, sw, 2f, MFDTheme.BORDER);
+                Rect(frame, sw / 2f, sh - 1f, sw, 2f, MFDTheme.BORDER);
+                Rect(frame, 1f, sh / 2f, 2f, sh, MFDTheme.BORDER);
+                Rect(frame, sw - 1f, sh / 2f, 2f, sh, MFDTheme.BORDER);
             }
 
-            // ── Footer ──
-            private void DrawFooter(ref MySpriteDrawFrame frame, float y)
-            {
-                R(ref frame, SW / 2f, y + FOOTER_H / 2f, SW, FOOTER_H, MFDTheme.HEADER_BG);
-                R(ref frame, SW / 2f, y, SW, 1f, MFDTheme.BORDER);
-
-                // Nav keys
-                string navStr = "1 UP  2 DN  3 SEL  4 BACK  5-8 FN  9 MENU";
-                T(ref frame, navStr, PAD_X, y + FOOTER_H * 0.15f, TINY_SCALE, MFDTheme.DIM_TEXT);
-
-                // Corp watermark
-                T(ref frame, MFDTheme.NC, SW - PAD_X, y + FOOTER_H * 0.15f, TINY_SCALE, MFDTheme.GOLD_DIM, MFDTheme.AR);
-            }
-
-            // ════════════════════════════════════════
-            // CUSTOM FRAME RENDERERS (for HUD module etc.)
-            // ════════════════════════════════════════
-
-            public void RenderCustomFrame(Action<MySpriteDrawFrame, RectangleF> customRender, RectangleF area)
-            {
-                var frame = mainScreen.DrawFrame();
-                customRender?.Invoke(frame, area);
-                frame.Dispose();
-            }
-
-            public void RenderCustomExtraFrame(Action<MySpriteDrawFrame, RectangleF> customRender, RectangleF area)
-            {
-                var frame = extraScreen.DrawFrame();
-                customRender?.Invoke(frame, area);
-                frame.Dispose();
-            }
-
-            // ════════════════════════════════════════
-            // SPRITE HELPERS (inlined for performance)
-            // ════════════════════════════════════════
-
-            private void R(ref MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
-                    Position = V2(cx, cy), Size = V2(w, h),
-                    Color = c, Alignment = MFDTheme.AC });
-            }
-
-            private void T(ref MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
-                    Position = V2(x, y), RotationOrScale = s,
-                    Color = c, Alignment = a, FontId = MFDTheme.FONT });
-            }
+            // ── Sprite primitives (delegate to Shortcuts so the verbose initializer lives in one place) ──
+            private static void Rect(MSDF f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            private static void Txt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
 
             private void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
             {

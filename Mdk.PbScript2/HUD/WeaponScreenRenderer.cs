@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -10,19 +11,31 @@ namespace IngameScript
     {
         partial class HUDModule
         {
-            private void RenderWeaponScreen(double heading, double altitude, Vector3D currentVelocity, Vector3D shooterPosition)
-            {
-                if (weaponScreen == null) return;
+            // Lock-acquisition flash state — set when IsTrackLocked transitions false→true.
+            private bool _wasLocked = false;
+            private double _lockAcquiredAt = -1;
+            private const double LOCK_FLASH_DURATION = 0.20;
 
-                using (var frame = weaponScreen.DrawFrame())
+            // Renders weapon-screen content into the supplied frame/area. Chrome is drawn
+            // by the host MfdPage; this method only fills the inner content rect.
+            internal void RenderWeaponContent(MSDF frame, RectangleF contentArea, Vector2 surfaceSize)
+            {
+                if (cockpit == null) return;
+                Vector3D shooterPosition = GP(cockpit);
+                Vector3D currentVelocity = LV(cockpit);
+
+                // Detect lock-acquired transition (rising edge only).
+                bool nowLocked = radarControl != null && radarControl.IsTrackLocked;
+                if (nowLocked && !_wasLocked) _lockAcquiredAt = SystemManager.ElapsedSeconds;
+                _wasLocked = nowLocked;
+
                 {
-                    float sw = weaponScreen.SurfaceSize.X;
-                    float sh = weaponScreen.SurfaceSize.Y;
+                    float sw = surfaceSize.X;
+                    float sh = surfaceSize.Y;
                     float margin = sw * 0.019f;
 
-                    // Draw shared MFD chrome
-                    float contentY = MFDFrame.DrawChrome(frame, sw, sh, headerRight: "WEAPONS", drawFooterNav: false);
-                    float contentBot = MFDFrame.ContentBottom(sh);
+                    float contentY = contentArea.Position.Y;
+                    float contentBot = contentArea.Position.Y + contentArea.Height;
                     float padX = margin + 4f;
 
                     // ── Section: TARGET LIST ──
@@ -81,7 +94,7 @@ namespace IngameScript
                 }
             }
 
-            private static void DrawWpnSectionTitle(MySpriteDrawFrame frame, float sw, float y, string text)
+            private static void DrawWpnSectionTitle(MSDF frame, float sw, float y, string text)
             {
                 float margin = sw * 0.019f;
                 float textW = text.Length * sw * 0.012f;
@@ -101,7 +114,7 @@ namespace IngameScript
                 MFDFrame.Txt(frame, text, cx, y, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
-            private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
+            private void DrawSelectedTargetDetail(MSDF frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
                 float textX = margin + 8f;
                 float textY = panelY + 6f;
@@ -114,6 +127,12 @@ namespace IngameScript
 
                 bool stale = contact.IsStale;
                 Color nameColor = stale ? MFDTheme.DIM_TEXT_MID : MFDTheme.BRIGHT_TEXT;
+                // Lock-acquired flash: lerp from ACCENT (bright green pulse) back to nameColor over the flash window.
+                if (!stale && _lockAcquiredAt >= 0)
+                {
+                    double t = (SystemManager.ElapsedSeconds - _lockAcquiredAt) / LOCK_FLASH_DURATION;
+                    if (t < 1) nameColor = Anim.LerpColor(MFDTheme.ACCENT, nameColor, Anim.EaseOut(t));
+                }
                 MFDFrame.Txt(frame, name, textX, textY, 0.7f, nameColor);
 
                 bool isSTT = radarControl != null && radarControl.IsTrackLocked;
@@ -173,7 +192,7 @@ namespace IngameScript
                 DrawTrackingTimeline(frame, contact, timelineX, timelineY, timelineWidth, 8f, 30);
             }
 
-            private void DrawTrackingTimeline(MySpriteDrawFrame frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
+            private void DrawTrackingTimeline(MSDF frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
             {
                 uint history = contact.GetDisplayHistory();
                 float colWidth = width / columns;
@@ -211,7 +230,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawEnemyList(MySpriteDrawFrame frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
+            private void DrawEnemyList(MSDF frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
             {
                 const float LINE_HEIGHT = 20f;
                 const float TEXT_SCALE = 0.55f;
@@ -289,7 +308,7 @@ namespace IngameScript
                 if (toTargetHorizontal.LengthSquared() < 1e-8) return 0;
                 toTargetHorizontal.Normalize();
 
-                Vector3D forwardHorizontal = Vector3D.Reject(cockpit.WorldMatrix.Forward, worldUp);
+                Vector3D forwardHorizontal = Vector3D.Reject(WF(cockpit), worldUp);
                 if (forwardHorizontal.LengthSquared() < 1e-8) return 0;
                 forwardHorizontal.Normalize();
 
@@ -305,7 +324,7 @@ namespace IngameScript
                 return bearingDeg;
             }
 
-            private void DrawMissileTOFToScreen(MySpriteDrawFrame frame, float centerX, float startY)
+            private void DrawMissileTOFToScreen(MSDF frame, float centerX, float startY)
             {
                 if (activeMissiles.Count == 0) return;
 
@@ -331,13 +350,13 @@ namespace IngameScript
             }
 
             // Gun Control Overlay (rendered on HUD surface, not weapon screen — kept as-is)
-            private void DrawGunControlOverlay(MySpriteDrawFrame frame)
+            private void DrawGunControlOverlay(MSDF frame)
             {
                 var gunControl = SystemManager.GetGunControl();
                 if (gunControl == null || !gunControl.IsControlEnabled)
                     return;
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
                 float viewportMin = Mn(surfaceSize.X, surfaceSize.Y);
 
@@ -373,7 +392,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawTurretIndicator(MySpriteDrawFrame frame, Vector2 position, string label, bool isLocked)
+            private void DrawTurretIndicator(MSDF frame, Vector2 position, string label, bool isLocked)
             {
                 Color bgColor;
                 Color textColor;

@@ -109,8 +109,8 @@ namespace IngameScript
                 }
 
                 // Build base "left" axis from rotor Up and gun Forward
-                Vector3D gunFwd = turret.Gun.WorldMatrix.Forward;
-                Vector3D rotorUp = turret.Rotor.WorldMatrix.Up;
+                Vector3D gunFwd = WF(turret.Gun);
+                Vector3D rotorUp = WU(turret.Rotor);
                 Vector3D baseLeft = VX(rotorUp, gunFwd);
                 if (baseLeft.LengthSquared() < 1e-6)
                 {
@@ -120,7 +120,7 @@ namespace IngameScript
                 baseLeft = VN(baseLeft);
 
                 // elevationSign: which way the hinge's rotation axis relates to baseLeft
-                turret.ElevationSign = Math.Sign(VD(baseLeft, turret.Hinge.WorldMatrix.Up));
+                turret.ElevationSign = Sg(VD(baseLeft, WU(turret.Hinge)));
                 if (turret.ElevationSign == 0)
                     turret.ElevationSign = 1;
             }
@@ -131,7 +131,7 @@ namespace IngameScript
                 to = VN(to);
                 Vector3D cross = VX(from, to);
                 double angle = At2(cross.Length(), VD(from, to));
-                return angle * Math.Sign(VD(cross, axis));
+                return angle * Sg(VD(cross, axis));
             }
 
             private static double GetElevationAngle(Vector3D direction, Vector3D rotorUp, Vector3D baseForward, Vector3D baseLeft)
@@ -226,8 +226,8 @@ namespace IngameScript
 
             private void CenterTurrets()
             {
-                DriveTowardDirection(leftTurret, cockpit.WorldMatrix.Forward);
-                DriveTowardDirection(rightTurret, cockpit.WorldMatrix.Forward);
+                DriveTowardDirection(leftTurret, WF(cockpit));
+                DriveTowardDirection(rightTurret, WF(cockpit));
             }
 
             private void StopAllMotors()
@@ -250,8 +250,8 @@ namespace IngameScript
                     rightTurret.IsTracking = false;
 
                     // Return turrets to cockpit forward when disabled
-                    DriveTowardDirection(leftTurret, cockpit.WorldMatrix.Forward);
-                    DriveTowardDirection(rightTurret, cockpit.WorldMatrix.Forward);
+                    DriveTowardDirection(leftTurret, WF(cockpit));
+                    DriveTowardDirection(rightTurret, WF(cockpit));
                     return;
                 }
 
@@ -268,8 +268,8 @@ namespace IngameScript
                 if (turret.Rotor == null || turret.Hinge == null || turret.Gun == null || cockpit == null)
                     return;
 
-                Vector3D gunFwd = turret.Gun.WorldMatrix.Forward;
-                Vector3D rotorUp = turret.Rotor.WorldMatrix.Up;
+                Vector3D gunFwd = WF(turret.Gun);
+                Vector3D rotorUp = WU(turret.Rotor);
 
                 // --- Yaw: signed angle in the rotor's rotation plane ---
                 // Project both gun forward and target direction onto the plane perpendicular to rotorUp
@@ -300,7 +300,7 @@ namespace IngameScript
                 // rad/s → RPM: RPM = rad/s * 60 / (2π)
                 float yawFeedforward = 0f;
                 float pitchFeedforward = 0f;
-                MatrixD currentShipMatrix = cockpit.WorldMatrix;
+                MatrixD currentShipMatrix = WM(cockpit);
                 double dt = SystemManager.DeltaSeconds;
                 double radPerSecToRpm = 60.0 / (2.0 * PI);
                 if (turret.HasPreviousMatrix && dt > 0)
@@ -317,7 +317,7 @@ namespace IngameScript
                         flatCurFwd = VN(flatCurFwd);
                         Vector3D driftCross = VX(flatCurFwd, lastFwd);
                         double driftAngle = At2(driftCross.Length(), VD(flatCurFwd, lastFwd));
-                        driftAngle *= Math.Sign(VD(driftCross, lastUp));
+                        driftAngle *= Sg(VD(driftCross, lastUp));
                         yawFeedforward = (float)(driftAngle / dt * radPerSecToRpm);
                     }
 
@@ -328,7 +328,7 @@ namespace IngameScript
                         flatCurFwdElev = VN(flatCurFwdElev);
                         Vector3D elevCross = VX(flatCurFwdElev, lastFwd);
                         double elevAngle = At2(elevCross.Length(), VD(flatCurFwdElev, lastFwd));
-                        elevAngle *= Math.Sign(VD(elevCross, lastLeft));
+                        elevAngle *= Sg(VD(elevCross, lastLeft));
                         pitchFeedforward = (float)(elevAngle / dt * turret.ElevationSign * radPerSecToRpm);
                     }
                 }
@@ -392,10 +392,10 @@ namespace IngameScript
                 if (cockpit == null)
                     return;
 
-                Vector3D gunPosition = turret.Gun.GetPosition();
-                Vector3D shipForward = cockpit.WorldMatrix.Forward;
+                Vector3D gunPosition = GP(turret.Gun);
+                Vector3D shipForward = WF(cockpit);
 
-                Vector3D shooterVelocity = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D shooterVelocity = LV(cockpit);
                 Vector3D gravity = myJet.CachedGravity;
 
                 // Find closest enemy within cone of ship's forward (fixed cone, not gun's moving forward)
@@ -427,7 +427,7 @@ namespace IngameScript
                 if (!bestTargetPos.HasValue)
                 {
                     // No target — return to ship forward
-                    DriveTowardDirection(turret, cockpit.WorldMatrix.Forward);
+                    DriveTowardDirection(turret, WF(cockpit));
                     return;
                 }
 

@@ -1,6 +1,7 @@
 using System;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -10,7 +11,7 @@ namespace IngameScript
         partial class HUDModule
         {
             private void DrawLeadingPip(
-        MySpriteDrawFrame frame,
+        MSDF frame,
         IMyTextSurface hud,
         MatrixD worldToCockpitMatrix,
         Vector3D shooterPosition,
@@ -36,7 +37,7 @@ namespace IngameScript
                 Vector3D directionToIntercept = aimPoint - shooterPosition;
                 Vector3D localDirectionToIntercept = VTN(directionToIntercept, worldToCockpitMatrix);
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
                 float viewportMinDim = Mn(surfaceSize.X, surfaceSize.Y);
                 float targetMarkerSize = viewportMinDim * 0.02f;
@@ -147,11 +148,11 @@ namespace IngameScript
 
                     if (Ab(edgeX / maxDistX) > Ab(edgeY / maxDistY))
                     {
-                        edgePoint = V2(center.X + Math.Sign(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / absEdgeX));
+                        edgePoint = V2(center.X + Sg(edgeX) * maxDistX, center.Y + edgeY * (maxDistX / absEdgeX));
                     }
                     else
                     {
-                        edgePoint = V2(center.X + edgeX * (maxDistY / absEdgeY), center.Y + Math.Sign(edgeY) * maxDistY);
+                        edgePoint = V2(center.X + edgeX * (maxDistY / absEdgeY), center.Y + Sg(edgeY) * maxDistY);
                     }
 
 
@@ -172,7 +173,7 @@ namespace IngameScript
             }
 
             private void DrawTargetBrackets(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,
                 Vector3D targetPosition,
@@ -202,7 +203,7 @@ namespace IngameScript
 
                 if (directionToTargetLocal.Z >= 0) return;
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
 
                 Vector2 targetScreenPos = SpriteHelpers.ProjectToScreen(directionToTargetLocal, center, surfaceSize);
@@ -262,7 +263,7 @@ namespace IngameScript
             }
 
             private void DrawGunFunnel(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,
                 Vector3D interceptPoint,
@@ -273,7 +274,7 @@ namespace IngameScript
             {
                 if (hud == null) return;
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
 
                 float funnelWidthFactor = Cl((float)(range / 2000.0), 0.05f, 0.3f);
@@ -306,7 +307,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
+            private void DrawBreakawayWarning(MSDF frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
             {
                 bool lowAltitudeWarning = altitude < 100 && verticalVelocityMps < -5;
                 bool collisionWarning = false;
@@ -324,8 +325,8 @@ namespace IngameScript
 
                 if (!lowAltitudeWarning && !collisionWarning) return;
 
-                Vector2 center = hud.SurfaceSize / 2f;
-                float xSize = hud.SurfaceSize.X * 0.4f;
+                Vector2 center = SS(hud) / 2f;
+                float xSize = SX(hud) * 0.4f;
                 Color warningColor = HUD_WARNING;
                 float lineThickness = 4f;
 

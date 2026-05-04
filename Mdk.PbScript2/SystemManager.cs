@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -15,6 +16,22 @@ namespace IngameScript
             private static IMyTextSurface lcdMain;
             private static IMyTextSurface lcdExtra;
             private static IMyTextSurface lcdWeapons;
+
+            // Cached MFD pages (built once at init; rebuilt for the main menu each frame
+            // since module list/selection drives MenuItems).
+            private static GridMfdPage _gridPage;
+            private static WeaponMfdPage _weaponPage;
+
+            // Wall-clock timestamp of the last main-MFD page swap. The shader-style
+            // transition replay runs for PAGE_FADE_DURATION after this. -1 = no fade pending.
+            private static double _mainTransitionStart = -1;
+            private static ProgramModule _lastModule;
+
+            // Rolling capture of the main MFD's sprite list (refilled each tick).
+            // _outgoingSnapshot is a frozen copy taken at the moment of module switch — it's
+            // what gets replayed with shader transforms across the entire transition window.
+            private static List<MySprite> _mainCapture = new List<MySprite>(384);
+            private static List<MySprite> _outgoingSnapshot = new List<MySprite>(384);
             private static List<ProgramModule> modules = new List<ProgramModule>();
             public static int currentMenuIndex = 0;
             public static ProgramModule currentModule;
@@ -111,6 +128,19 @@ namespace IngameScript
                     mainMenuOptions[i] = modules[i].name;
                 }
                 currentModule = null;
+
+                // Build static MFD pages for surface 1 (status grid) and surface 2 (weapons).
+                _gridPage = new GridMfdPage(parentProgram, _myJet, radarControlModule, hudProgram);
+                _weaponPage = new WeaponMfdPage(hudProgram);
+            }
+
+            // Exposed for pages that need access to the main MFD surface (e.g. for absolute coords).
+            public static IMyTextSurface MainSurface => lcdMain;
+
+            // Default sidebar renderer — used by main menu and every module menu (fuel/battery/engine/terrain).
+            public static void RenderDefaultSidebar(MSDF frame, RectangleF area)
+            {
+                StatusPanelRenderer.Render(frame, area, _myJet, hudProgram, currentTick);
             }
 
             // CustomData Cache - delegates to CustomDataManager
@@ -271,39 +301,36 @@ namespace IngameScript
 
             private static void DisplayMenu()
             {
-                // Modules with HasCustomScreen render their own MFD page
-                if (currentModule != null && currentModule.HasCustomScreen)
+                if (currentModule != _lastModule)
                 {
-                    var size = uiController.MainScreen.SurfaceSize;
-                    uiController.RenderCustomFrame(
-                        (frame, renderArea) => currentModule.RenderCustomScreen(frame, renderArea),
-                        new RectangleF(0, 0, size.X, size.Y));
+                    _mainTransitionStart = ElapsedSeconds;
+                    _lastModule = currentModule;
+                    // Freeze the just-rendered outgoing page as the transition replay source.
+                    _outgoingSnapshot.Clear();
+                    for (int i = 0; i < _mainCapture.Count; i++)
+                        _outgoingSnapshot.Add(_mainCapture[i]);
+                }
+
+                MfdPage mainPage;
+                if (currentModule == null)
+                {
+                    mainPage = new MenuMfdPage("SYSTEM MENU", mainMenuOptions, showSidebar: true,
+                        sidebarRenderer: (frame, panelArea) =>
+                            StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick));
                 }
                 else
                 {
-                    string[] options =
-                        currentModule == null ? mainMenuOptions : currentModule.GetOptions();
-                    string title = currentModule == null ? "SYSTEM MENU" : currentModule.name.ToUpper();
-                    uiController.RenderMainScreen(
-                        title: title,
-                        options: options,
-                        currentMenuIndex: currentMenuIndex,
-                        moduleName: currentModule != null ? currentModule.name : null,
-                        statusPanelRenderer: (Action<MySpriteDrawFrame, RectangleF>)((frame, panelArea) =>
-                            {
-                                StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick);
-                            })
-                    );
+                    mainPage = currentModule.GetPage();
                 }
 
-                var area = new RectangleF(0, 0, 512, 512);
-                uiController.RenderCustomExtraFrame(
-                    (frame, renderArea) =>
-                    {
-                        GridVisualization.Render(frame, renderArea, parentProgram, _myJet, radarControlModule, hudProgram);
-                    },
-                    area
-                );
+                _mainCapture.Clear();
+                // Only pass the snapshot while the transition window is open; null after it ends.
+                bool inTransition = _mainTransitionStart >= 0
+                    && (ElapsedSeconds - _mainTransitionStart) < 0.30;
+                List<MySprite> prevFrame = inTransition ? _outgoingSnapshot : null;
+                uiController.Render(mainPage, lcdMain, currentMenuIndex, _mainTransitionStart, _mainCapture, prevFrame);
+                uiController.Render(_gridPage, lcdExtra);
+                uiController.Render(_weaponPage, lcdWeapons);
             }
 
             private static void HandleInput(string argument)

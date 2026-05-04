@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -16,11 +17,11 @@ namespace IngameScript
             private const float RADAR_MIN_RANGE = 2000f;
             private const float RADAR_RANGE_PADDING = 1.3f; // 30% padding beyond farthest target
 
-            private void DrawRadarMinimap(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
+            private void DrawRadarMinimap(MSDF frame, IMyCockpit cockpit, IMyTextSurface hud)
             {
                 if (cockpit == null || hud == null) return;
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
 
                 // Radar box: bottom-right corner of HUD
                 Vector2 radarOrigin = V2(
@@ -32,13 +33,13 @@ namespace IngameScript
                 float radarRadius = RADAR_BOX_SIZE_PX / 2f;
 
                 // --- Collect radar contacts (enemyList only, skip pinned) ---
-                Vector3D cockpitPos = cockpit.GetPosition();
-                Vector3D cockpitVel = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D cockpitPos = GP(cockpit);
+                Vector3D cockpitVel = LV(cockpit);
 
                 // Build local-space transform: cockpit inverse gives us
                 //   .X = right, .Y = up, .Z = backward (negative = forward)
                 // Same as the lead pip uses, proven correct.
-                MatrixD worldToLocal = MatrixD.Transpose(cockpit.WorldMatrix);
+                MatrixD worldToLocal = MatrixD.Transpose(WM(cockpit));
 
                 // We need a horizontal-plane projection, not a cockpit-relative one.
                 // The cockpit matrix pitches/rolls with the jet — we only want yaw.
@@ -46,17 +47,17 @@ namespace IngameScript
                 Vector3D gravity = myjet.CachedGravity;
                 Vector3D worldUp;
                 if (gravity.LengthSquared() < 0.01)
-                    worldUp = cockpit.WorldMatrix.Up;
+                    worldUp = WU(cockpit);
                 else
                     worldUp = VN(-gravity);
 
-                Vector3D shipForward = cockpit.WorldMatrix.Forward;
+                Vector3D shipForward = WF(cockpit);
                 Vector3D yawForward = shipForward - VD(shipForward, worldUp) * worldUp;
 
                 if (yawForward.LengthSquared() < 0.01)
                 {
                     // Pointing straight up/down — fall back to right vector
-                    Vector3D shipRight = cockpit.WorldMatrix.Right;
+                    Vector3D shipRight = WR(cockpit);
                     Vector3D rightFlat = shipRight - VD(shipRight, worldUp) * worldUp;
                     if (rightFlat.LengthSquared() > 0.01)
                         yawForward = VX(worldUp, VN(rightFlat));
@@ -68,7 +69,7 @@ namespace IngameScript
                 // Yaw-right perpendicular to yaw-forward on the horizontal plane
                 Vector3D yawRight = VX(yawForward, worldUp);
                 if (yawRight.LengthSquared() < 0.01)
-                    yawRight = cockpit.WorldMatrix.Right;
+                    yawRight = WR(cockpit);
                 else
                     yawRight = VN(yawRight);
 
@@ -187,13 +188,13 @@ namespace IngameScript
 
             private static float RoundToNiceRange(float range)
             {
-                if (range >= 10000) return (float)Math.Round(range / 5000) * 5000;
-                if (range >= 1000) return (float)Math.Round(range / 1000) * 1000;
-                if (range >= 100) return (float)Math.Round(range / 500) * 500;
-                return (float)Math.Round(range / 100) * 100;
+                if (range >= 10000) return (float)Rd(range / 5000) * 5000;
+                if (range >= 1000) return (float)Rd(range / 1000) * 1000;
+                if (range >= 100) return (float)Rd(range / 500) * 500;
+                return (float)Rd(range / 100) * 100;
             }
 
-            private static void DrawDashedCircle(MySpriteDrawFrame frame, Vector2 center, float radius, Color color)
+            private static void DrawDashedCircle(MSDF frame, Vector2 center, float radius, Color color)
             {
                 // Uses precomputed trig table — eliminates 24 sin/cos calls per frame
                 for (int i = 0; i < SpriteHelpers.CIRC_SEGS; i += 2)
@@ -207,7 +208,7 @@ namespace IngameScript
             // Pre-allocated list for wingman positions to avoid per-frame allocation
             private List<Vector3D> _wingmanPositionBuffer = new List<Vector3D>();
 
-            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
+            private void DrawFormationGhosts(MSDF frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
                 _wingmanPositionBuffer.Clear();
 
@@ -228,8 +229,8 @@ namespace IngameScript
 
                 if (_wingmanPositionBuffer.Count == 0) return;
 
-                Vector3D shooterPosition = cockpit.GetPosition();
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector3D shooterPosition = GP(cockpit);
+                Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
 
                 foreach (var wingmanPos in _wingmanPositionBuffer)
@@ -243,7 +244,7 @@ namespace IngameScript
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
-                    SpriteHelpers.Sp(frame, "Triangle", ghostPos.X, ghostPos.Y, 15f, 15f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
+                    SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, ghostPos.X, ghostPos.Y, 15f, 15f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
                 }
             }
         }

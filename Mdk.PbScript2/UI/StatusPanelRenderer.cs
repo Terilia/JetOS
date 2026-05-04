@@ -1,5 +1,6 @@
 using System;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -8,10 +9,14 @@ namespace IngameScript
     {
         static class StatusPanelRenderer
         {
+            // Animated state for the status bars — values lerp toward their targets each tick.
+            static AnimatedValue _animFuel = new AnimatedValue();
+            static AnimatedValue _animBattery = new AnimatedValue();
+
             // ════════════════════════════════════════
             // PUBLIC ENTRY POINT
             // ════════════════════════════════════════
-            public static void Render(MySpriteDrawFrame frame, RectangleF area, Jet jet, HUDModule hud, int tick)
+            public static void Render(MSDF frame, RectangleF area, Jet jet, HUDModule hud, int tick)
             {
                 if (jet == null || jet._cockpit == null) return;
                 float x = area.Position.X, y = area.Position.Y;
@@ -21,15 +26,21 @@ namespace IngameScript
                 double fuelPct, fuelSec;
                 jet.GetFuelStatus(out fuelPct, out fuelSec);
                 if (jet.tanks.Count > 0)
-                { DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)fuelPct, FmtTime(fuelSec)); y += resH + gap; }
+                {
+                    _animFuel.SetTarget(fuelPct);
+                    DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)_animFuel.Value, FmtTime(fuelSec));
+                    y += resH + gap;
+                }
 
                 float curMWh, maxMWh, netDrain;
                 jet.GetBatteryStatus(out curMWh, out maxMWh, out netDrain);
                 if (jet.batteries.Count > 0)
                 {
                     float bp = maxMWh > 0 ? curMWh / maxMWh : 0f;
+                    _animBattery.SetTarget(bp);
                     string bt = netDrain > 0.001f ? FmtTime(curMWh / netDrain * 3600) : netDrain < -0.001f ? "CHRG" : "---";
-                    DrawResCard(frame, x, y, w, resH, "BATTERY", bp, bt); y += resH + gap;
+                    DrawResCard(frame, x, y, w, resH, "BATTERY", (float)_animBattery.Value, bt);
+                    y += resH + gap;
                 }
 
                 float engH = 90f, remaining = area.Position.Y + areaH - y;
@@ -44,7 +55,7 @@ namespace IngameScript
             // ════════════════════════════════════════
             // TERRAIN MINIMAP
             // ════════════════════════════════════════
-            static void DrawTerrain(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
+            static void DrawTerrain(MSDF frame, float x, float y, float w, float h, Jet jet)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, Cr(2, 3, 2));
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, Cr(14, 26, 16));
@@ -59,7 +70,7 @@ namespace IngameScript
             // ════════════════════════════════════════
             // ENGINE + RESOURCE CARDS
             // ════════════════════════════════════════
-            static void DrawEngCard(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
+            static void DrawEngCard(MSDF frame, float x, float y, float w, float h, Jet jet)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
@@ -69,7 +80,7 @@ namespace IngameScript
                 DrawEngCol(frame, midX + 4f, top, colW, colH, jet.rightEngines, jet.rightAB, "ENG R");
             }
 
-            static void DrawEngCol(MySpriteDrawFrame frame, float x, float y, float w, float colH,
+            static void DrawEngCol(MSDF frame, float x, float y, float w, float colH,
                 System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> eng,
                 System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> ab, string label)
             {
@@ -92,7 +103,7 @@ namespace IngameScript
                 if (tMax > 0) Txt(frame, "kN", x + w / 2f, bt + bh + 11f, 0.24f, MFDTheme.DIM_TEXT, MFDTheme.AC);
             }
 
-            static void DrawResCard(MySpriteDrawFrame frame, float x, float y, float w, float h, string title, float pct, string timeStr)
+            static void DrawResCard(MSDF frame, float x, float y, float w, float h, string title, float pct, string timeStr)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
@@ -109,11 +120,8 @@ namespace IngameScript
 
             static string FmtTime(double s) { return s <= 0 ? "---" : $"{(int)(s / 60):D2}:{(int)(s % 60):D2}"; }
 
-            static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
-            { f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = V2(cx, cy), Size = V2(w, h), Color = c, Alignment = MFDTheme.AC }); }
-
-            static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL)
-            { f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = V2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = MFDTheme.FONT }); }
+            static void Rect(MSDF f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            static void Txt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
         }
     }
 }

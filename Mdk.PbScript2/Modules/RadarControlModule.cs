@@ -403,8 +403,8 @@ namespace IngameScript
                     activeThreats.Clear();
                     anyThreatDetected = false;
 
-                    Vector3D playerPos = myJet._cockpit.GetPosition();
-                    Vector3D playerVel = myJet._cockpit.GetShipVelocities().LinearVelocity;
+                    Vector3D playerPos = GP(myJet._cockpit);
+                    Vector3D playerVel = LV(myJet._cockpit);
                     Vector3D gravity = myJet.CachedGravity;
 
                     int rwrCount = GetActiveRWRCount();

@@ -15,9 +15,9 @@ namespace IngameScript
             public string name = "program";
             public abstract string[] GetOptions();
             public abstract void ExecuteOption(int index);
-            // Override to take over the main MFD screen with custom rendering
-            public virtual bool HasCustomScreen => false;
-            public virtual void RenderCustomScreen(MySpriteDrawFrame frame, RectangleF area) { }
+            // Override to render a custom MFD page instead of the default menu list.
+            // Default returns a MenuMfdPage that wraps this module's GetOptions/name/GetHotkeys.
+            public virtual MfdPage GetPage() => new MenuMfdPage(this);
             public virtual void HandleSpecialFunction(int key) { }
             public virtual void Tick() { }
             public virtual string GetHotkeys()

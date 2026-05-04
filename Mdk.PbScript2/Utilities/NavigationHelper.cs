@@ -29,7 +29,7 @@ namespace IngameScript
                 }
 
                 // 2. Get Cockpit's Forward Direction
-                Vector3D forwardVector = cockpit.WorldMatrix.Forward;
+                Vector3D forwardVector = WF(cockpit);
 
                 // 3. Project Forward onto the Horizontal Plane (perpendicular to worldUp)
                 Vector3D forwardHorizontal = Vector3D.Reject(forwardVector, worldUp);

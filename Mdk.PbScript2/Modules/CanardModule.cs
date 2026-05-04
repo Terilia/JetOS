@@ -41,7 +41,7 @@ namespace IngameScript
             string BlockInfo(IMyTerminalBlock b)
             {
                 if (b == null) return "(missing)";
-                return string.Format("{0} [{1:F1}]", b.CustomName, b.GetValueFloat("Trim"));
+                return string.Format("{0} [{1:F1}]", b.CustomName, b.GetValueFloat(TRIM));
             }
 
             public override string[] GetOptions()
@@ -51,8 +51,8 @@ namespace IngameScript
                     : manualMode ? "MANUAL"
                     : "AUTO";
 
-                float curL = canardL != null ? canardL.GetValueFloat("Trim") : 0f;
-                float curR = canardR != null ? canardR.GetValueFloat("Trim") : 0f;
+                float curL = canardL != null ? canardL.GetValueFloat(TRIM) : 0f;
+                float curR = canardR != null ? canardR.GetValueFloat(TRIM) : 0f;
 
                 return new string[]
                 {
@@ -100,10 +100,10 @@ namespace IngameScript
                         manualDeflection += 5f;
                         if (manualDeflection > 45f) manualDeflection = -45f;
                         break;
-                    case 4: gain = Math.Min(gain + 0.5f, 5f); break;
-                    case 5: gain = Math.Max(gain - 0.5f, 0.5f); break;
-                    case 6: coupling = Math.Min(coupling + 0.05f, 1f); break;
-                    case 7: coupling = Math.Max(coupling - 0.05f, 0f); break;
+                    case 4: gain = Mn(gain + 0.5f, 5f); break;
+                    case 5: gain = Mx(gain - 0.5f, 0.5f); break;
+                    case 6: coupling = Mn(coupling + 0.05f, 1f); break;
+                    case 7: coupling = Mx(coupling - 0.05f, 0f); break;
                     case 8: FindCanards(ParentProgram.GridTerminalSystem); break;
                     case 15: SystemManager.ReturnToMainMenu(); break;
                 }
@@ -127,11 +127,11 @@ namespace IngameScript
             {
                 var cockpit = jet._cockpit;
                 if (cockpit == null) return 0f;
-                Vector3D vel = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D vel = LV(cockpit);
                 if (vel.LengthSquared() < 1.0) return 0f;
                 Vector3D velDir = VN(vel);
-                double sinBeta = Vector3D.Dot(velDir, cockpit.WorldMatrix.Right);
-                return (float)(Math.Asin(MathHelper.Clamp(sinBeta, -1, 1)) * (180.0 / Math.PI));
+                double sinBeta = VD(velDir, WR(cockpit));
+                return (float)(As(Cl(sinBeta, -1, 1)) * (180.0 / PI));
             }
 
             public override void Tick()
@@ -204,25 +204,25 @@ namespace IngameScript
             {
                 foreach (var s in jet.rightstab)
                 {
-                    float cur = s.GetValueFloat("Trim");
+                    float cur = s.GetValueFloat(TRIM);
                     if (Ab(cur - baseOffset) > 0.1f)
-                        s.SetValue<float>("Trim", baseOffset);
+                        s.SetValue<float>(TRIM, baseOffset);
                 }
                 foreach (var s in jet.leftstab)
                 {
-                    float cur = s.GetValueFloat("Trim");
+                    float cur = s.GetValueFloat(TRIM);
                     float target = -baseOffset;
                     if (Ab(cur - target) > 0.1f)
-                        s.SetValue<float>("Trim", target);
+                        s.SetValue<float>(TRIM, target);
                 }
             }
 
             static void SetTrim(IMyTerminalBlock block, float target)
             {
                 if (block == null || !block.IsFunctional) return;
-                float current = block.GetValueFloat("Trim");
+                float current = block.GetValueFloat(TRIM);
                 if (Ab(current - target) > 0.1f)
-                    block.SetValue<float>("Trim", target);
+                    block.SetValue<float>(TRIM, target);
             }
         }
     }

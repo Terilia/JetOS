@@ -2,6 +2,7 @@ using System;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 
 namespace IngameScript
 {
@@ -19,29 +20,29 @@ namespace IngameScript
                 for (int i = 0; i <= CIRC_SEGS; i++)
                 {
                     double a = i * 2.0 * PI / CIRC_SEGS;
-                    CSin[i] = (float)Math.Sin(a);
-                    CCos[i] = (float)Math.Cos(a);
+                    CSin[i] = (float)Sn(a);
+                    CCos[i] = (float)Cs(a);
                 }
             }
 
-            public static void Bx(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
+            public static void Bx(MSDF f, float x, float y, float w, float h, Color c)
             {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = V2(x, y), Size = V2(w, h), Color = c, Alignment = MFDTheme.AC });
+                Sq(x, y, w, h, c);
             }
 
-            public static void Bx(MySpriteDrawFrame f, float x, float y, float w, float h, Color c, float r)
+            public static void Bx(MSDF f, float x, float y, float w, float h, Color c, float r)
             {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ, Position = V2(x, y), Size = V2(w, h), Color = c, Alignment = MFDTheme.AC, RotationOrScale = r });
+                Sq(x, y, w, h, c, r);
             }
 
-            public static void Sp(MySpriteDrawFrame f, string d, float x, float y, float w, float h, Color c, float r = 0f)
+            public static void Sp(MSDF f, string d, float x, float y, float w, float h, Color c, float r = 0f)
             {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = d, Position = V2(x, y), Size = V2(w, h), Color = c, Alignment = MFDTheme.AC, RotationOrScale = r });
+                SqT(d, x, y, w, h, c, r);
             }
 
-            public static void Tt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC, string fn = null)
+            public static void Tt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC, string fn = null)
             {
-                f.Add(new MySprite { Type = MFDTheme.TT, Data = d, Position = V2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = fn ?? MFDTheme.FONT });
+                Tx(d, x, y, s, c, a, fn);
             }
 
             public static MySprite FBx(float x, float y, float w, float h, Color c)
@@ -54,7 +55,7 @@ namespace IngameScript
                 return new MySprite { Type = MFDTheme.TT, Data = d, Position = V2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = fn };
             }
 
-            public static void AddLineSprite(MySpriteDrawFrame frame, Vector2 start, Vector2 end, float thickness, Color color)
+            public static void AddLineSprite(MSDF frame, Vector2 start, Vector2 end, float thickness, Color color)
             {
                 Vector2 delta = end - start;
                 float length = delta.Length();
@@ -64,7 +65,7 @@ namespace IngameScript
                 Bx(frame, position.X, position.Y, thickness, length, color, rotation);
             }
 
-            public static void DrawRectangleOutline(MySpriteDrawFrame frame, float x, float y, float width, float height, float lineWidth, Color color)
+            public static void DrawRectangleOutline(MSDF frame, float x, float y, float width, float height, float lineWidth, Color color)
             {
                 Bx(frame, x + width / 2f, y, width, lineWidth, color);
                 Bx(frame, x + width / 2f, y + height, width, lineWidth, color);
@@ -72,7 +73,7 @@ namespace IngameScript
                 Bx(frame, x + width, y + height / 2f, lineWidth, height, color);
             }
 
-            public static void DrawCircleOutline(MySpriteDrawFrame frame, Vector2 center, float radius, Color color, float thickness)
+            public static void DrawCircleOutline(MSDF frame, Vector2 center, float radius, Color color, float thickness)
             {
                 // Line-segment circle using precomputed trig — same visual quality, zero runtime sin/cos
                 for (int i = 0; i < CIRC_SEGS; i++)

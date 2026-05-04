@@ -1,5 +1,6 @@
 using System;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -16,8 +17,8 @@ namespace IngameScript
             /// Draws the standard MFD chrome (background, border, corners, header, gold accent, footer).
             /// Returns the Y position where content should start drawing.
             /// </summary>
-            public static float DrawChrome(MySpriteDrawFrame frame, float sw, float sh,
-                string headerRight = null, bool drawFooterNav = true)
+            public static float DrawChrome(MSDF frame, float sw, float sh,
+                string headerRight = null, bool drawFooterNav = true, string footerRight = null)
             {
                 float padX = sw * 0.019f;
                 float headerH = sh * 0.069f;
@@ -71,8 +72,12 @@ namespace IngameScript
                         padX, fy + footerH * 0.15f, tinyScale, MFDTheme.DIM_TEXT);
                 }
 
-                Txt(frame, MFDTheme.NC, sw - padX, fy + footerH * 0.15f,
-                    tinyScale, MFDTheme.GOLD_DIM, MFDTheme.AR);
+                if (!string.IsNullOrEmpty(footerRight))
+                    Txt(frame, footerRight, sw - padX, fy + footerH * 0.15f,
+                        tinyScale, MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
+                else
+                    Txt(frame, MFDTheme.NC, sw - padX, fy + footerH * 0.15f,
+                        tinyScale, MFDTheme.GOLD_DIM, MFDTheme.AR);
 
                 // Screen border
                 Rect(frame, sw / 2f, 1f, sw, 2f, MFDTheme.BORDER);
@@ -92,20 +97,8 @@ namespace IngameScript
                 return sh - sh * 0.054f;
             }
 
-            public static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TX, Data = MFDTheme.SQ,
-                    Position = V2(cx, cy), Size = V2(w, h),
-                    Color = c, Alignment = MFDTheme.AC });
-            }
-
-            public static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c,
-                TextAlignment a = MFDTheme.AL)
-            {
-                f.Add(new MySprite { Type = MFDTheme.TT, Data = d,
-                    Position = V2(x, y), RotationOrScale = s,
-                    Color = c, Alignment = a, FontId = MFDTheme.FONT });
-            }
+            public static void Rect(MSDF f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            public static void Txt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
         }
     }
 }

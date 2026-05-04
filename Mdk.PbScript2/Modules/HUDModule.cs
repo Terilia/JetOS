@@ -138,11 +138,6 @@ namespace IngameScript
             // --- Shared Constants for renderers ---
             internal const int INTERCEPT_ITERATIONS = 10;
             internal const double MIN_Z_FOR_PROJECTION = 0.1;
-            internal const string TEXTURE_SQUARE = "SquareSimple";
-            internal const string TEXTURE_CIRCLE = "CircleHollow";
-            internal const string TEXTURE_TRIANGLE = "Triangle";
-            internal const string TEXTURE_CIRCLE_SOLID = "Circle";
-
             internal const float RADAR_BOX_SIZE_PX = 100f;
             internal const float RADAR_BORDER_MARGIN = 10f;
 
@@ -273,7 +268,7 @@ namespace IngameScript
                 UpdateThrottleControl(throttle, jumpthrottle);
 
                 double heading = CalculateHeading();
-                Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D currentVelocity = LV(cockpit);
                 RenderHUD(heading, gravity, gravityDirection, currentVelocity, worldMatrix);
             }
 
@@ -283,20 +278,25 @@ namespace IngameScript
 
             private void RenderHUD(double heading, Vector3D gravity, Vector3D gravityDirection, Vector3D currentVelocity, MatrixD worldMatrix)
             {
-                hudCenter = hud.SurfaceSize / 2f;
-                viewportMinDim = Mn(hud.SurfaceSize.X, hud.SurfaceSize.Y);
+                hudCenter = SS(hud) / 2f;
+                viewportMinDim = Mn(SX(hud), SY(hud));
 
                 float centerX = hudCenter.X;
                 float centerY = hudCenter.Y;
-                float pixelsPerDegree = hud.SurfaceSize.Y / 16f;
+                float pixelsPerDegree = SY(hud) / 16f;
 
-                Vector3D shooterPosition = cockpit.GetPosition();
+                Vector3D shooterPosition = GP(cockpit);
                 double altitude = GetAltitude();
 
-                MatrixD worldToCockpitMatrix = MatrixD.Transpose(cockpit.WorldMatrix);
+                MatrixD worldToCockpitMatrix = MatrixD.Transpose(WM(cockpit));
 
                 using (var frame = hud.DrawFrame())
                 {
+                    // SpriteHelpers route through SpriteBus, so any surface that opens its own
+                    // DrawFrame must register it with the bus. HUD glass doesn't capture for transitions.
+                    SpriteBus.Begin(frame, null);
+                    try
+                    {
                     // Horizon & attitude
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
                     DrawAircraftSymbol(frame, centerX, centerY);
@@ -324,7 +324,7 @@ namespace IngameScript
                     if (SystemManager.GetConfigValue("hud_radar") > 0.5f)
                         DrawRadarMinimap(frame, cockpit, hud);
 
-                    Vector2 surfaceSize = hud.SurfaceSize;
+                    Vector2 surfaceSize = SS(hud);
                     var selectedEnemy = myjet.GetSelectedEnemy();
 
                     // Targeting
@@ -373,9 +373,10 @@ namespace IngameScript
                     }
                     DrawFormationGhosts(frame, hud, worldToCockpitMatrix);
                     DrawGunControlOverlay(frame);
+                    }
+                    finally { SpriteBus.End(); }
                 }
-
-                RenderWeaponScreen(heading, altitude, currentVelocity, shooterPosition);
+                // Weapon screen is rendered by SystemManager via WeaponMfdPage now.
             }
 
             // =============================================
@@ -399,7 +400,7 @@ namespace IngameScript
             {
                 totalElapsedTime += ParentProgram.Runtime.TimeSinceLastRun;
 
-                worldMatrix = cockpit.WorldMatrix;
+                worldMatrix = WM(cockpit);
                 forwardVector = worldMatrix.Forward;
                 upVector = worldMatrix.Up;
                 Vector3D leftVector = worldMatrix.Left;
@@ -410,7 +411,7 @@ namespace IngameScript
 
                 if (inGravity)
                 {
-                    pitch = Math.Asin(VD(forwardVector, gravityDirection)) * (180 / PI);
+                    pitch = As(VD(forwardVector, gravityDirection)) * (180 / PI);
                     roll = At2(
                         VD(leftVector, gravityDirection),
                         VD(upVector, gravityDirection)
@@ -420,7 +421,7 @@ namespace IngameScript
                 velocity = cockpit.GetShipSpeed();
                 mach = velocity / SEA_LEVEL_SPEED_OF_SOUND;
 
-                Vector3D currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
+                Vector3D currentVelocity = LV(cockpit);
 
                 // VVI: vertical component of velocity (positive = climbing)
                 if (inGravity)
@@ -441,8 +442,8 @@ namespace IngameScript
 
                 double altitude = GetAltitude();
                 double aoa = CalculateAngleOfAttack(
-                    cockpit.WorldMatrix.Forward,
-                    cockpit.GetShipVelocities().LinearVelocity,
+                    WF(cockpit),
+                    LV(cockpit),
                     upVector
                 );
 
@@ -666,9 +667,9 @@ namespace IngameScript
             {
                 foreach (var item in stabilizers)
                 {
-                    currentTrim = item.GetValueFloat("Trim");
+                    currentTrim = item.GetValueFloat(TRIM);
                     if (Ab(currentTrim - desiredTrim) > 0.001f)
-                        item.SetValue("Trim", desiredTrim);
+                        item.SetValue(TRIM, desiredTrim);
                 }
             }
 

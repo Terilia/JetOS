@@ -69,7 +69,7 @@ namespace IngameScript
             public static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)
             {
                 pos = default(Vector3D);
-                vel = Vector3D.Zero;
+                vel = VZ;
                 if (jet != null)
                 {
                     var selected = jet.GetSelectedEnemy();
@@ -203,7 +203,7 @@ namespace IngameScript
                 for (int i = 0; i < bays.Count; i++)
                 {
                     int bayNum = ExtractBayNumber(bays[i], i + 1);
-                    var payload = MyTuple.Create(targetPos, targetVel, Vector3D.Zero);
+                    var payload = MyTuple.Create(targetPos, targetVel, VZ);
                     program.IGC.SendBroadcastMessage(IGC_CHANNEL_PREFIX + bayNum, payload);
                 }
             }
@@ -228,9 +228,9 @@ namespace IngameScript
                 const double BIT_SPACING = 255.0 / 7.0;
                 return (char)(
                     0xe100
-                    + ((int)Math.Round(r / BIT_SPACING) << 6)
-                    + ((int)Math.Round(g / BIT_SPACING) << 3)
-                    + (int)Math.Round(b / BIT_SPACING)
+                    + ((int)Rd(r / BIT_SPACING) << 6)
+                    + ((int)Rd(g / BIT_SPACING) << 3)
+                    + (int)Rd(b / BIT_SPACING)
                 );
             }
 

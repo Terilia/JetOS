@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
+using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -13,7 +14,7 @@ namespace IngameScript
             private List<MySprite> _horizonSprites = new List<MySprite>();
 
             private void DrawArtificialHorizon(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 float pitch,
                 float roll,
                 float centerX,
@@ -25,7 +26,7 @@ namespace IngameScript
                 sprites.Clear();
 
                 // Compute visible pitch range — typically ~5 lines instead of 36 iterations
-                float halfVisibleDeg = (hud.SurfaceSize.Y / 2f + 100f) / pixelsPerDegree;
+                float halfVisibleDeg = (SY(hud) / 2f + 100f) / pixelsPerDegree;
                 int loopMin = Mx(-90, (int)Math.Floor((pitch - halfVisibleDeg) / 5f) * 5);
                 int loopMax = Mn(90, (int)Math.Ceiling((pitch + halfVisibleDeg) / 5f) * 5);
 
@@ -76,8 +77,8 @@ namespace IngameScript
                 }
 
                 float horizonY = centerY + pitch * pixelsPerDegree;
-                sprites.Add(SpriteHelpers.FBx(centerX * 1.25f, horizonY, hud.SurfaceSize.X * 0.125f, 4f, HUD_HORIZON));
-                sprites.Add(SpriteHelpers.FBx(centerX * 0.75f, horizonY, hud.SurfaceSize.X * 0.125f, 4f, HUD_HORIZON));
+                sprites.Add(SpriteHelpers.FBx(centerX * 1.25f, horizonY, SX(hud) * 0.125f, 4f, HUD_HORIZON));
+                sprites.Add(SpriteHelpers.FBx(centerX * 0.75f, horizonY, SX(hud) * 0.125f, 4f, HUD_HORIZON));
 
                 float rollRad = ToRad(-roll);
                 float cosRoll = (float)Cs(rollRad);
@@ -112,7 +113,7 @@ namespace IngameScript
             // F-18 style aircraft waterline / reference symbol — classic "W" shape:
             // horizontal wings dipping into a center V. Pilot preference over the
             // F-16 gun cross.
-            private void DrawAircraftSymbol(MySpriteDrawFrame frame, float centerX, float centerY)
+            private void DrawAircraftSymbol(MSDF frame, float centerX, float centerY)
             {
                 float wingSpan = 35f;
                 float innerSpan = 10f;
@@ -130,7 +131,7 @@ namespace IngameScript
                     V2(centerX + wingSpan, centerY), refThickness, refColor);
             }
 
-            private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
+            private void DrawBankAngleMarkers(MSDF frame, float centerX, float centerY, float roll, float pixelsPerDegree)
             {
                 int[] bankAngles = new int[] { 15, 30, 45, 60, -15, -30, -45, -60 };
                 float horizonRadius = pixelsPerDegree * 20f;
@@ -160,7 +161,7 @@ namespace IngameScript
 
                 // Roll pointer — fixed index triangle at 12 o'clock of bank arc
                 // Doesn't rotate; the bank ticks slide past it to indicate current roll
-                SpriteHelpers.Sp(frame, "Triangle", centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY, (float)PI);
+                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY, (float)PI);
             }
 
             // F-18 Flight Path Marker (velocity vector symbol).
@@ -169,7 +170,7 @@ namespace IngameScript
             // counter-rotate with roll so they stay parallel to the true horizon.
             // Drawn in HUD primary color (monochrome HUD convention).
             private void DrawFlightPathMarker(
-                MySpriteDrawFrame frame,
+                MSDF frame,
                 Vector3D currentVelocity,
                 MatrixD worldToCockpitMatrix,
                 double roll,
@@ -196,7 +197,7 @@ namespace IngameScript
                 if (Ab(localVelocity.Z) < MIN_Z_FOR_PROJECTION)
                     localVelocity.Z = -MIN_Z_FOR_PROJECTION;
 
-                Vector2 surfaceSize = hud.SurfaceSize;
+                Vector2 surfaceSize = SS(hud);
                 Vector2 markerPosition = SpriteHelpers.ProjectToScreen(localVelocity, V2(centerX, centerY), surfaceSize);
 
                 Color fpmColor = HUD_PRIMARY;

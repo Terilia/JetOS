@@ -54,6 +54,7 @@ namespace IngameScript
                 public float StepSize;
                 public string Unit;
                 public bool IsModified => Ab(Value - DefaultValue) > 0.0001f;
+                public bool IsToggle => MaxValue == 1f && MinValue == 0f && StepSize == 1f;
 
                 public ConfigParam(string category, string name, string displayName, float defaultValue,
                                  float minValue, float maxValue, float stepSize, string unit = "")
@@ -96,14 +97,14 @@ namespace IngameScript
                 AddConfig(C_GC, "gun_muzzle_velocity", "Muzzle Velocity", 1100f, 200f, 2000f, 50f, "m/s");
 
                 // HUD TOGGLES (1=on, 0=off)
-                AddConfig(C_HT, "hud_radar", "Radar Minimap", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_gun_funnel", "Gun Funnel", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_target_brackets", "Target Brackets", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_gforce", "G-Force", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_aoa", "AOA Indexer", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_fpm", "Flight Path Marker", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_compass", "Compass", 1f, 0f, 1f, 1f);
-                AddConfig(C_HT, "hud_breakaway", "Breakaway Warning", 1f, 0f, 1f, 1f);
+                AddToggle(C_HT, "hud_radar", "Radar Minimap");
+                AddToggle(C_HT, "hud_gun_funnel", "Gun Funnel");
+                AddToggle(C_HT, "hud_target_brackets", "Target Brackets");
+                AddToggle(C_HT, "hud_gforce", "G-Force");
+                AddToggle(C_HT, "hud_aoa", "AOA Indexer");
+                AddToggle(C_HT, "hud_fpm", "Flight Path Marker");
+                AddToggle(C_HT, "hud_compass", "Compass");
+                AddToggle(C_HT, "hud_breakaway", "Breakaway Warning");
 
                 // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
                 AddConfig("HUD Theme", "hud_theme", "Color Theme", 0f, 0f, 3f, 1f);
@@ -115,6 +116,23 @@ namespace IngameScript
             {
                 allConfigs[name] = new ConfigParam(category, name, displayName, defaultValue,
                                                   minValue, maxValue, stepSize, unit);
+            }
+
+            private void AddToggle(string category, string name, string displayName)
+            {
+                AddConfig(category, name, displayName, 1f, 0f, 1f, 1f);
+            }
+
+            private string FormatValue(ConfigParam p)
+            {
+                if (p.Name == "hud_theme")
+                {
+                    int idx = (int)p.Value;
+                    return idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
+                }
+                if (p.IsToggle)
+                    return p.Value > 0.5f ? "ON" : "OFF";
+                return p.Value.ToString("F2").TrimEnd('0').TrimEnd('.') + p.Unit;
             }
 
             private void LoadFromCustomData()
@@ -194,25 +212,11 @@ namespace IngameScript
                         List<string> options = new List<string>();
                         foreach (var kvp in allConfigs)
                         {
-                            if (kvp.Value.Category == selectedCategory)
+                            var p = kvp.Value;
+                            if (p.Category == selectedCategory)
                             {
-                                string modified = kvp.Value.IsModified ? " *" : "";
-                                if (kvp.Key == "hud_theme")
-                                {
-                                    int idx = (int)kvp.Value.Value;
-                                    string themeName = idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
-                                    options.Add($"{kvp.Value.DisplayName}: {themeName}{modified}");
-                                }
-                                else if (kvp.Value.MaxValue == 1f && kvp.Value.MinValue == 0f && kvp.Value.StepSize == 1f)
-                                {
-                                    string toggle = kvp.Value.Value > 0.5f ? "ON" : "OFF";
-                                    options.Add($"{kvp.Value.DisplayName}: {toggle}{modified}");
-                                }
-                                else
-                                {
-                                    string valueStr = kvp.Value.Value.ToString("F2").TrimEnd('0').TrimEnd('.');
-                                    options.Add($"{kvp.Value.DisplayName}: {valueStr}{kvp.Value.Unit}{modified}");
-                                }
+                                string modified = p.IsModified ? " *" : "";
+                                options.Add($"{p.DisplayName}: {FormatValue(p)}{modified}");
                             }
                         }
                         options.Add("Reset Category");
@@ -340,13 +344,6 @@ namespace IngameScript
                 }
             }
 
-            public override void HandleSpecialFunction(int key) { }
-
-            public override string GetHotkeys()
-            {
-                return "";
-            }
-
             public override bool HandleNavigation(bool isUp)
             {
                 if (currentLevel == MenuLevel.ValueAdjust)
@@ -390,8 +387,6 @@ namespace IngameScript
                 }
                 return false;
             }
-
-            public override void Tick() { }
         }
     }
 }
