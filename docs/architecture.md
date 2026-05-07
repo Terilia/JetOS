@@ -158,7 +158,7 @@ flowchart LR
     SW -- "8" --> FL["FlipGPS()<br/>cycle target slot"]
     SW -- "9" --> RT["ReturnToMainMenu()"]
 
-    NU --> NAV{module.HandleNavigation(true)?}
+    NU --> NAV{"module.HandleNavigation(true)?"}
     ND --> NAV
     NAV -- "true (handled)" --> CUS["module decides"]
     NAV -- "false" --> MNV["currentMenuIndex--/++"]
