@@ -2,7 +2,6 @@ using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -195,7 +194,7 @@ namespace IngameScript
             // ── Breadcrumb (returns new content top Y) ──
             // bcWidth lets the breadcrumb stop short of the sidebar column so the sidebar
             // can anchor to chromeTop without being pushed down when a module is entered.
-            private static float DrawBreadcrumb(MSDF frame, float sh, float y, string path, float bcWidth)
+            private static float DrawBreadcrumb(MySpriteDrawFrame frame, float sh, float y, string path, float bcWidth)
             {
                 float bcH = sh * 0.044f;
                 Rect(frame, bcWidth / 2f, y + bcH / 2f, bcWidth, bcH, MFDTheme.BC_BG);
@@ -212,7 +211,7 @@ namespace IngameScript
             }
 
             // ── Section title with flanking lines ──
-            private static void DrawSectionTitle(MSDF frame, float sw, float sh,
+            private static void DrawSectionTitle(MySpriteDrawFrame frame, float sw, float sh,
                 float y, float left, float width, string text, float scale)
             {
                 float lineY = y + sh * 0.012f;
@@ -233,7 +232,7 @@ namespace IngameScript
             }
 
             // ── Menu list ──
-            private void DrawMenuList(MSDF frame, float sh, bool compactRows,
+            private void DrawMenuList(MySpriteDrawFrame frame, float sh, bool compactRows,
                 string[] items, int selectedIndex, float left, float top, float width, float contentBot,
                 bool snapSelection)
             {
@@ -294,7 +293,7 @@ namespace IngameScript
                 return (float)Anim.Lerp(_selAnimFromY, prevTarget, Anim.EaseOut(t));
             }
 
-            private static void DrawScreenBorder(MSDF frame, float sw, float sh)
+            private static void DrawScreenBorder(MySpriteDrawFrame frame, float sw, float sh)
             {
                 Rect(frame, sw / 2f, 1f, sw, 2f, MFDTheme.BORDER);
                 Rect(frame, sw / 2f, sh - 1f, sw, 2f, MFDTheme.BORDER);
@@ -303,8 +302,8 @@ namespace IngameScript
             }
 
             // ── Sprite primitives (delegate to Shortcuts so the verbose initializer lives in one place) ──
-            private static void Rect(MSDF f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
-            private static void Txt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
+            private static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            private static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
 
             private void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
             {

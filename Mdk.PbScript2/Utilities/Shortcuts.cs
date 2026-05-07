@@ -71,5 +71,93 @@ namespace IngameScript
         const string TEXTURE_CIRCLE = "CircleHollow";
         const string TEXTURE_TRIANGLE = "Triangle";
         const string TEXTURE_CIRCLE_SOLID = "Circle";
+
+        // JetOS sprite mod (Workshop testmod 3720997935). All white-on-transparent,
+        // tinted by the script's Color argument.
+        const string TEXTURE_FPM = "JetOS_FPM";
+
+        // Horizon / flight reference
+        const string TEX_PITCH_POS      = "JetOS_PitchRung_Pos";
+        const string TEX_PITCH_NEG      = "JetOS_PitchRung_Neg";
+        const string TEX_PITCH_ZERO     = "JetOS_PitchRung_Zero";
+        const string TEX_PITCH_INV      = "JetOS_PitchRung_Inverted";
+        const string TEX_ROLL_POINTER   = "JetOS_RollPointer";
+        const string TEX_BANK_ARC       = "JetOS_BankArc";
+        const string TEX_AOA_BRACKET    = "JetOS_AoABracket";
+        const string TEX_BORESIGHT      = "JetOS_Boresight";
+        const string TEX_HDG_CHEVRON    = "JetOS_HeadingChevron";
+
+        // Tape markers
+        const string TEX_TAPE_BUG       = "JetOS_TapeBug";
+        const string TEX_TAPE_INDEX     = "JetOS_TapeIndex";
+
+        // Gauges
+        const string TEX_GMETER_FACE    = "JetOS_GMeterFace";
+        const string TEX_GAUGE_NEEDLE   = "JetOS_GaugeNeedle";
+
+        // Targeting
+        const string TEX_TGT_BRACKET    = "JetOS_TargetBracket";
+        const string TEX_LEAD_PIP       = "JetOS_LeadPip";
+
+        // Radar contacts
+        const string TEX_C_HOSTILE      = "JetOS_Contact_Hostile";
+        const string TEX_C_FRIENDLY     = "JetOS_Contact_Friendly";
+        const string TEX_C_UNKNOWN      = "JetOS_Contact_Unknown";
+        const string TEX_WARNING        = "JetOS_Warning";
+
+        // Radar minimap
+        const string TEX_RANGE_RING     = "JetOS_RangeRing";
+        const string TEX_OWN_SHIP       = "JetOS_OwnShip";
+        const string TEX_LOCK_CONE      = "JetOS_LockCone";
+        const string TEX_RADAR_SWEEP    = "JetOS_RadarSweep";
+
+        // Weapons & bays
+        const string TEX_MISSILE        = "JetOS_Missile";
+        const string TEX_BAY_EMPTY      = "JetOS_Bay_Empty";
+        const string TEX_BAY_LOADED     = "JetOS_Bay_Loaded";
+
+        // Status indicators
+        const string TEX_FUEL_TANK      = "JetOS_FuelTank";
+        const string TEX_BATTERY        = "JetOS_Battery";
+        const string TEX_STATUS_DOT     = "JetOS_StatusDot";
+        const string TEX_STATUS_RING    = "JetOS_StatusRing";
+
+        // MFD chrome / menu
+        const string TEX_MFD_CORNER     = "JetOS_MFD_Corner";
+        const string TEX_NAV_ARROW      = "JetOS_NavArrow";
+
+        // Module icons (menu prefix glyphs)
+        const string TEX_ICON_HUD       = "JetOS_Icon_HUD";
+        const string TEX_ICON_RADAR     = "JetOS_Icon_Radar";
+        const string TEX_ICON_WEAPONS   = "JetOS_Icon_Weapons";
+        const string TEX_ICON_TERRAIN   = "JetOS_Icon_Terrain";
+        const string TEX_ICON_CONFIG    = "JetOS_Icon_Config";
+        const string TEX_ICON_CANARD    = "JetOS_Icon_Canard";
+        const string TEX_ICON_GUN       = "JetOS_Icon_Gun";
+
+        // Status label icons
+        const string TEX_ICON_FUEL      = "JetOS_Icon_Fuel";
+        const string TEX_ICON_POWER     = "JetOS_Icon_Power";
+        const string TEX_ICON_AMMO      = "JetOS_Icon_Ammo";
+
+        // Background patterns
+        const string TEX_BG_SCANLINE    = "JetOS_BG_ScanLine";
+        const string TEX_BG_GRIDDOT     = "JetOS_BG_GridDot";
+
+        // Footer / action glyphs
+        const string TEX_KEY_HINT_BOX   = "JetOS_KeyHint_Box";
+        const string TEX_GLYPH_CHECK    = "JetOS_Glyph_Check";
+        const string TEX_GLYPH_CROSS    = "JetOS_Glyph_Cross";
+        const string TEX_GLYPH_BACK     = "JetOS_Glyph_Back";
+
+        // ── Batch B additions ──
+        const string TEX_AIRCRAFT_SYM   = "JetOS_AircraftSymbol";
+        const string TEX_LOCK_DIAMOND   = "JetOS_LockDiamond";
+        const string TEX_MASTER_CAUTION = "JetOS_MasterCaution";
+        const string TEX_MASTER_WARNING = "JetOS_MasterWarning";
+        const string TEX_HATCH          = "JetOS_HatchPattern";
+        const string TEX_MISSILE_HEAT   = "JetOS_Missile_Heat";
+        const string TEX_MISSILE_RADAR  = "JetOS_Missile_Radar";
+        const string TEX_NO_SIGNAL      = "JetOS_NoSignal";
     }
 }

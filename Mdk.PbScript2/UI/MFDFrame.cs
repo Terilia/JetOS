@@ -1,6 +1,5 @@
 using System;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -17,7 +16,7 @@ namespace IngameScript
             /// Draws the standard MFD chrome (background, border, corners, header, gold accent, footer).
             /// Returns the Y position where content should start drawing.
             /// </summary>
-            public static float DrawChrome(MSDF frame, float sw, float sh,
+            public static float DrawChrome(MySpriteDrawFrame frame, float sw, float sh,
                 string headerRight = null, bool drawFooterNav = true, string footerRight = null)
             {
                 float padX = sw * 0.019f;
@@ -32,16 +31,16 @@ namespace IngameScript
                 // Background
                 Rect(frame, sw / 2f, sh / 2f, sw, sh, MFDTheme.BG);
 
-                // Corner brackets
+                // Corner brackets — one sprite per corner, rotated. Source canvas places the
+                // L-bracket in the top-left quadrant with arms ending at (128/256) of canvas; sized
+                // so visible arms are cornerLen long and the bracket point sits at (ci, ci).
                 float ci = 4f;
-                Rect(frame, ci + cornerLen / 2f, ci, cornerLen, 1f, MFDTheme.CORNER);
-                Rect(frame, ci, ci + cornerLen / 2f, 1f, cornerLen, MFDTheme.CORNER);
-                Rect(frame, sw - ci - cornerLen / 2f, ci, cornerLen, 1f, MFDTheme.CORNER);
-                Rect(frame, sw - ci, ci + cornerLen / 2f, 1f, cornerLen, MFDTheme.CORNER);
-                Rect(frame, ci + cornerLen / 2f, sh - ci, cornerLen, 1f, MFDTheme.CORNER);
-                Rect(frame, ci, sh - ci - cornerLen / 2f, 1f, cornerLen, MFDTheme.CORNER);
-                Rect(frame, sw - ci - cornerLen / 2f, sh - ci, cornerLen, 1f, MFDTheme.CORNER);
-                Rect(frame, sw - ci, sh - ci - cornerLen / 2f, 1f, cornerLen, MFDTheme.CORNER);
+                float spriteSize = cornerLen * 256f / 96f;   // 96 = arm-length in 256 source canvas
+                float pivot = ci + cornerLen;                // sprite center offset from edge
+                SpriteHelpers.Sp(frame, TEX_MFD_CORNER, pivot,        pivot,        spriteSize, spriteSize, MFDTheme.CORNER, 0f);
+                SpriteHelpers.Sp(frame, TEX_MFD_CORNER, sw - pivot,   pivot,        spriteSize, spriteSize, MFDTheme.CORNER, (float)(PI * 0.5));
+                SpriteHelpers.Sp(frame, TEX_MFD_CORNER, sw - pivot,   sh - pivot,   spriteSize, spriteSize, MFDTheme.CORNER, (float)PI);
+                SpriteHelpers.Sp(frame, TEX_MFD_CORNER, pivot,        sh - pivot,   spriteSize, spriteSize, MFDTheme.CORNER, (float)(PI * 1.5));
 
                 // Header
                 float hy = topOffset;
@@ -97,8 +96,8 @@ namespace IngameScript
                 return sh - sh * 0.054f;
             }
 
-            public static void Rect(MSDF f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
-            public static void Txt(MSDF f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
+            public static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            public static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
         }
     }
 }

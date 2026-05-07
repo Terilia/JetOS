@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 
 namespace IngameScript
 {
@@ -21,11 +20,11 @@ namespace IngameScript
         // captured — that's fine, neither surface uses the transition system.
         static class SpriteBus
         {
-            private static MSDF _frame;
+            private static MySpriteDrawFrame _frame;
             private static bool _active;
             private static List<MySprite> _capture;
 
-            public static void Begin(MSDF frame, List<MySprite> captureInto = null)
+            public static void Begin(MySpriteDrawFrame frame, List<MySprite> captureInto = null)
             {
                 _frame = frame;
                 _active = true;

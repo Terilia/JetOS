@@ -3,7 +3,6 @@ using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -44,7 +43,7 @@ namespace IngameScript
             static AnimatedValue _animFuelBar = new AnimatedValue();
             static AnimatedValue _animGForce = new AnimatedValue();
 
-            public static void Render(MSDF frame, Vector2 surfaceSize, RectangleF contentArea,
+            public static void Render(MySpriteDrawFrame frame, Vector2 surfaceSize, RectangleF contentArea,
                 Program program, Jet jet, RadarControlModule radarModule, HUDModule hud = null)
             {
                 // surfaceSize covers the full text surface (used for centering / right-edge anchoring).
@@ -208,7 +207,7 @@ namespace IngameScript
                 }
             }
 
-            static void DrawMslPips(MSDF f, List<IMyShipMergeBlock> bays)
+            static void DrawMslPips(MySpriteDrawFrame f, List<IMyShipMergeBlock> bays)
             {
                 if (bays == null || bays.Count == 0) return;
                 SpriteHelpers.Tt(f, "MSL", 12f, 8f, 0.35f, MFDTheme.DIM_TEXT, MFDTheme.AL);
@@ -221,14 +220,14 @@ namespace IngameScript
                 }
             }
 
-            static void DrawBlockCount(MSDF f, RectangleF area, float contentY)
+            static void DrawBlockCount(MySpriteDrawFrame f, RectangleF area, float contentY)
             {
                 int cur = gridBlocks.Count, orig = originalBlockCount > 0 ? originalBlockCount : cur;
                 Color c = cur >= orig ? MFDTheme.DIM_TEXT_MID : cur > orig * 0.7 ? MFDTheme.WARN : Cr(180, 50, 40);
                 SpriteHelpers.Tt(f, $"{cur}/{orig}", area.Width / 2f, contentY + 4f, 0.45f, c);
             }
 
-            static void DrawFlightData(MSDF f, RectangleF area, HUDModule hud, Jet jet, float contentY)
+            static void DrawFlightData(MySpriteDrawFrame f, RectangleF area, HUDModule hud, Jet jet, float contentY)
             {
                 float rx = area.Width - 6f, y = contentY + 8f, lh = 18f;
                 if (hud != null)
@@ -257,7 +256,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(f, ammo.ToString(), rx, gy - 2f, 0.4f, gc, MFDTheme.AR);
             }
 
-            static void DrawFuelBar(MSDF f, RectangleF area, List<IMyGasTank> tanks,
+            static void DrawFuelBar(MySpriteDrawFrame f, RectangleF area, List<IMyGasTank> tanks,
                 float contentY, float contentBot)
             {
                 if (tanks == null || tanks.Count == 0) return;
@@ -292,7 +291,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(f, pct < BINGO_FUEL ? "BINGO" : "FUEL", bx, bot + 4f, 0.4f, bingoColor);
             }
 
-            static void DrawGMeter(MSDF f, RectangleF area, HUDModule hud,
+            static void DrawGMeter(MySpriteDrawFrame f, RectangleF area, HUDModule hud,
                 float contentY, float contentBot)
             {
                 if (hud == null) return;

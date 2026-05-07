@@ -1,5 +1,4 @@
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -47,10 +46,10 @@ namespace IngameScript
             // Free-form content rendering (called when HasMenu is false, or alongside the menu).
             // contentArea is the inner rect after chrome/breadcrumb/title; surfaceSize is the
             // full surface dimensions (renderers using absolute coords need this for centering).
-            public virtual void RenderContent(MSDF frame, RectangleF contentArea, Vector2 surfaceSize) { }
+            public virtual void RenderContent(MySpriteDrawFrame frame, RectangleF contentArea, Vector2 surfaceSize) { }
 
             // Sidebar rendering (called when HasSidebar is true). Receives the sidebar rect.
-            public virtual void RenderSidebar(MSDF frame, RectangleF area) { }
+            public virtual void RenderSidebar(MySpriteDrawFrame frame, RectangleF area) { }
         }
     }
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="12">
+  <!-- Friendly contact: hollow circle + horizontal mark (MIL-STD inspired). -->
+  <circle cx="128" cy="128" r="92"/>
+  <line x1="60" y1="128" x2="196" y2="128" stroke-width="8" stroke-linecap="square"/>
+</svg>

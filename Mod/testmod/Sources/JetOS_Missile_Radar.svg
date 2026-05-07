@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="#FFFFFF">
+  <!-- Radar-guided missile silhouette — pointed conical seeker (flat-fronted radome),
+       slightly fatter body, mid-body fins + tail fins. -->
+  <!-- Conical radome -->
+  <polygon points="120,32 136,32 136,52 120,52"/>
+  <polygon points="118,52 138,52 128,30"/>
+  <!-- Body -->
+  <rect x="118" y="52" width="20" height="140"/>
+  <!-- Mid-body fins (forward, mid-fuselage) -->
+  <polygon points="100,116 118,108 118,134 100,128"/>
+  <polygon points="156,116 138,108 138,134 156,128"/>
+  <!-- Tail fins (large) -->
+  <polygon points="96,192 118,164 118,192"/>
+  <polygon points="160,192 138,164 138,192"/>
+  <!-- Exhaust -->
+  <rect x="120" y="192" width="16" height="14"/>
+</svg>

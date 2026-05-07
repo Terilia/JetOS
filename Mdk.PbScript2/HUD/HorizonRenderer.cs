@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -14,7 +13,7 @@ namespace IngameScript
             private List<MySprite> _horizonSprites = new List<MySprite>();
 
             private void DrawArtificialHorizon(
-                MSDF frame,
+                MySpriteDrawFrame frame,
                 float pitch,
                 float roll,
                 float centerX,
@@ -40,35 +39,18 @@ namespace IngameScript
                     bool isPositive = (i > 0);
 
                     float lineWidth = 90f;
-                    float lineThickness = 2f;
                     Color lineColor = HUD_PRIMARY;
 
                     float halfWidth = lineWidth * 1.225f;
 
-                    if (!isPositive)
-                    {
-                        // Solid lines for nose-up pitch lines (i<0 because pitch sign is inverted:
-                        // pitch = asin(dot(forward, gravityDown)), so nose-up = negative pitch)
-                        sprites.Add(SpriteHelpers.FBx(centerX * 0.75f, markerY, lineWidth, lineThickness, lineColor));
-                        sprites.Add(SpriteHelpers.FBx(centerX * 1.25f, markerY, lineWidth, lineThickness, lineColor));
-                    }
-                    else
-                    {
-                        // Dashed lines for nose-down pitch lines (i>0 = below horizon)
-                        int dashCount = 4;
-                        float totalDashWidth = lineWidth;
-                        float dashWidth = totalDashWidth / (dashCount * 2 - 1);
-
-                        for (int d = 0; d < dashCount; d++)
-                        {
-                            float dashOffset = -totalDashWidth / 2f + d * (dashWidth * 2) + dashWidth / 2f;
-                            sprites.Add(SpriteHelpers.FBx(centerX * 0.75f + dashOffset, markerY, dashWidth, lineThickness, lineColor));
-                            sprites.Add(SpriteHelpers.FBx(centerX * 1.25f + dashOffset, markerY, dashWidth, lineThickness, lineColor));
-                        }
-                    }
+                    // Climb rungs (i<0, nose-up) use solid+down-ticks sprite; dive rungs use dashed+up-ticks.
+                    // Position rotates with roll via the closing pass; orientation stays so the rung tilts as a unit.
+                    string rungTex = isPositive ? TEX_PITCH_NEG : TEX_PITCH_POS;
+                    float rungW = halfWidth * 2f + lineWidth;
+                    float rungH = rungW * 0.25f;
+                    sprites.Add(new MySprite(SpriteType.TEXTURE, rungTex, V2(centerX, markerY), V2(rungW, rungH), lineColor));
 
                     float tipLength = 12f;
-
                     string label = Ab(i).ToString();
                     float labelOffsetX = halfWidth + tipLength + 10f;
 
@@ -110,67 +92,38 @@ namespace IngameScript
 
             }
 
-            // F-18 style aircraft waterline / reference symbol — classic "W" shape:
-            // horizontal wings dipping into a center V. Pilot preference over the
-            // F-16 gun cross.
-            private void DrawAircraftSymbol(MSDF frame, float centerX, float centerY)
+            // F-18 style aircraft waterline / reference symbol — wing-tip-dipping "W".
+            // Single sprite from the JetOS-Sprites mod. Visible content spans canvas
+            // x=40..216 (176/256 = 68.75%) and y=128..156 (28/256 = 11%). Sized so the
+            // visible width matches the original 70px wingspan.
+            private void DrawAircraftSymbol(MySpriteDrawFrame frame, float centerX, float centerY)
             {
-                float wingSpan = 35f;
-                float innerSpan = 10f;
-                float dipDepth = 6f;
-                float refThickness = 2.5f;
-                Color refColor = HUD_EMPHASIS;
-
-                SpriteHelpers.AddLineSprite(frame, V2(centerX - wingSpan, centerY),
-                    V2(centerX - innerSpan, centerY), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, V2(centerX - innerSpan, centerY),
-                    V2(centerX, centerY + dipDepth), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, V2(centerX, centerY + dipDepth),
-                    V2(centerX + innerSpan, centerY), refThickness, refColor);
-                SpriteHelpers.AddLineSprite(frame, V2(centerX + innerSpan, centerY),
-                    V2(centerX + wingSpan, centerY), refThickness, refColor);
+                const float SPRITE_W = 102f;   // → visible 70px wide (matches old 2*wingSpan)
+                const float SPRITE_H = 102f;   // square sprite, visible content is short+wide
+                // Source canvas places the W's horizontal at y=128 (center) and the V tip
+                // at y=156 (offset +28). The visible center sits ~14px below sprite center;
+                // shift anchor up so the wing line lands on (centerX, centerY).
+                SpriteHelpers.Sp(frame, TEX_AIRCRAFT_SYM, centerX, centerY - SPRITE_H * 14f / 256f, SPRITE_W, SPRITE_H, HUD_EMPHASIS);
             }
 
-            private void DrawBankAngleMarkers(MSDF frame, float centerX, float centerY, float roll, float pixelsPerDegree)
+            private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
             {
-                int[] bankAngles = new int[] { 15, 30, 45, 60, -15, -30, -45, -60 };
                 float horizonRadius = pixelsPerDegree * 20f;
-
                 float rollRad = ToRad(-roll);
-                float cosRoll = (float)Cs(rollRad);
-                float sinRoll = (float)Sn(rollRad);
 
-                foreach (int angle in bankAngles)
-                {
-                    float angleRad = ToRad(angle);
-                    Vector2 tickPos = V2((float)Sn(angleRad) * horizonRadius, -(float)Cs(angleRad) * horizonRadius);
+                // Bank arc + ticks baked into one sprite. Source arc radius = 100/256 of canvas;
+                // render size = horizonRadius / 0.39 so the arc lands at horizonRadius from center.
+                float arcSize = horizonRadius / 0.39f;
+                SpriteHelpers.Sp(frame, TEX_BANK_ARC, centerX, centerY, arcSize, arcSize, HUD_EMPHASIS, rollRad);
 
-                    Vector2 rotatedTick = V2(
-                        tickPos.X * cosRoll - tickPos.Y * sinRoll,
-                        tickPos.X * sinRoll + tickPos.Y * cosRoll
-                    );
-
-                    Vector2 finalPos = V2(centerX, centerY) + rotatedTick;
-
-                    bool isMajor = (Ab(angle) % 30 == 0);
-                    float tickLength = isMajor ? 8f : 5f;
-                    Color tickColor = isMajor ? HUD_EMPHASIS : HUD_SECONDARY;
-
-                    SpriteHelpers.Bx(frame, finalPos.X, finalPos.Y, 2f, tickLength, tickColor, angleRad + rollRad);
-                }
-
-                // Roll pointer — fixed index triangle at 12 o'clock of bank arc
-                // Doesn't rotate; the bank ticks slide past it to indicate current roll
-                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY, (float)PI);
+                // Fixed roll-pointer triangle at 12 o'clock — doesn't rotate; arc sweeps past it.
+                SpriteHelpers.Sp(frame, TEX_ROLL_POINTER, centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY);
             }
 
-            // F-18 Flight Path Marker (velocity vector symbol).
-            // Compact hollow circle + stumpy horizontal wings flush with the circle +
-            // a short vertical tail tick flush on top. Earth-stabilized: wings/tail
-            // counter-rotate with roll so they stay parallel to the true horizon.
-            // Drawn in HUD primary color (monochrome HUD convention).
+            // F-18 Flight Path Marker. Single sprite from the JetOS-Sprites mod,
+            // counter-rotated by roll so the wings stay parallel to the true horizon.
             private void DrawFlightPathMarker(
-                MSDF frame,
+                MySpriteDrawFrame frame,
                 Vector3D currentVelocity,
                 MatrixD worldToCockpitMatrix,
                 double roll,
@@ -181,18 +134,11 @@ namespace IngameScript
             {
                 if (currentVelocity.LengthSquared() < 1.0) return;
 
-                const float CircleSize = 11f;
-                const float WingLength = 13f;
-                const float WingThickness = 1.8f;
-                const float WingGap = 0f;    // F-18: wings touch circle edge
-                const float TailLength = 6f; // short tail tick, flush with top
+                const float FpmDrawSize = 48f;
 
-                // Use perspective projection (same as lead pip / target brackets)
-                // to get a physically correct screen position for the velocity vector.
                 Vector3D velocityDirection = VN(currentVelocity);
                 Vector3D localVelocity = VTN(velocityDirection, worldToCockpitMatrix);
 
-                // Only draw when velocity has a forward component
                 if (localVelocity.Z >= 0) return;
                 if (Ab(localVelocity.Z) < MIN_Z_FOR_PROJECTION)
                     localVelocity.Z = -MIN_Z_FOR_PROJECTION;
@@ -202,11 +148,6 @@ namespace IngameScript
 
                 Color fpmColor = HUD_PRIMARY;
 
-                // Hollow circle (CircleHollow texture)
-                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE, markerPosition.X, markerPosition.Y,
-                    CircleSize, CircleSize, fpmColor);
-
-                // Boresight-to-FPM connector — only when FPM is off-screen
                 bool fpmOnScreen = markerPosition.X >= 0 && markerPosition.X <= surfaceSize.X &&
                                    markerPosition.Y >= 0 && markerPosition.Y <= surfaceSize.Y;
                 if (!fpmOnScreen)
@@ -215,27 +156,9 @@ namespace IngameScript
                     SpriteHelpers.AddLineSprite(frame, boresight, markerPosition, 1f, Cr(fpmColor, 0.35f));
                 }
 
-                // Wings + tail counter-rotate by roll to stay horizon-aligned (F-16 convention)
                 float rollRad = ToRad((float)roll);
-                float halfCircle = CircleSize * 0.5f;
-
-                // Left wing: center is half-wing outside the circle
-                Vector2 leftWingOffset = V2(-(halfCircle + WingGap + WingLength / 2f), 0f);
-                Vector2 rotLeftWing = SpriteHelpers.RotatePoint(leftWingOffset, Vector2.Zero, -rollRad);
-                Vector2 lw = markerPosition + rotLeftWing;
-                SpriteHelpers.Bx(frame, lw.X, lw.Y, WingLength, WingThickness, fpmColor, -rollRad);
-
-                // Right wing
-                Vector2 rightWingOffset = V2(halfCircle + WingGap + WingLength / 2f, 0f);
-                Vector2 rotRightWing = SpriteHelpers.RotatePoint(rightWingOffset, Vector2.Zero, -rollRad);
-                Vector2 rw = markerPosition + rotRightWing;
-                SpriteHelpers.Bx(frame, rw.X, rw.Y, WingLength, WingThickness, fpmColor, -rollRad);
-
-                // Vertical stabilizer tick: center is half-tail above the circle
-                Vector2 tailOffset = V2(0f, -(halfCircle + TailLength / 2f));
-                Vector2 rotTail = SpriteHelpers.RotatePoint(tailOffset, Vector2.Zero, -rollRad);
-                Vector2 tp = markerPosition + rotTail;
-                SpriteHelpers.Bx(frame, tp.X, tp.Y, WingThickness, TailLength, fpmColor, -rollRad);
+                SpriteHelpers.Sp(frame, TEXTURE_FPM, markerPosition.X, markerPosition.Y,
+                    FpmDrawSize, FpmDrawSize, fpmColor, -rollRad);
             }
         }
     }

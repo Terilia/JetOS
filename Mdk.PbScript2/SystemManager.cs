@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -49,6 +48,7 @@ namespace IngameScript
             private static Program.CanardModule canardModule;
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
+            public static bool AltitudeWarningActive => altitudeWarningActive;
 
             // Timing foundation — lag-resistant, uses wall-clock delta.
             // DeltaSeconds: seconds between this Main() call and the last.
@@ -138,7 +138,7 @@ namespace IngameScript
             public static IMyTextSurface MainSurface => lcdMain;
 
             // Default sidebar renderer — used by main menu and every module menu (fuel/battery/engine/terrain).
-            public static void RenderDefaultSidebar(MSDF frame, RectangleF area)
+            public static void RenderDefaultSidebar(MySpriteDrawFrame frame, RectangleF area)
             {
                 StatusPanelRenderer.Render(frame, area, _myJet, hudProgram, currentTick);
             }

@@ -1,0 +1,519 @@
+<?xml version="1.0"?>
+<Definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <LCDTextures>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_AircraftSymbol</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_AircraftSymbol.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_AircraftSymbol.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_AoABracket</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_AoABracket.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_AoABracket.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_BankArc</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_BankArc.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_BankArc.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Battery</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Battery.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Battery.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Bay_Empty</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Bay_Empty.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Bay_Empty.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Bay_Loaded</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Bay_Loaded.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Bay_Loaded.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_BG_GridDot</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_BG_GridDot.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_BG_GridDot.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_BG_ScanLine</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_BG_ScanLine.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_BG_ScanLine.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Boresight</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Boresight.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Boresight.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Contact_Friendly</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Contact_Friendly.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Contact_Friendly.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Contact_Hostile</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Contact_Hostile.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Contact_Hostile.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Contact_Unknown</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Contact_Unknown.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Contact_Unknown.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_FPM</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_FPM.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_FPM.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_FuelTank</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_FuelTank.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_FuelTank.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_GaugeNeedle</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_GaugeNeedle.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_GaugeNeedle.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Glyph_Back</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Glyph_Back.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Glyph_Back.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Glyph_Check</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Glyph_Check.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Glyph_Check.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Glyph_Cross</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Glyph_Cross.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Glyph_Cross.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_GMeterFace</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_GMeterFace.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_GMeterFace.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_HatchPattern</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_HatchPattern.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_HatchPattern.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_HeadingChevron</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_HeadingChevron.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_HeadingChevron.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Ammo</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Ammo.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Ammo.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Canard</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Canard.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Canard.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Config</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Config.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Config.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Fuel</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Fuel.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Fuel.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Gun</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Gun.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Gun.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_HUD</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_HUD.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_HUD.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Power</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Power.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Power.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Radar</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Radar.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Radar.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Terrain</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Terrain.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Terrain.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Icon_Weapons</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Icon_Weapons.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Icon_Weapons.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_KeyHint_Box</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_KeyHint_Box.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_KeyHint_Box.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_LeadPip</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_LeadPip.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_LeadPip.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_LockCone</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_LockCone.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_LockCone.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_LockDiamond</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_LockDiamond.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_LockDiamond.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_MasterCaution</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_MasterCaution.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_MasterCaution.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_MasterWarning</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_MasterWarning.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_MasterWarning.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_MFD_Corner</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_MFD_Corner.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_MFD_Corner.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Missile</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Missile.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Missile.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Missile_Heat</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Missile_Heat.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Missile_Heat.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Missile_Radar</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Missile_Radar.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Missile_Radar.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_NavArrow</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_NavArrow.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_NavArrow.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_NoSignal</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_NoSignal.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_NoSignal.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_OwnShip</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_OwnShip.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_OwnShip.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_PitchRung_Inverted</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_PitchRung_Inverted.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_PitchRung_Inverted.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_PitchRung_Neg</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_PitchRung_Neg.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_PitchRung_Neg.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_PitchRung_Pos</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_PitchRung_Pos.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_PitchRung_Pos.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_PitchRung_Zero</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_PitchRung_Zero.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_PitchRung_Zero.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_RadarSweep</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_RadarSweep.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_RadarSweep.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_RangeRing</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_RangeRing.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_RangeRing.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_RollPointer</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_RollPointer.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_RollPointer.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_StatusDot</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_StatusDot.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_StatusDot.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_StatusRing</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_StatusRing.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_StatusRing.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_TapeBug</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_TapeBug.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_TapeBug.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_TapeIndex</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_TapeIndex.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_TapeIndex.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_TargetBracket</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_TargetBracket.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_TargetBracket.dds</SpritePath>
+    </LCDTextureDefinition>
+
+    <LCDTextureDefinition>
+      <Id>
+        <TypeId>LCDTextureDefinition</TypeId>
+        <SubtypeId>JetOS_Warning</SubtypeId>
+      </Id>
+      <TexturePath>Textures\Sprites\JetOS_Warning.dds</TexturePath>
+      <SpritePath>Textures\Sprites\JetOS_Warning.dds</SpritePath>
+    </LCDTextureDefinition>
+
+  </LCDTextures>
+</Definitions>

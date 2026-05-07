@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -42,7 +41,7 @@ namespace IngameScript
             // Receives the post-chrome content rect. The screen-coord origin is still 0,0
             // because sprites position absolutely on the surface — we use SystemManager's
             // surface size for total bounds, but only draw inside `area`.
-            internal void DrawMap(MSDF frame, RectangleF area, float surfaceW, float surfaceH)
+            internal void DrawMap(MySpriteDrawFrame frame, RectangleF area, float surfaceW, float surfaceH)
             {
                 float sw = surfaceW, sh = surfaceH, px = sw * 0.019f;
                 float cy = area.Position.Y;
@@ -107,14 +106,14 @@ namespace IngameScript
                 public override bool ShowFooterNav => true;
                 public override bool ShowBreadcrumb => true;
                 public override string BreadcrumbPath => "TERRAIN MAP";
-                public override void RenderContent(MSDF frame, RectangleF area, Vector2 surfaceSize)
+                public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
                 {
                     _mod.DrawMap(frame, area, surfaceSize.X, surfaceSize.Y);
                 }
             }
 
             // ═══ SIDEBAR — direct render every call ═══
-            public static void RenderMinimap(MSDF frame, RectangleF area, Jet jet)
+            public static void RenderMinimap(MySpriteDrawFrame frame, RectangleF area, Jet jet)
             {
                 if (jet._cockpit == null || !TerrainData.Ready || jet.CachedGravity.LengthSquared() < 0.01) return;
                 float ox = area.Position.X, oy = area.Position.Y, sw = area.Width, sh = area.Height;
@@ -174,7 +173,7 @@ namespace IngameScript
             // Threshold-major contour renderer. Each threshold gets full front-to-back
             // grid coverage before the next, so danger contours (terrain above/at altitude)
             // always complete. Shape contours degrade gracefully under sprite budget.
-            static void DrawContours(MSDF frame, float mx, float my, float cs, int d, float lt,
+            static void DrawContours(MySpriteDrawFrame frame, float mx, float my, float cs, int d, float lt,
                 int tStart, int tCount)
             {
                 int g = d - 1;
@@ -255,7 +254,7 @@ namespace IngameScript
             static float Lp(short a, short b, short t)
             { int d = b - a; if (d > -1 && d < 1) return 0.5f; float v = (float)(t - a) / d; return v < 0f ? 0f : v > 1f ? 1f : v; }
 
-            static void AF(MSDF f, Vector2 a, Vector2 b, float t, Color c)
+            static void AF(MySpriteDrawFrame f, Vector2 a, Vector2 b, float t, Color c)
             { Vector2 d = b - a; float ls = d.X * d.X + d.Y * d.Y;
                 if (ls < 0.25f) return; float l = (float)Math.Sqrt(ls);
                 Vector2 mid = (a + b) * 0.5f;

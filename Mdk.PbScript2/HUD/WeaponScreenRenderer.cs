@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
+using SpaceEngineers.Game.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -18,7 +18,7 @@ namespace IngameScript
 
             // Renders weapon-screen content into the supplied frame/area. Chrome is drawn
             // by the host MfdPage; this method only fills the inner content rect.
-            internal void RenderWeaponContent(MSDF frame, RectangleF contentArea, Vector2 surfaceSize)
+            internal void RenderWeaponContent(MySpriteDrawFrame frame, RectangleF contentArea, Vector2 surfaceSize)
             {
                 if (cockpit == null) return;
                 Vector3D shooterPosition = GP(cockpit);
@@ -77,24 +77,33 @@ namespace IngameScript
                             MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
-                    // ── Missile TOF at bottom ──
+                    // ── Bottom section: bay strip + missile TOF ──
+                    int bayCount = myjet._bays != null ? myjet._bays.Count : 0;
+                    float tofH = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 30f) : 0f;
+                    float bayH = bayCount > 0 ? 22f : 0f;
+                    float bottomY = contentBot - tofH - bayH;
+
+                    if (bayCount > 0)
+                    {
+                        DrawBayStrip(frame, sw / 2f, bottomY + 8f, myjet._bays);
+                        bottomY += bayH;
+                    }
+
                     if (activeMissiles.Count > 0)
                     {
-                        float tofY = contentBot - (activeMissiles.Count * 20f + 30f);
+                        MFDFrame.Rect(frame, sw / 2f, bottomY - 5f, sw - margin * 4, 1f, MFDTheme.BORDER);
+                        bottomY += 5f;
 
-                        MFDFrame.Rect(frame, sw / 2f, tofY - 5f, sw - margin * 4, 1f, MFDTheme.BORDER);
-                        tofY += 5f;
-
-                        MFDFrame.Txt(frame, "MSL IN FLIGHT", sw / 2f, tofY, 0.55f,
+                        MFDFrame.Txt(frame, "MSL IN FLIGHT", sw / 2f, bottomY, 0.55f,
                             MFDTheme.STATUS_RDY, MFDTheme.AC);
-                        tofY += 20f;
+                        bottomY += 20f;
 
-                        DrawMissileTOFToScreen(frame, sw / 2f, tofY);
+                        DrawMissileTOFToScreen(frame, sw / 2f, bottomY);
                     }
                 }
             }
 
-            private static void DrawWpnSectionTitle(MSDF frame, float sw, float y, string text)
+            private static void DrawWpnSectionTitle(MySpriteDrawFrame frame, float sw, float y, string text)
             {
                 float margin = sw * 0.019f;
                 float textW = text.Length * sw * 0.012f;
@@ -114,7 +123,7 @@ namespace IngameScript
                 MFDFrame.Txt(frame, text, cx, y, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
-            private void DrawSelectedTargetDetail(MSDF frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
+            private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
                 float textX = margin + 8f;
                 float textY = panelY + 6f;
@@ -192,7 +201,7 @@ namespace IngameScript
                 DrawTrackingTimeline(frame, contact, timelineX, timelineY, timelineWidth, 8f, 30);
             }
 
-            private void DrawTrackingTimeline(MSDF frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
+            private void DrawTrackingTimeline(MySpriteDrawFrame frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
             {
                 uint history = contact.GetDisplayHistory();
                 float colWidth = width / columns;
@@ -230,7 +239,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawEnemyList(MSDF frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
+            private void DrawEnemyList(MySpriteDrawFrame frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
             {
                 const float LINE_HEIGHT = 20f;
                 const float TEXT_SCALE = 0.55f;
@@ -324,7 +333,7 @@ namespace IngameScript
                 return bearingDeg;
             }
 
-            private void DrawMissileTOFToScreen(MSDF frame, float centerX, float startY)
+            private void DrawMissileTOFToScreen(MySpriteDrawFrame frame, float centerX, float startY)
             {
                 if (activeMissiles.Count == 0) return;
 
@@ -343,14 +352,33 @@ namespace IngameScript
                         string tofText = $"MSL {missile.BayIndex + 1}: {timeRemaining:F1}s \u2192 TGT";
                         Color tofColor = timeRemaining < 3 ? MFDTheme.WARN : MFDTheme.STATUS_RDY;
 
-                        MFDFrame.Txt(frame, tofText, centerX, startY + i * LINE_HEIGHT, TEXT_SCALE,
-                            tofColor, MFDTheme.AC);
+                        float yPos = startY + i * LINE_HEIGHT;
+                        // Tall narrow missile silhouette to the left of the TOF text.
+                        SpriteHelpers.Sp(frame, TEX_MISSILE, centerX - 78f, yPos + 7f, 6f, 16f, tofColor);
+                        MFDFrame.Txt(frame, tofText, centerX, yPos, TEXT_SCALE, tofColor, MFDTheme.AC);
                     }
                 }
             }
 
+            // Bay status strip \u2014 5:4-ish bay icons, filled when missile attached.
+            private void DrawBayStrip(MySpriteDrawFrame frame, float centerX, float y, List<IMyShipMergeBlock> bays)
+            {
+                int n = Mn(bays.Count, 8);
+                if (n == 0) return;
+                const float W = 18f, H = 14f, SP = 4f;
+                float totalW = n * W + (n - 1) * SP;
+                float startX = centerX - totalW / 2f + W / 2f;
+                for (int i = 0; i < n; i++)
+                {
+                    bool loaded = MissileBayHelper.IsBayReady(bays[i]);
+                    string tex = loaded ? TEX_BAY_LOADED : TEX_BAY_EMPTY;
+                    Color c = loaded ? MFDTheme.STATUS_RDY : MFDTheme.DIM_TEXT_MID;
+                    SpriteHelpers.Sp(frame, tex, startX + i * (W + SP), y, W, H, c);
+                }
+            }
+
             // Gun Control Overlay (rendered on HUD surface, not weapon screen — kept as-is)
-            private void DrawGunControlOverlay(MSDF frame)
+            private void DrawGunControlOverlay(MySpriteDrawFrame frame)
             {
                 var gunControl = SystemManager.GetGunControl();
                 if (gunControl == null || !gunControl.IsControlEnabled)
@@ -392,7 +420,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawTurretIndicator(MSDF frame, Vector2 position, string label, bool isLocked)
+            private void DrawTurretIndicator(MySpriteDrawFrame frame, Vector2 position, string label, bool isLocked)
             {
                 Color bgColor;
                 Color textColor;

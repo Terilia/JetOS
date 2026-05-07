@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -15,9 +14,11 @@ namespace IngameScript
             private float smoothedRadarRange = 5000f;
             private const float RADAR_RANGE_SMOOTH = 0.1f; // Low alpha = slow adaptation
             private const float RADAR_MIN_RANGE = 2000f;
-            private const float RADAR_RANGE_PADDING = 1.3f; // 30% padding beyond farthest target
+            private const float RADAR_MAX_RANGE = 15000f;
+            private const float RADAR_RANGE_PADDING = 1.3f;       // 30% padding beyond farthest target
+            private const float RADAR_SPEED_LOOKAHEAD_SEC = 25f;  // ~half a minute of forward visibility at current speed
 
-            private void DrawRadarMinimap(MSDF frame, IMyCockpit cockpit, IMyTextSurface hud)
+            private void DrawRadarMinimap(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
             {
                 if (cockpit == null || hud == null) return;
 
@@ -84,7 +85,13 @@ namespace IngameScript
                         maxDist = dist;
                 }
 
-                float targetRange = Mx(maxDist * RADAR_RANGE_PADDING, RADAR_MIN_RANGE);
+                // Range = max(farthest contact × padding, speed × lookahead, hard min), clamped to hard max.
+                // The speed term keeps the dish proportional to "seconds-to-edge" so a 300m/s pass shows the
+                // same forward visibility (in time) as a 50m/s pass.
+                float speed = (float)cockpitVel.Length();
+                float speedRange = speed * RADAR_SPEED_LOOKAHEAD_SEC;
+                float targetRange = Mx(Mx(maxDist * RADAR_RANGE_PADDING, speedRange), RADAR_MIN_RANGE);
+                if (targetRange > RADAR_MAX_RANGE) targetRange = RADAR_MAX_RANGE;
                 // Smooth the range so it doesn't jump around
                 smoothedRadarRange += (targetRange - smoothedRadarRange) * RADAR_RANGE_SMOOTH;
                 float radarRange = smoothedRadarRange;
@@ -100,7 +107,7 @@ namespace IngameScript
                 float ringPx = ringRange * pixelsPerMeter;
                 if (ringPx > 5f && ringPx < radarRadius)
                 {
-                    DrawDashedCircle(frame, radarCenter, ringPx, Cr(HUD_SECONDARY, 0.35f));
+                    SpriteHelpers.Sp(frame, TEX_RANGE_RING, radarCenter.X, radarCenter.Y, ringPx * 2.13f, ringPx * 2.13f, Cr(HUD_SECONDARY, 0.35f));
                     string ringLabel = SpriteHelpers.FormatRange(ringRange);
                     SpriteHelpers.Tt(frame, ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, Cr(HUD_SECONDARY, 0.5f));
                 }
@@ -109,8 +116,17 @@ namespace IngameScript
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
                 SpriteHelpers.Tt(frame, outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, Cr(HUD_SECONDARY, 0.5f));
 
-                // Player arrow (always center, pointing up)
-                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, radarCenter.X, radarCenter.Y, radarRadius * 0.15f, radarRadius * 0.15f, HUD_PRIMARY);
+                // Lock cone — drawn pointing forward (up in radar view) when STT lock active.
+                // Visible content spans upper half of canvas (~39% of height); size
+                // 2.56*radarRadius makes the cone reach from center to top of radar box.
+                if (radarControl != null && radarControl.IsTrackLocked)
+                {
+                    float coneSize = radarRadius * 2.56f;
+                    SpriteHelpers.Sp(frame, TEX_LOCK_CONE, radarCenter.X, radarCenter.Y, coneSize, coneSize, Cr(HUD_WARNING, 0.7f));
+                }
+
+                // Own ship at radar center (top-down jet silhouette).
+                SpriteHelpers.Sp(frame, TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
 
                 // --- Draw contacts ---
                 var selectedEnemy = myjet.GetSelectedEnemy();
@@ -160,10 +176,11 @@ namespace IngameScript
                     // Highlight selected enemy
                     bool isSelected = selectedEnemy.HasValue && enemy.Matches(selectedEnemy.Value);
 
-                    float iconSize = clamped ? 5f : 7f;
-
-                    // Selected target: diamond, others: square
-                    SpriteHelpers.Bx(frame, pos.X, pos.Y, iconSize, iconSize, contactColor, isSelected ? MathHelper.PiOver4 : 0f);
+                    // Selected: hostile diamond glyph (with armed line). Others: plain square.
+                    // Visible content fills ~70% of canvas, so sprite size is ~1.5× iconSize.
+                    string contactTex = isSelected ? TEX_C_HOSTILE : TEX_C_UNKNOWN;
+                    float iconSize = clamped ? 9f : 12f;
+                    SpriteHelpers.Sp(frame, contactTex, pos.X, pos.Y, iconSize, iconSize, contactColor);
 
                     // Bearing line for dangerous/imminent threats
                     if (timeToClosest < 15 && closingSpeed > 0)
@@ -194,7 +211,7 @@ namespace IngameScript
                 return (float)Rd(range / 100) * 100;
             }
 
-            private static void DrawDashedCircle(MSDF frame, Vector2 center, float radius, Color color)
+            private static void DrawDashedCircle(MySpriteDrawFrame frame, Vector2 center, float radius, Color color)
             {
                 // Uses precomputed trig table — eliminates 24 sin/cos calls per frame
                 for (int i = 0; i < SpriteHelpers.CIRC_SEGS; i += 2)
@@ -208,7 +225,7 @@ namespace IngameScript
             // Pre-allocated list for wingman positions to avoid per-frame allocation
             private List<Vector3D> _wingmanPositionBuffer = new List<Vector3D>();
 
-            private void DrawFormationGhosts(MSDF frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
+            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
                 _wingmanPositionBuffer.Clear();
 
@@ -244,7 +261,7 @@ namespace IngameScript
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
-                    SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, ghostPos.X, ghostPos.Y, 15f, 15f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
+                    SpriteHelpers.Sp(frame, TEX_C_FRIENDLY, ghostPos.X, ghostPos.Y, 18f, 18f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
                 }
             }
         }

@@ -1,5 +1,4 @@
 using VRage.Game.GUI.TextPanel;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 using VRageMath;
 
 namespace IngameScript
@@ -21,7 +20,7 @@ namespace IngameScript
 
             public override string HeaderRight => "STATUS";
 
-            public override void RenderContent(MSDF frame, RectangleF area, Vector2 surfaceSize)
+            public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
             {
                 GridVisualization.Render(frame, surfaceSize, area, _program, _jet, _radar, _hud);
             }

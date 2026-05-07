@@ -297,6 +297,9 @@ namespace IngameScript
                     SpriteBus.Begin(frame, null);
                     try
                     {
+                    // Master Caution / Warning chiclets (top-of-HUD annunciators)
+                    DrawMasterAnnunciators(frame);
+
                     // Horizon & attitude
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
                     DrawAircraftSymbol(frame, centerX, centerY);
@@ -377,6 +380,60 @@ namespace IngameScript
                     finally { SpriteBus.End(); }
                 }
                 // Weapon screen is rendered by SystemManager via WeaponMfdPage now.
+            }
+
+            // =============================================
+            // MASTER ANNUNCIATORS
+            // =============================================
+
+            // Master Caution (amber) and Master Warning (red) chiclets at the top edge of the HUD.
+            // Caution: low fuel, low battery (<20%), low altitude near ground.
+            // Warning: altitude warning latched (terrain proximity at speed) or stall.
+            private void DrawMasterAnnunciators(MySpriteDrawFrame frame)
+            {
+                if (myjet == null) return;
+
+                // ---- Caution conditions (low-priority alerts) ----
+                bool caution = false;
+                if (myjet.tanks != null && myjet.tanks.Count > 0)
+                {
+                    double fuelPct, fuelSec;
+                    myjet.GetFuelStatus(out fuelPct, out fuelSec);
+                    if (fuelPct < 0.15) caution = true;
+                }
+                if (myjet.batteries != null && myjet.batteries.Count > 0)
+                {
+                    float curMWh, maxMWh, netDrain;
+                    myjet.GetBatteryStatus(out curMWh, out maxMWh, out netDrain);
+                    float bp = maxMWh > 0 ? curMWh / maxMWh : 1f;
+                    if (bp < 0.20f) caution = true;
+                }
+
+                // ---- Warning conditions (high-priority alerts) ----
+                bool warning = SystemManager.AltitudeWarningActive;
+
+                if (!caution && !warning) return;
+
+                // Place chiclets in the top-center strip of the HUD, side by side.
+                // Visible content of each chiclet sprite spans 216/256 wide × 136/256 tall.
+                float w = SX(hud), h = SY(hud);
+                float chW = w * 0.07f;        // ~30-40px on a 480-wide HUD
+                float chH = chW * 136f / 216f;  // preserve aspect of visible content
+                float topY = h * 0.16f;        // a bit below the compass tape
+                float gap = chW * 0.08f;
+                float cx = w / 2f;
+
+                if (warning && (radarSweepTick / 8) % 2 == 0)
+                {
+                    // Right side of pair (or solo on the right when only warning)
+                    float wx = caution ? cx + chW / 2f + gap / 2f : cx;
+                    SpriteHelpers.Sp(frame, TEX_MASTER_WARNING, wx, topY + chH / 2f, chW, chH, HUD_WARNING);
+                }
+                if (caution && (radarSweepTick / 12) % 2 == 0)
+                {
+                    float cxLeft = warning ? cx - chW / 2f - gap / 2f : cx;
+                    SpriteHelpers.Sp(frame, TEX_MASTER_CAUTION, cxLeft, topY + chH / 2f, chW, chH, HUD_EMPHASIS);
+                }
             }
 
             // =============================================

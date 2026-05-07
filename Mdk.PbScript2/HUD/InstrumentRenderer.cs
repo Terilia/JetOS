@@ -4,7 +4,6 @@ using System.Text;
 using Sandbox.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
-using MSDF = VRage.Game.GUI.TextPanel.MySpriteDrawFrame;
 
 namespace IngameScript
 {
@@ -12,7 +11,7 @@ namespace IngameScript
     {
         partial class HUDModule
         {
-            private void DrawSpeedIndicatorF18StyleKph(MSDF frame, double currentSpeedKph)
+            private void DrawSpeedIndicatorF18StyleKph(MySpriteDrawFrame frame, double currentSpeedKph)
             {
                 currentSpeedKph = Mx(0, currentSpeedKph);
                 const float PIXELS_PER_SPEED_UNIT = 800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT;
@@ -82,10 +81,12 @@ namespace IngameScript
                 string machText = $"M {mach:F2}";
                 SpriteHelpers.Tt(frame, machText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f, 0.5f, HUD_SECONDARY);
 
-                SpriteHelpers.Tt(frame, ">", digitalSpeedBoxX - 10f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AR);
+                // Tape index sprite — points right toward the speed tape selected-value line.
+                // Sprite default points left; rotate 180° to point right. Apex offset = +size/4.
+                SpriteHelpers.Sp(frame, TEX_TAPE_INDEX, 7f, centerY, 14f, 14f, HUD_PRIMARY, (float)PI);
             }
 
-            private void DrawCompass(MSDF frame, double heading)
+            private void DrawCompass(MySpriteDrawFrame frame, double heading)
             {
                 float centerX = SX(hud) / 2f;
                 float compassY = 40f;
@@ -117,7 +118,7 @@ namespace IngameScript
                     }
                 }
 
-                SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, centerX, compassY - compassHeight / 2f - 6f, 12f, 10f, HUD_EMPHASIS, (float)PI);
+                SpriteHelpers.Sp(frame, TEX_HDG_CHEVRON, centerX, compassY - compassHeight / 2f - 6f, 22f, 22f, HUD_EMPHASIS);
 
                 // Digital heading readout box
                 float headingBoxWidth = 50f;
@@ -144,7 +145,7 @@ namespace IngameScript
                 else return "NW";
             }
 
-            private void DrawAltitudeIndicatorF18Style(MSDF frame, double currentAltitude, TimeSpan currentTime)
+            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
             {
                 // VVI from gravity-projected velocity (computed in UpdateFlightData)
                 double verticalVelocity = verticalVelocityMps;
@@ -208,7 +209,8 @@ namespace IngameScript
                 string currentAltitudeText = currentAltitude.ToString("F0");
                 SpriteHelpers.Tt(frame, currentAltitudeText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140, 0.8f, HUD_PRIMARY);
 
-                SpriteHelpers.Tt(frame, "<", digitalAltBoxX + digitalAltBoxWidth + 15f, centerY - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AL);
+                // Tape index sprite (left-pointing by default) — points left toward the altitude tape.
+                SpriteHelpers.Sp(frame, TEX_TAPE_INDEX, screenWidth - 7f, centerY, 14f, 14f, HUD_PRIMARY);
 
                 // VVI (Vertical Velocity Indicator) below altitude box
                 Color vviColor = Ab(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
@@ -217,7 +219,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
             }
 
-            private void DrawGForceIndicator(MSDF frame, double gForces, double peakGForce)
+            private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
             {
                 const float PADDING = 10f;
                 const float TEXT_SCALE = 0.8f;
@@ -230,7 +232,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, peakGText, PADDING, SY(hud) - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
             }
 
-            private void DrawAOAIndexer(MSDF frame, double aoa, Vector3D acceleration, double velocity)
+            private void DrawAOAIndexer(MySpriteDrawFrame frame, double aoa, Vector3D acceleration, double velocity)
             {
                 const float INDEXER_X = 100f;
                 float indexerY = SY(hud) / 2f;
@@ -312,7 +314,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(frame, $"E{energySymbol}", INDEXER_X, indexerY + 25f, 0.5f, energyColor);
             }
 
-            private void DrawStallWarning(MSDF frame, int level, double currentAoA)
+            private void DrawStallWarning(MySpriteDrawFrame frame, int level, double currentAoA)
             {
 
                 Vector2 center = SS(hud) / 2f;
@@ -356,28 +358,17 @@ namespace IngameScript
                     SpriteHelpers.Tt(frame, aoaText, center.X, textY + 25f, 0.7f, warningColor);
                 }
 
-                // Draw AoA bracket highlights for stall
-                if (level >= 2)
+                // AoA bracket sprite (E-shape — spine + 3 arms). Visible content
+                // spans ~44% of canvas width, 50% height, so size 80 → 35×40 visible
+                // sitting just left of the AoA indexer at INDEXER_X=100.
+                if (level >= 2 && (flash || level < 3))
                 {
-                    float bracketX = 100f;
-                    float bracketY = SY(hud) / 2f - 30f;
-                    float bracketHeight = 60f;
-
-                    if (flash || level < 3)
-                    {
-                        // Left bracket
-                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY),
-                                          V2(bracketX - 15f, bracketY + bracketHeight), 3f, warningColor);
-                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY),
-                                          V2(bracketX - 5f, bracketY), 3f, warningColor);
-                        SpriteHelpers.AddLineSprite(frame, V2(bracketX - 15f, bracketY + bracketHeight),
-                                          V2(bracketX - 5f, bracketY + bracketHeight), 3f, warningColor);
-                    }
+                    SpriteHelpers.Sp(frame, TEX_AOA_BRACKET, 75f, SY(hud) / 2f, 80f, 80f, warningColor);
                 }
             }
 
             private void DrawLeftInfoBox(
-                MSDF frame,
+                MySpriteDrawFrame frame,
                 double airspeed,
                 float centerX,
                 float centerY,
@@ -408,7 +399,7 @@ namespace IngameScript
             }
 
             private void DrawFlightInfo(
-                MSDF frame,
+                MySpriteDrawFrame frame,
                 double throttle
             )
             {
