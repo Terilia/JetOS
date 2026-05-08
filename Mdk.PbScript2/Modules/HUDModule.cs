@@ -131,8 +131,6 @@ namespace IngameScript
             }
             internal List<MissileTrackingData> activeMissiles = new List<MissileTrackingData>();
 
-            // Radar sweep animation
-            internal int radarSweepTick = 0;
 
 
             // --- Shared Constants for renderers ---
@@ -253,7 +251,6 @@ namespace IngameScript
                 if (!ValidateHUDState())
                     return;
 
-                radarSweepTick++;
                 CacheTheme();
 
                 double throttle = cockpit.MoveIndicator.Z * -1;
@@ -423,13 +420,13 @@ namespace IngameScript
                 float gap = chW * 0.08f;
                 float cx = w / 2f;
 
-                if (warning && (radarSweepTick / 8) % 2 == 0)
+                if (warning && Anim.Blink(0.27))
                 {
                     // Right side of pair (or solo on the right when only warning)
                     float wx = caution ? cx + chW / 2f + gap / 2f : cx;
                     SpriteHelpers.Sp(frame, TEX_MASTER_WARNING, wx, topY + chH / 2f, chW, chH, HUD_WARNING);
                 }
-                if (caution && (radarSweepTick / 12) % 2 == 0)
+                if (caution && Anim.Blink(0.40))
                 {
                     float cxLeft = warning ? cx - chW / 2f - gap / 2f : cx;
                     SpriteHelpers.Sp(frame, TEX_MASTER_CAUTION, cxLeft, topY + chH / 2f, chW, chH, HUD_EMPHASIS);

@@ -18,6 +18,17 @@ namespace IngameScript
             private const float RADAR_RANGE_PADDING = 1.3f;       // 30% padding beyond farthest target
             private const float RADAR_SPEED_LOOKAHEAD_SEC = 25f;  // ~half a minute of forward visibility at current speed
 
+            // Pre-allocated cache shared between the maxDist pass and the render pass —
+            // avoids recomputing (toTarget, dist, dotRight, dotForward) twice per enemy.
+            private struct RadarContact
+            {
+                public Vector3D ToTarget;
+                public float Distance;
+                public float DotRight;
+                public float DotForward;
+            }
+            private RadarContact[] _radarBuf = new RadarContact[16];
+
             private void DrawRadarMinimap(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
             {
                 if (cockpit == null || hud == null) return;
@@ -74,15 +85,21 @@ namespace IngameScript
                 else
                     yawRight = VN(yawRight);
 
-                // --- Determine auto-scale range from radar contacts ---
-                float maxDist = 0f;
+                // --- Pass 1: compute toTarget + distance + axis dots once, find maxDist for scaling.
+                // Pass 2 below reuses these so we don't recompute per-enemy vector math.
                 var enemies = myjet.enemyList;
-
-                for (int i = 0; i < enemies.Count; i++)
+                int n = enemies.Count;
+                if (_radarBuf.Length < n) _radarBuf = new RadarContact[Mx(n, _radarBuf.Length * 2)];
+                float maxDist = 0f;
+                for (int i = 0; i < n; i++)
                 {
-                    float dist = (float)VDi(enemies[i].Position, cockpitPos);
-                    if (dist > maxDist)
-                        maxDist = dist;
+                    Vector3D toTarget = enemies[i].Position - cockpitPos;
+                    float dist = (float)toTarget.Length();
+                    _radarBuf[i].ToTarget = toTarget;
+                    _radarBuf[i].Distance = dist;
+                    _radarBuf[i].DotRight = (float)VD(toTarget, yawRight);
+                    _radarBuf[i].DotForward = (float)VD(toTarget, yawForward);
+                    if (dist > maxDist) maxDist = dist;
                 }
 
                 // Range = max(farthest contact × padding, speed × lookahead, hard min), clamped to hard max.
@@ -128,22 +145,19 @@ namespace IngameScript
                 // Own ship at radar center (top-down jet silhouette).
                 SpriteHelpers.Sp(frame, TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
 
-                // --- Draw contacts ---
+                // --- Draw contacts (reuses Pass 1 cache) ---
                 var selectedEnemy = myjet.GetSelectedEnemy();
 
-                for (int i = 0; i < enemies.Count; i++)
+                for (int i = 0; i < n; i++)
                 {
                     var enemy = enemies[i];
-                    Vector3D toTarget = enemy.Position - cockpitPos;
-                    float dist = (float)toTarget.Length();
+                    Vector3D toTarget = _radarBuf[i].ToTarget;
+                    float dist = _radarBuf[i].Distance;
                     if (dist < 1.0) continue;
 
-                    float dotRight = (float)VD(toTarget, yawRight);
-                    float dotForward = (float)VD(toTarget, yawForward);
-
                     Vector2 offset = V2(
-                        dotRight * pixelsPerMeter,
-                        -dotForward * pixelsPerMeter
+                        _radarBuf[i].DotRight * pixelsPerMeter,
+                        -_radarBuf[i].DotForward * pixelsPerMeter
                     );
 
                     // Clamp to radar circle edge
@@ -197,9 +211,9 @@ namespace IngameScript
                 }
 
                 // Threat count below radar
-                if (enemies.Count > 0)
+                if (n > 0)
                 {
-                    SpriteHelpers.Tt(frame, $"TGT: {enemies.Count}", radarCenter.X, radarOrigin.Y + radarSize.Y + 5f, 0.4f, HUD_PRIMARY);
+                    SpriteHelpers.Tt(frame, $"TGT: {n}", radarCenter.X, radarOrigin.Y + radarSize.Y + 5f, 0.4f, HUD_PRIMARY);
                 }
             }
 

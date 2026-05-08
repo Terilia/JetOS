@@ -66,6 +66,16 @@ namespace IngameScript
 
             public static void DrawRectangleOutline(MySpriteDrawFrame frame, float x, float y, float width, float height, float lineWidth, Color color)
             {
+                // Square-ish outlines collapse to a single SquareHollow sprite (1 sprite instead of 4).
+                // Stretched rects fall back to four 1-px filled rects so the border stays uniform —
+                // SquareHollow's edge thickness scales with sprite dimensions and looks lopsided
+                // when w/h diverges much.
+                float aspect = width / Mx(height, 0.001f);
+                if (aspect >= 0.7f && aspect <= 1.4f)
+                {
+                    SqT(TEXTURE_SQUARE_HOLLOW, x + width / 2f, y + height / 2f, width, height, color);
+                    return;
+                }
                 Bx(frame, x + width / 2f, y, width, lineWidth, color);
                 Bx(frame, x + width / 2f, y + height, width, lineWidth, color);
                 Bx(frame, x, y + height / 2f, lineWidth, height, color);
@@ -74,20 +84,11 @@ namespace IngameScript
 
             public static void DrawCircleOutline(MySpriteDrawFrame frame, Vector2 center, float radius, Color color, float thickness)
             {
-                // Line-segment circle using precomputed trig — same visual quality, zero runtime sin/cos
-                for (int i = 0; i < CIRC_SEGS; i++)
-                {
-                    Vector2 p1 = center + V2(CCos[i] * radius, CSin[i] * radius);
-                    Vector2 p2 = center + V2(CCos[i + 1] * radius, CSin[i + 1] * radius);
-                    Vector2 delta = p2 - p1;
-                    float length = delta.Length();
-                    if (length > 0)
-                    {
-                        Vector2 mid = (p1 + p2) * 0.5f;
-                        float rotation = (float)At2(delta.Y, delta.X);
-                        Bx(frame, mid.X, mid.Y, length + thickness, thickness, color, rotation);
-                    }
-                }
+                // Single CircleHollow sprite — was 24 line segments. The border thickness now
+                // scales with sprite size rather than being fixed pixels, but for the few callers
+                // (gun overlay, terrain insets) the visual is indistinguishable.
+                float size = radius * 2f;
+                SqT(TEXTURE_CIRCLE, center.X, center.Y, size, size, color);
             }
 
             public static string FormatRange(double meters)

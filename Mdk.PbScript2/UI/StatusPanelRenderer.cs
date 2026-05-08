@@ -20,14 +20,14 @@ namespace IngameScript
                 if (jet == null || jet._cockpit == null) return;
                 float x = area.Position.X, y = area.Position.Y;
                 float w = area.Width, areaH = area.Height;
-                float gap = 6f, resH = 36f;
+                float gap = 6f, resH = 46f;
 
                 double fuelPct, fuelSec;
                 jet.GetFuelStatus(out fuelPct, out fuelSec);
                 if (jet.tanks.Count > 0)
                 {
                     _animFuel.SetTarget(fuelPct);
-                    DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)_animFuel.Value, FmtTime(fuelSec), TEX_FUEL_TANK, 12f, 14f);
+                    DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)_animFuel.Value, FmtTime(fuelSec), TEX_FUEL_TANK, 18f, 22f);
                     y += resH + gap;
                 }
 
@@ -38,7 +38,7 @@ namespace IngameScript
                     float bp = maxMWh > 0 ? curMWh / maxMWh : 0f;
                     _animBattery.SetTarget(bp);
                     string bt = netDrain > 0.001f ? FmtTime(curMWh / netDrain * 3600) : netDrain < -0.001f ? "CHRG" : "---";
-                    DrawResCard(frame, x, y, w, resH, "BATTERY", (float)_animBattery.Value, bt, TEX_BATTERY, 14f, 10f);
+                    DrawResCard(frame, x, y, w, resH, "BATTERY", (float)_animBattery.Value, bt, TEX_BATTERY, 22f, 16f);
                     y += resH + gap;
                 }
 
@@ -126,7 +126,8 @@ namespace IngameScript
                 }
                 Txt(frame, title, titleX, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 Txt(frame, $"{(int)(pct * 100)}%", x + w - 9f, y + 1f, 0.38f, MFDTheme.STATUS_VAL, MFDTheme.AR);
-                float by = y + 14f, bw = w - 8f, bh = 4f, bx = x + 4f;
+                // Bar sits BELOW the icon — icon now reaches ~y+26, so the bar starts at y+30.
+                float by = y + 30f, bw = w - 8f, bh = 4f, bx = x + 4f;
                 Rect(frame, bx + bw / 2f, by + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
                 SpriteHelpers.DrawRectangleOutline(frame, bx, by, bw, bh, 0.5f, MFDTheme.BORDER);
                 float fw = bw * Cl(pct, 0f, 1f);

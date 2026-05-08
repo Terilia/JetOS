@@ -148,11 +148,13 @@ namespace IngameScript
 
                     // Shader-style transition replay — re-emit the previous page's sprites with
                     // per-sprite radial dispersion + desaturate + alpha decay. Stops capturing
-                    // first so replayed sprites don't leak into next tick's snapshot.
+                    // first so replayed sprites don't leak into next tick's snapshot. Cut the
+                    // replay at 85% progress: alpha is ~0.003 by then (1-EaseOut(0.85)) and the
+                    // last few ticks were spending hundreds of sprites on imperceptible ghosts.
                     if (prevFrame != null && transitionStart >= 0)
                     {
                         double elapsed = SystemManager.ElapsedSeconds - transitionStart;
-                        if (elapsed < PAGE_FADE_DURATION)
+                        if (elapsed < PAGE_FADE_DURATION * 0.85)
                         {
                             SpriteBus.End();
                             ReplayWithTransform(prevFrame, sw, sh, elapsed / PAGE_FADE_DURATION);
@@ -242,6 +244,7 @@ namespace IngameScript
                 float txtScale = tightItems ? sh * 0.00094f : sh * 0.00104f;
 
                 float targetY = top + selectedIndex * rowH;
+                double now = SystemManager.ElapsedSeconds;
 
                 // First-frame init or page-transition snap.
                 if (snapSelection || _selPrevIndex < 0)
@@ -252,15 +255,15 @@ namespace IngameScript
                 else if (selectedIndex != _selPrevIndex)
                 {
                     // Snapshot whatever Y the bar is currently at, so a fast double-press doesn't teleport.
-                    _selAnimFromY = CurrentSelectionY(top, rowH);
+                    _selAnimFromY = CurrentSelectionY(top, rowH, now);
                     _selPrevIndex = selectedIndex;
-                    _selAnimStart = SystemManager.ElapsedSeconds;
+                    _selAnimStart = now;
                 }
 
                 float animY;
                 if (_selAnimStart >= 0)
                 {
-                    double t = (SystemManager.ElapsedSeconds - _selAnimStart) / SELECTION_TWEEN_DURATION;
+                    double t = (now - _selAnimStart) / SELECTION_TWEEN_DURATION;
                     if (t >= 1) { _selAnimStart = -1; animY = targetY; }
                     else animY = (float)Anim.Lerp(_selAnimFromY, targetY, Anim.EaseOut(t));
                 }
@@ -284,11 +287,11 @@ namespace IngameScript
             }
 
             // Resolves the bar's current Y mid-animation so an interrupted tween doesn't snap.
-            private float CurrentSelectionY(float top, float rowH)
+            private float CurrentSelectionY(float top, float rowH, double now)
             {
                 float prevTarget = top + _selPrevIndex * rowH;
                 if (_selAnimStart < 0) return prevTarget;
-                double t = (SystemManager.ElapsedSeconds - _selAnimStart) / SELECTION_TWEEN_DURATION;
+                double t = (now - _selAnimStart) / SELECTION_TWEEN_DURATION;
                 if (t >= 1) return prevTarget;
                 return (float)Anim.Lerp(_selAnimFromY, prevTarget, Anim.EaseOut(t));
             }

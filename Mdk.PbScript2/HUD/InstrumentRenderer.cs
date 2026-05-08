@@ -336,13 +336,13 @@ namespace IngameScript
                         warningColor = Cr(255, 128, 0); // Orange
                         warningText = "HIGH AOA";
                         textScale = 0.9f;
-                        flash = (radarSweepTick / 10) % 2 == 0;
+                        flash = Anim.Blink(0.33);
                         break;
                     case 3: // Stall
                         warningColor = HUD_WARNING;
                         warningText = "STALL";
                         textScale = 1.2f;
-                        flash = (radarSweepTick / 5) % 2 == 0;
+                        flash = Anim.Blink(0.17);
                         break;
                     default:
                         return;

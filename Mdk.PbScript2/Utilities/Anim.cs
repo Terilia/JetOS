@@ -49,6 +49,15 @@ namespace IngameScript
                 return (SystemManager.ElapsedSeconds % period) / period;
             }
 
+            // Square-wave blink — true for the first half of `period`, false for the second.
+            // Uses wall-clock seconds so cadence stays honest under sim hitches (replaces the
+            // old `(tickCounter / N) % 2 == 0` pattern that drifted with frame rate).
+            public static bool Blink(double period)
+            {
+                if (period <= 0) return true;
+                return (SystemManager.ElapsedSeconds % period) < (period * 0.5);
+            }
+
             public static Color LerpColor(Color a, Color b, double t)
             {
                 if (t <= 0) return a;

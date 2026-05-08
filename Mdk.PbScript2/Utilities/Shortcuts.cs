@@ -68,6 +68,7 @@ namespace IngameScript
         const double PI = Math.PI;
         const string TRIM = "Trim";
         const string TEXTURE_SQUARE = "SquareSimple";
+        const string TEXTURE_SQUARE_HOLLOW = "SquareHollow";
         const string TEXTURE_CIRCLE = "CircleHollow";
         const string TEXTURE_TRIANGLE = "Triangle";
         const string TEXTURE_CIRCLE_SOLID = "Circle";

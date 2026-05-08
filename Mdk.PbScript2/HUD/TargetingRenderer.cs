@@ -223,7 +223,7 @@ namespace IngameScript
                     bracketSize * 1.6f, bracketSize * 1.6f, bracketColor);
 
                 // STT lock indicator — flashing diamond inside the bracket when track-locked.
-                if (radarControl != null && radarControl.IsTrackLocked && (radarSweepTick / 8) % 2 == 0)
+                if (radarControl != null && radarControl.IsTrackLocked && Anim.Blink(0.27))
                 {
                     SpriteHelpers.Sp(frame, TEX_LOCK_DIAMOND, targetScreenPos.X, targetScreenPos.Y,
                         bracketSize * 1.0f, bracketSize * 1.0f, HUD_WARNING);
@@ -310,7 +310,7 @@ namespace IngameScript
                 float xSize = Mn(SX(hud), SY(hud)) * 0.4f;
                 Color warningColor = HUD_WARNING;
 
-                if ((radarSweepTick / 10) % 2 == 0)
+                if (Anim.Blink(0.33))
                 {
                     SpriteHelpers.Sp(frame, TEX_GLYPH_CROSS, center.X, center.Y, xSize, xSize, warningColor);
 

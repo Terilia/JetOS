@@ -80,12 +80,12 @@ namespace IngameScript
                     // ── Bottom section: bay strip + missile TOF ──
                     int bayCount = myjet._bays != null ? myjet._bays.Count : 0;
                     float tofH = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 30f) : 0f;
-                    float bayH = bayCount > 0 ? 22f : 0f;
+                    float bayH = bayCount > 0 ? 52f : 0f;
                     float bottomY = contentBot - tofH - bayH;
 
                     if (bayCount > 0)
                     {
-                        DrawBayStrip(frame, sw / 2f, bottomY + 8f, myjet._bays);
+                        DrawBayStrip(frame, sw / 2f, bottomY + bayH / 2f, myjet._bays);
                         bottomY += bayH;
                     }
 
@@ -365,7 +365,7 @@ namespace IngameScript
             {
                 int n = Mn(bays.Count, 8);
                 if (n == 0) return;
-                const float W = 18f, H = 14f, SP = 4f;
+                const float W = 54f, H = 42f, SP = 6f;
                 float totalW = n * W + (n - 1) * SP;
                 float startX = centerX - totalW / 2f + W / 2f;
                 for (int i = 0; i < n; i++)
@@ -404,8 +404,7 @@ namespace IngameScript
                 {
                     SpriteHelpers.Tt(frame, "FIRE", center.X, center.Y + coneRadius + 20f, 1.0f, HUD_WARNING, MFDTheme.AC, MFDTheme.FONT_W);
 
-                    int flashPhase = (radarSweepTick / 5) % 2;
-                    if (flashPhase == 0)
+                    if (Anim.Blink(0.17))
                     {
                         SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, center.X, center.Y, 20f, 20f, HUD_WARNING);
                     }
