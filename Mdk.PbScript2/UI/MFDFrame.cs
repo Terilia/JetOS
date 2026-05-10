@@ -17,13 +17,14 @@ namespace IngameScript
             /// Returns the Y position where content should start drawing.
             /// </summary>
             public static float DrawChrome(MySpriteDrawFrame frame, float sw, float sh,
-                string headerRight = null, bool drawFooterNav = true, string footerRight = null)
+                string headerRight = null, bool drawFooterNav = true, string footerRight = null,
+                bool compact = false)
             {
                 float padX = sw * 0.019f;
-                float headerH = sh * 0.069f;
+                float headerH = sh * (compact ? 0.058f : 0.069f);
                 float footerH = sh * 0.054f;
                 float cornerLen = Mn(sw, sh) * 0.03f;
-                float topOffset = 15f;
+                float topOffset = compact ? 10f : 15f;
                 float titleScale = sh * 0.00085f;
                 float smallScale = sh * 0.00069f;
                 float tinyScale = sh * 0.00055f;

@@ -14,21 +14,6 @@ namespace IngameScript
         {
             private Jet myJet;
             private List<RadarTrackingModule> allRadars = new List<RadarTrackingModule>();
-            private List<AIBlockPair> detectedAIPairs = new List<AIBlockPair>();
-
-            private struct AIBlockPair
-            {
-                public IMyFlightMovementBlock FlightBlock;
-                public IMyOffensiveCombatBlock CombatBlock;
-                public int Index;
-
-                public AIBlockPair(IMyFlightMovementBlock flight, IMyOffensiveCombatBlock combat, int idx)
-                {
-                    FlightBlock = flight;
-                    CombatBlock = combat;
-                    Index = idx;
-                }
-            }
 
             // ==== Sequential Activation State Machine ====
             // Pool radars activate one at a time in a chain:
@@ -93,7 +78,7 @@ namespace IngameScript
             private int configuredRWRCount = 0;
             private bool anyThreatDetected = false;
 
-            public List<RWRWarning> activeThreats = new List<RWRWarning>();
+            private List<RWRWarning> activeThreats = new List<RWRWarning>();
 
             // True when ANY pool radar in LOCKED state matches the selected enemy
             public bool IsTrackLocked { get; private set; }
@@ -135,7 +120,6 @@ namespace IngameScript
 
                     if (flightBlock != null && combatBlock != null)
                     {
-                        detectedAIPairs.Add(new AIBlockPair(flightBlock, combatBlock, i));
                         var radar = new RadarTrackingModule(flightBlock, combatBlock);
                         allRadars.Add(radar);
                         radarStates.Add(new RadarState());

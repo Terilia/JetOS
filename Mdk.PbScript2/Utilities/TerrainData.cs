@@ -35,16 +35,6 @@ namespace IngameScript
             static Vector3D _pc;
             static int _offset;
             static bool _ready, _downloading;
-            static int _gen;
-
-            // ── Tile min/max for spatial culling ──
-            const int TILE = 16;
-            static short[] _tileMin, _tileMax;
-            static int _tileRows, _tileCols;
-            static bool _tilesReady;
-            static int _tileOfs;
-            const int TILE_BATCH = 2500;
-
             // Tangent vectors (recomputed each tick when ready)
             static Vector3D _gridFwd, _gridRight;
 
@@ -55,12 +45,7 @@ namespace IngameScript
             public static double CellSize => _cellSize > 0 ? _cellSize : DEFAULT_CELL;
             public static Vector3D GridFwd => _gridFwd;
             public static Vector3D GridRight => _gridRight;
-            public static int Gen => _gen;
-            public static bool TilesReady => _tilesReady;
-            public static double MeanR => _meanR;
             public static float DownloadProgress => _total > 0 ? (float)_offset / _total : 0f;
-            public static int Rows => _rows;
-            public static int Cols => _cols;
 
             public static void Probe(IMyProgrammableBlock me)
             {
@@ -120,9 +105,6 @@ namespace IngameScript
                     return;
                 }
 
-                if (_ready && !_tilesReady)
-                    BuildTileChunk();
-
                 if (_ready)
                     UpdateTangents(shipPos);
             }
@@ -150,34 +132,7 @@ namespace IngameScript
                 {
                     _ready = true;
                     _downloading = false;
-                    _gen++;
                 }
-            }
-
-            static void BuildTileChunk()
-            {
-                if (_tileMin == null)
-                {
-                    _tileRows = (_rows + TILE - 1) / TILE;
-                    _tileCols = (_cols + TILE - 1) / TILE;
-                    int n = _tileRows * _tileCols;
-                    _tileMin = new short[n];
-                    _tileMax = new short[n];
-                    for (int i = 0; i < n; i++) { _tileMin[i] = short.MaxValue; _tileMax[i] = short.MinValue; }
-                    _tileOfs = 0;
-                }
-                int end = Mn(_tileOfs + TILE_BATCH, _total);
-                int r = _tileOfs / _cols, c = _tileOfs % _cols;
-                for (int i = _tileOfs; i < end; i++)
-                {
-                    int ti = (r / TILE) * _tileCols + (c / TILE);
-                    short h = _grid[i];
-                    if (h < _tileMin[ti]) _tileMin[ti] = h;
-                    if (h > _tileMax[ti]) _tileMax[ti] = h;
-                    if (++c >= _cols) { c = 0; r++; }
-                }
-                _tileOfs = end;
-                if (_tileOfs >= _total) { _tilesReady = true; _gen++; }
             }
 
             /// <summary>
@@ -256,12 +211,6 @@ namespace IngameScript
                 return _meanR + _grid[r * _cols + c];
             }
 
-            /// <summary>Unchecked surface lookup — caller must ensure valid indices.</summary>
-            public static double SurfRaw(int r, int c)
-            {
-                return _meanR + _grid[r * _cols + c];
-            }
-
             public static double Alt(Vector3D wp) { return (wp - _pc).Length(); }
 
             public static double AGL(Vector3D wp)
@@ -269,20 +218,6 @@ namespace IngameScript
                 int r, c;
                 W2G(wp, out r, out c);
                 return Alt(wp) - Surf(r, c);
-            }
-
-            /// <summary>
-            /// Returns min/max surface height offsets (relative to MeanR) for
-            /// the tile containing grid cell (r,c). False if tiles not built yet.
-            /// </summary>
-            public static bool TileRange(int r, int c, out short mn, out short mx)
-            {
-                if (!_tilesReady) { mn = short.MinValue; mx = short.MaxValue; return false; }
-                if (r < 0) r = 0; else if (r >= _rows) r = _rows - 1;
-                c = ((c % _cols) + _cols) % _cols;
-                int ti = (r / TILE) * _tileCols + (c / TILE);
-                mn = _tileMin[ti]; mx = _tileMax[ti];
-                return true;
             }
         }
     }

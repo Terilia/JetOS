@@ -9,21 +9,6 @@ namespace IngameScript
     {
         static class SpriteHelpers
         {
-            // Precomputed sin/cos for 24-segment circles — eliminates 48 trig calls per circle per frame
-            internal const int CIRC_SEGS = 24;
-            internal static readonly float[] CSin = new float[CIRC_SEGS + 1];
-            internal static readonly float[] CCos = new float[CIRC_SEGS + 1];
-
-            static SpriteHelpers()
-            {
-                for (int i = 0; i <= CIRC_SEGS; i++)
-                {
-                    double a = i * 2.0 * PI / CIRC_SEGS;
-                    CSin[i] = (float)Sn(a);
-                    CCos[i] = (float)Cs(a);
-                }
-            }
-
             public static void Bx(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
             {
                 Sq(x, y, w, h, c);
@@ -104,17 +89,6 @@ namespace IngameScript
                 return V2(screenX, screenY);
             }
 
-            public static Vector2 RotatePoint(Vector2 point, Vector2 pivot, float angle)
-            {
-                float cosTheta = (float)Cs(angle);
-                float sinTheta = (float)Sn(angle);
-                Vector2 translatedPoint = point - pivot;
-                Vector2 rotatedPoint = V2(
-                    translatedPoint.X * cosTheta - translatedPoint.Y * sinTheta,
-                    translatedPoint.X * sinTheta + translatedPoint.Y * cosTheta
-                );
-                return rotatedPoint + pivot;
-            }
         }
     }
 }

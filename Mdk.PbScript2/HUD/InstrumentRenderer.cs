@@ -74,7 +74,7 @@ namespace IngameScript
 
                 SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
 
-                string currentSpeedText = currentSpeedKph.ToString("F0");
+                string currentSpeedText = currentSpeedKph.ToString("000");
                 SpriteHelpers.Tt(frame, currentSpeedText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f, 0.8f, HUD_PRIMARY);
 
                 // Mach number below speed box
@@ -145,10 +145,10 @@ namespace IngameScript
                 else return "NW";
             }
 
-            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, TimeSpan currentTime)
+            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, double displayVerticalVelocity)
             {
                 // VVI from gravity-projected velocity (computed in UpdateFlightData)
-                double verticalVelocity = verticalVelocityMps;
+                double verticalVelocity = displayVerticalVelocity;
 
                 float screenWidth = SX(hud);
                 float screenHeight = SY(hud);
@@ -206,7 +206,7 @@ namespace IngameScript
 
                 SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
-                string currentAltitudeText = currentAltitude.ToString("F0");
+                string currentAltitudeText = currentAltitude.ToString("0000");
                 SpriteHelpers.Tt(frame, currentAltitudeText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140, 0.8f, HUD_PRIMARY);
 
                 // Tape index sprite (left-pointing by default) — points left toward the altitude tape.
@@ -215,7 +215,7 @@ namespace IngameScript
                 // VVI (Vertical Velocity Indicator) below altitude box
                 Color vviColor = Ab(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
                 string vviArrow = verticalVelocity > 1 ? "\u25B2" : verticalVelocity < -1 ? "\u25BC" : "\u25C6";
-                string vviText = $"{vviArrow} {verticalVelocity:F0}";
+                string vviText = $"{vviArrow} {verticalVelocity,4:F0}";
                 SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
             }
 
@@ -369,10 +369,8 @@ namespace IngameScript
 
             private void DrawLeftInfoBox(
                 MySpriteDrawFrame frame,
-                double airspeed,
                 float centerX,
                 float centerY,
-                double pixelsPerDegree,
                 params LabelValue[] extraValues
             )
             {

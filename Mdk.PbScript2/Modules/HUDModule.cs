@@ -61,17 +61,15 @@ namespace IngameScript
 
             // --- Flight Data ---
             internal double peakGForce = 0;
-            internal float currentTrim;
             internal double pitch = 0;
             internal double roll = 0;
             internal double velocity;
-            internal double deltaTime;
             internal double mach;
             internal Vector3D previousVelocity = VZ;
 
             // --- Smoothed Values with Running Averages ---
             private CircularBuffer<double> velocityHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
-            internal CircularBuffer<AltitudeTimePoint> altitudeHistory = new CircularBuffer<AltitudeTimePoint>(SMOOTHING_WINDOW_SIZE);
+            private CircularBuffer<double> altitudeHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
             private CircularBuffer<double> gForcesHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
             private CircularBuffer<double> aoaHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
 
@@ -81,6 +79,13 @@ namespace IngameScript
             internal double smoothedAoA = 0;
             internal double throttlePercent = 0;
             internal double verticalVelocityMps = 0;
+
+            // Display-only easing. Flight controls, targeting, and weapon logic keep using
+            // the real/smoothed telemetry above; these only soften rendered instruments.
+            private AnimatedValue _displaySpeedKph = new AnimatedValue(0.20);
+            private AnimatedValue _displayAltitude = new AnimatedValue(0.20);
+            private AnimatedValue _displayThrottle = new AnimatedValue(0.18);
+            private AnimatedValue _displayVvi = new AnimatedValue(0.18);
 
             // Running sums for efficient smoothing
             private double velocitySum = 0;
@@ -114,23 +119,10 @@ namespace IngameScript
             // --- Manual Fire Toggle ---
             private bool manualFireToggleCooldown = false;
 
-            // --- UI State ---
-            internal TimeSpan totalElapsedTime = TimeSpan.Zero;
 
             // --- Cached HUD Values ---
             internal Vector2 hudCenter;
             internal float viewportMinDim;
-
-            // --- Missile tracking ---
-            internal struct MissileTrackingData
-            {
-                public int BayIndex;
-                public TimeSpan LaunchTime;
-                public double EstimatedTOF;
-                public Vector3D TargetPosition;
-            }
-            internal List<MissileTrackingData> activeMissiles = new List<MissileTrackingData>();
-
 
 
             // --- Shared Constants for renderers ---
@@ -172,18 +164,6 @@ namespace IngameScript
                 {
                     Label = label;
                     Value = value;
-                }
-            }
-
-            internal struct AltitudeTimePoint
-            {
-                public readonly TimeSpan Time;
-                public readonly double Altitude;
-
-                public AltitudeTimePoint(TimeSpan time, double altitude)
-                {
-                    Time = time;
-                    Altitude = altitude;
                 }
             }
 
@@ -251,6 +231,11 @@ namespace IngameScript
                 if (!ValidateHUDState())
                     return;
 
+                // Engine direction classification was deferred from Jet ctor — re-runs every
+                // tick to pick up cold-init thrusters as they register, plus mid-game changes.
+                myjet.ClassifyEnginesIfNeeded();
+                ParentProgram.Echo(myjet.EngineDebug);
+
                 CacheTheme();
 
                 double throttle = cockpit.MoveIndicator.Z * -1;
@@ -305,18 +290,23 @@ namespace IngameScript
                         DrawFlightPathMarker(frame, currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
-                    DrawLeftInfoBox(frame, smoothedVelocity, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, pixelsPerDegree, new LabelValue("T", myjet.offset));
-                    DrawFlightInfo(frame, throttlePercent);
-                    DrawSpeedIndicatorF18StyleKph(frame, smoothedVelocity);
+                    DrawLeftInfoBox(frame, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, new LabelValue("T", myjet.offset));
+                    _displaySpeedKph.SetTarget(smoothedVelocity);
+                    _displayAltitude.SetTarget(smoothedAltitude);
+                    _displayThrottle.SetTarget(throttlePercent);
+                    _displayVvi.SetTarget(verticalVelocityMps);
+
+                    DrawFlightInfo(frame, _displayThrottle.Value);
+                    DrawSpeedIndicatorF18StyleKph(frame, _displaySpeedKph.Value);
                     if (SystemManager.GetConfigValue("hud_compass") > 0.5f)
                         DrawCompass(frame, heading);
-                    DrawAltitudeIndicatorF18Style(frame, smoothedAltitude, totalElapsedTime);
+                    DrawAltitudeIndicatorF18Style(frame, _displayAltitude.Value, _displayVvi.Value);
                     if (SystemManager.GetConfigValue("hud_gforce") > 0.5f)
                         DrawGForceIndicator(frame, smoothedGForces, peakGForce);
 
                     if (velocity > 1.0 && SystemManager.GetConfigValue("hud_aoa") > 0.5f)
                     {
-                        Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
+                        Vector3D acceleration = (currentVelocity - previousVelocity) / SystemManager.DeltaSeconds;
                         DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
                     }
 
@@ -327,18 +317,20 @@ namespace IngameScript
                     Vector2 surfaceSize = SS(hud);
                     var selectedEnemy = myjet.GetSelectedEnemy();
 
+                    // Auto-fire gating: enable gatlings when the boresight overlaps the lead pip,
+                    // disable otherwise. manualfire bypasses this — UpdateThrottleControl owns
+                    // the manual path. Default false covers no-target / no-intercept.
+                    bool isAimingAtPip = false;
+
                     // Targeting
                     if (selectedEnemy.HasValue)
                     {
                         Vector3D activeTargetVel = selectedEnemy.Value.Velocity;
                         Vector3D activeTargetAccel = selectedEnemy.Value.Acceleration;
-                        // Compensate for 1-tick spawn delay: in the tick between calculation
-                        // and bullet spawn, both objects move. Adjust target by V_rel * dt
-                        // to reflect the shorter range at spawn time.
                         // Spawn-delay compensation: one dt of relative motion between
                         // computing the lead and the bullet actually spawning.
                         Vector3D activeTargetPos = selectedEnemy.Value.Position
-                            + (activeTargetVel - currentVelocity) * deltaTime;
+                            + (activeTargetVel - currentVelocity) * SystemManager.DeltaSeconds;
                         double muzzleVelocity = SystemManager.GetConfigValue("gun_muzzle_velocity");
                         double range = VDi(shooterPosition, activeTargetPos);
 
@@ -352,7 +344,6 @@ namespace IngameScript
                             Vector3D directionToIntercept = aimPoint - shooterPosition;
                             Vector3D localDirectionToIntercept = VTN(directionToIntercept, worldToCockpitMatrix);
 
-                            bool isAimingAtPip = false;
                             if (localDirectionToIntercept.Z < 0)
                             {
                                 Vector2 pipScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToIntercept, surfaceSize / 2f, surfaceSize);
@@ -363,7 +354,7 @@ namespace IngameScript
 
                             if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
                                 DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, HUD_INFO);
+                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, HUD_INFO);
                             if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
                                 DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
@@ -371,6 +362,8 @@ namespace IngameScript
                         if (SystemManager.GetConfigValue("hud_breakaway") > 0.5f)
                             DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition, activeTargetVel);
                     }
+                    if (!myjet.manualfire)
+                        SetGatlingsEnabled(isAimingAtPip);
                     DrawFormationGhosts(frame, hud, worldToCockpitMatrix);
                     DrawGunControlOverlay(frame);
                     }
@@ -452,8 +445,6 @@ namespace IngameScript
                 out Vector3D upVector, out Vector3D gravity, out bool inGravity,
                 out Vector3D gravityDirection)
             {
-                totalElapsedTime += ParentProgram.Runtime.TimeSinceLastRun;
-
                 worldMatrix = WM(cockpit);
                 forwardVector = worldMatrix.Forward;
                 upVector = worldMatrix.Up;
@@ -482,12 +473,8 @@ namespace IngameScript
                     verticalVelocityMps = VD(currentVelocity, -gravityDirection);
                 else
                     verticalVelocityMps = currentVelocity.Y;
-                deltaTime = ParentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
 
-                if (deltaTime <= 0)
-                    deltaTime = 0.0167;
-
-                Vector3D acceleration = (currentVelocity - previousVelocity) / deltaTime;
+                Vector3D acceleration = (currentVelocity - previousVelocity) / SystemManager.DeltaSeconds;
                 double gForces = acceleration.Length() / GRAVITY_ACCELERATION;
                 previousVelocity = currentVelocity;
 
@@ -509,7 +496,7 @@ namespace IngameScript
 
             private void UpdateThrottleControl(double throttle, double jumpthrottle)
             {
-                float throttleChange = (float)(THROTTLE_RATE * deltaTime);
+                float throttleChange = (float)(THROTTLE_RATE * SystemManager.DeltaSeconds);
 
                 if (throttle > 0.5)
                 {
@@ -524,7 +511,7 @@ namespace IngameScript
 
                     if (throttlecontrol >= THROTTLE_HYDROGEN_THRESHOLD && !hydrogenswitch)
                     {
-                        abHoldTimer += (float)deltaTime;
+                        abHoldTimer += (float)SystemManager.DeltaSeconds;
                         // AB engages if: pilot released W once and re-pushed, OR held at MIL long enough.
                         if (abGatePassed || abHoldTimer > AB_AUTO_ENGAGE_SECONDS)
                         {
@@ -594,13 +581,7 @@ namespace IngameScript
                 }
 
                 if (myjet.manualfire)
-                {
-                    for (int i = 0; i < myjet._gatlings.Count; i++)
-                    {
-                        if (myjet._gatlings[i] != null && !myjet._gatlings[i].Enabled)
-                            myjet._gatlings[i].Enabled = true;
-                    }
-                }
+                    SetGatlingsEnabled(true);
 
                 float scaledThrottle = throttlecontrol <= THROTTLE_HYDROGEN_THRESHOLD
                     ? throttlecontrol / THROTTLE_HYDROGEN_THRESHOLD
@@ -608,7 +589,7 @@ namespace IngameScript
 
                 // Read current max thrust capacity per side (center excluded — they don't cause yaw).
                 // MaxEffectiveThrust changes slowly with atmosphere, so cache for THRUST_CACHE_REFRESH_SECONDS.
-                thrustCacheAge += deltaTime;
+                thrustCacheAge += SystemManager.DeltaSeconds;
                 if (thrustCacheAge >= THRUST_CACHE_REFRESH_SECONDS)
                 {
                     cachedLeftMax = 0f;
@@ -664,6 +645,15 @@ namespace IngameScript
                 }
             }
 
+            private void SetGatlingsEnabled(bool enabled)
+            {
+                for (int i = 0; i < myjet._gatlings.Count; i++)
+                {
+                    if (myjet._gatlings[i] != null && myjet._gatlings[i].Enabled != enabled)
+                        myjet._gatlings[i].Enabled = enabled;
+                }
+            }
+
             // =============================================
             // SMOOTHING & CALCULATIONS
             // =============================================
@@ -680,9 +670,9 @@ namespace IngameScript
 
                 if (altitudeHistory.Count >= SMOOTHING_WINDOW_SIZE)
                 {
-                    altitudeSum -= altitudeHistory.Dequeue().Altitude;
+                    altitudeSum -= altitudeHistory.Dequeue();
                 }
-                altitudeHistory.Enqueue(new AltitudeTimePoint(totalElapsedTime, altitude));
+                altitudeHistory.Enqueue(altitude);
                 altitudeSum += altitude;
                 smoothedAltitude = altitudeSum / altitudeHistory.Count;
 
@@ -721,8 +711,8 @@ namespace IngameScript
             {
                 foreach (var item in stabilizers)
                 {
-                    currentTrim = item.GetValueFloat(TRIM);
-                    if (Ab(currentTrim - desiredTrim) > 0.001f)
+                    float trim = item.GetValueFloat(TRIM);
+                    if (Ab(trim - desiredTrim) > 0.001f)
                         item.SetValue(TRIM, desiredTrim);
                 }
             }

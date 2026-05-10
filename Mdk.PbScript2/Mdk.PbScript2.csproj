@@ -33,11 +33,6 @@
     <ItemGroup>
       <Compile Remove="Diagnostics\**" />
       <None Include="Diagnostics\**" />
-      <Compile Remove="UI\StartupSequence.cs" />
-      <Compile Remove="Utilities\TerrainAPI.cs" />
-      <Compile Remove="Modules\TerrainMapModule.cs" />
-      <Compile Remove="UI\TerrainRenderer.cs" />
-      <Compile Remove="UI\StatusPanelRenderer.idle-slides.cs" />
     </ItemGroup>
 
 </Project>

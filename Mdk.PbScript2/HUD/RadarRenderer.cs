@@ -225,17 +225,6 @@ namespace IngameScript
                 return (float)Rd(range / 100) * 100;
             }
 
-            private static void DrawDashedCircle(MySpriteDrawFrame frame, Vector2 center, float radius, Color color)
-            {
-                // Uses precomputed trig table — eliminates 24 sin/cos calls per frame
-                for (int i = 0; i < SpriteHelpers.CIRC_SEGS; i += 2)
-                {
-                    Vector2 p1 = center + V2(SpriteHelpers.CCos[i] * radius, SpriteHelpers.CSin[i] * radius);
-                    Vector2 p2 = center + V2(SpriteHelpers.CCos[i + 1] * radius, SpriteHelpers.CSin[i + 1] * radius);
-                    SpriteHelpers.AddLineSprite(frame, p1, p2, 1f, color);
-                }
-            }
-
             // Pre-allocated list for wingman positions to avoid per-frame allocation
             private List<Vector3D> _wingmanPositionBuffer = new List<Vector3D>();
 

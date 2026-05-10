@@ -41,7 +41,7 @@ namespace IngameScript
                 }
             }
 
-            public static int ExtractBayNumber(IMyShipMergeBlock bay, int fallback)
+            static int ExtractBayNumber(IMyShipMergeBlock bay, int fallback)
             {
                 if (bay == null) return fallback;
                 var parts = bay.CustomName.Split(' ');
@@ -51,7 +51,7 @@ namespace IngameScript
                 return fallback;
             }
 
-            public static bool TryGetTargetPosition(Jet jet, out Vector3D pos)
+            static bool TryGetTargetPosition(Jet jet, out Vector3D pos)
             {
                 pos = default(Vector3D);
                 if (jet != null)
@@ -66,7 +66,7 @@ namespace IngameScript
                 return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out pos);
             }
 
-            public static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)
+            static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)
             {
                 pos = default(Vector3D);
                 vel = VZ;
@@ -89,7 +89,7 @@ namespace IngameScript
             /// straight at the target — no cone/salvo/approach setup is written since the geometry
             /// asks for tighter turns than the missile can actually pull.
             /// </summary>
-            public static void WriteLaunchSetup(
+            static void WriteLaunchSetup(
                 List<IMyShipMergeBlock> bays,
                 bool[] baySelected,
                 Jet jet,
@@ -149,7 +149,7 @@ namespace IngameScript
             /// Quick-fire: pick the first connected bay and launch without needing a selection.
             /// Re-writes the launch setup for just that bay so the slot GPS is correct.
             /// </summary>
-            public static void FireNextAvailableBay(
+            static void FireNextAvailableBay(
                 List<IMyShipMergeBlock> bays,
                 Program program,
                 Jet jet,
@@ -223,7 +223,7 @@ namespace IngameScript
                 }
             }
 
-            public static char ColorToChar(int r, int g, int b)
+            static char ColorToChar(int r, int g, int b)
             {
                 const double BIT_SPACING = 255.0 / 7.0;
                 return (char)(

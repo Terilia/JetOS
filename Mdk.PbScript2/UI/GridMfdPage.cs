@@ -12,17 +12,17 @@ namespace IngameScript
         {
             readonly Program _program;
             readonly Jet _jet;
-            readonly RadarControlModule _radar;
             readonly HUDModule _hud;
 
-            public GridMfdPage(Program program, Jet jet, RadarControlModule radar, HUDModule hud)
-            { _program = program; _jet = jet; _radar = radar; _hud = hud; }
+            public GridMfdPage(Program program, Jet jet, HUDModule hud)
+            { _program = program; _jet = jet; _hud = hud; }
 
             public override string HeaderRight => "STATUS";
+            public override bool CompactChrome => true;
 
             public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
             {
-                GridVisualization.Render(frame, surfaceSize, area, _program, _jet, _radar, _hud);
+                GridVisualization.Render(frame, surfaceSize, area, _program, _jet, _hud);
             }
         }
     }

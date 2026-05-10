@@ -26,27 +26,12 @@ namespace IngameScript
                 return 1 - inv * inv * inv;
             }
 
-            // Smoothstep — symmetric ease in and out.
-            public static double EaseInOut(double t)
-            {
-                if (t <= 0) return 0;
-                if (t >= 1) return 1;
-                return t * t * (3 - 2 * t);
-            }
-
-            // Sine pulse 0..1..0 over `period` seconds. Useful for warning blinks.
-            public static double Pulse(double period)
+            // Sine pulse 0..1..0 over `period` seconds. Backs the WarnAlpha helper.
+            private static double Pulse(double period)
             {
                 if (period <= 0) return 0;
                 double phase = (SystemManager.ElapsedSeconds % period) / period;
                 return 0.5 - 0.5 * Cs(phase * 2 * PI);
-            }
-
-            // Sawtooth 0..1 over `period`. Useful for sweeps and progress dots.
-            public static double Saw(double period)
-            {
-                if (period <= 0) return 0;
-                return (SystemManager.ElapsedSeconds % period) / period;
             }
 
             // Square-wave blink — true for the first half of `period`, false for the second.

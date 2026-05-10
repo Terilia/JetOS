@@ -13,6 +13,9 @@ namespace IngameScript
             // Header text shown on the right side of the chrome (e.g. "MFD-1", "TERRAIN").
             public virtual string HeaderRight => "";
 
+            // Smaller chrome for dense non-interactive status pages.
+            public virtual bool CompactChrome => false;
+
             // Section title drawn between the breadcrumb and the content.
             // Empty string skips the section title entirely.
             public virtual string Title => "";
@@ -35,6 +38,11 @@ namespace IngameScript
 
             // Module menus pack rows tighter than the main menu so longer option lists fit.
             public virtual bool CompactRows => false;
+
+            // Optional module-owned drawing that sits inside the normal menu column after
+            // the shared menu renderer has drawn the selectable rows.
+            public virtual void RenderMenuSupplement(MySpriteDrawFrame frame, RectangleF menuArea,
+                Vector2 surfaceSize, int selectedIndex) { }
 
             // Reserve a sidebar column on the right (currently only the main menu).
             public virtual bool HasSidebar => false;

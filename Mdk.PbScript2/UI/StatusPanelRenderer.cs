@@ -15,7 +15,7 @@ namespace IngameScript
             // ════════════════════════════════════════
             // PUBLIC ENTRY POINT
             // ════════════════════════════════════════
-            public static void Render(MySpriteDrawFrame frame, RectangleF area, Jet jet, HUDModule hud, int tick)
+            public static void Render(MySpriteDrawFrame frame, RectangleF area, Jet jet, HUDModule hud)
             {
                 if (jet == null || jet._cockpit == null) return;
                 float x = area.Position.X, y = area.Position.Y;
@@ -75,20 +75,27 @@ namespace IngameScript
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
                 Txt(frame, "THRUST", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
                 float midX = x + w / 2f, colW = (w - 16f) / 2f, top = y + 16f, colH = h - 20f;
-                DrawEngCol(frame, x + 4f, top, colW, colH, jet.leftEngines, jet.leftAB, "ENG L");
-                DrawEngCol(frame, midX + 4f, top, colW, colH, jet.rightEngines, jet.rightAB, "ENG R");
+                DrawEngCol(frame, x + 4f, top, colW, colH,
+                    jet.leftEnginesAll, jet.leftABAll, jet.leftEngines, jet.leftAB, "ENG L");
+                DrawEngCol(frame, midX + 4f, top, colW, colH,
+                    jet.rightEnginesAll, jet.rightABAll, jet.rightEngines, jet.rightAB, "ENG R");
             }
 
             static void DrawEngCol(MySpriteDrawFrame frame, float x, float y, float w, float colH,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> eng,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> ab, string label)
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> allEng,
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> allAb,
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> driveEng,
+                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> driveAb, string label)
             {
-                int fn, tot; Jet.GetEngineHealth(eng, out fn, out tot);
-                float curKN, maxKN; Jet.GetEngineThrust(eng, out curKN, out maxKN);
-                float abCur, abMax; Jet.GetEngineThrust(ab, out abCur, out abMax);
+                int fn, tot, abFn, abTot;
+                Jet.GetEngineHealth(allEng, out fn, out tot);
+                Jet.GetEngineHealth(allAb, out abFn, out abTot);
+                fn += abFn; tot += abTot;
+                float curKN, maxKN; Jet.GetEngineThrust(driveEng, out curKN, out maxKN);
+                float abCur, abMax; Jet.GetEngineThrust(driveAb, out abCur, out abMax);
                 float tMax = maxKN + abMax, tCur = curKN + abCur;
                 float pct = tMax > 0 ? tCur / tMax : 0f; bool dmg = fn < tot;
-                Txt(frame, label, x, y, 0.32f, MFDTheme.MID_TEXT, MFDTheme.AL);
+                Txt(frame, label, x, y, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 Txt(frame, $"{fn}/{tot}", x + w, y, 0.3f, dmg ? MFDTheme.WARN : MFDTheme.ACCENT, MFDTheme.AR);
                 float bx = x + 2f, bw = w - 4f, bt = y + 14f, bh = colH - 28f;
                 if (bh < 6f) bh = 6f;
@@ -105,33 +112,36 @@ namespace IngameScript
                 }
                 else if (!dmg) Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, Cr(12, 22, 12));
                 float fh = bh * Cl(pct, 0f, 1f);
-                if (fh > 0.5f) Rect(frame, bx + bw / 2f, bt + bh - fh / 2f, bw, fh, abCur > 0.1f ? MFDTheme.WARN : MFDTheme.BAR_FILL);
-                Txt(frame, tMax > 0 ? $"{tCur:F0}/{tMax:F0}" : "---", x + w / 2f, bt + bh + 1f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AC);
+                if (fh > 0.5f) Rect(frame, bx + bw / 2f, bt + bh - fh / 2f, bw, fh, abCur > 0.1f ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                Txt(frame, tMax > 0 ? $"{tCur,4:F0}/{tMax,4:F0}" : " ---/ ---", x + w / 2f, bt + bh + 1f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AC);
                 if (tMax > 0) Txt(frame, "kN", x + w / 2f, bt + bh + 11f, 0.24f, MFDTheme.DIM_TEXT, MFDTheme.AC);
             }
 
             static void DrawResCard(MySpriteDrawFrame frame, float x, float y, float w, float h, string title, float pct, string timeStr, string iconTex = null, float iconW = 9f, float iconH = 9f)
             {
+                float safePct = Cl(pct, 0f, 1f);
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
-                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER);
                 float titleX = x + 4f;
                 if (iconTex != null)
                 {
-                    Color iconColor = pct < 0.2f ? MFDTheme.WARN : pct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.DIM_TEXT_MID;
+                    Color iconColor = safePct < 0.2f ? MFDTheme.WARN : safePct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.DIM_TEXT_MID;
                     SpriteHelpers.Sp(frame, iconTex, x + 4f + iconW / 2f, y + 4f + iconH / 2f, iconW, iconH, iconColor);
                     titleX = x + 6f + iconW;
                     // Health dot — position to the right of percentage text.
-                    Color dotColor = pct < 0.2f ? MFDTheme.WARN : pct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.STATUS_RDY;
+                    Color dotColor = safePct < 0.2f ? MFDTheme.WARN : safePct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.STATUS_RDY;
                     SpriteHelpers.Sp(frame, TEX_STATUS_DOT, x + w - 2f, y + 5f, 5f, 5f, dotColor);
                 }
                 Txt(frame, title, titleX, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
-                Txt(frame, $"{(int)(pct * 100)}%", x + w - 9f, y + 1f, 0.38f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                int pctText = (int)(safePct * 100);
+                Txt(frame, $"{pctText,3}%", x + w - 9f, y + 1f, 0.38f, MFDTheme.STATUS_VAL, MFDTheme.AR);
                 // Bar sits BELOW the icon — icon now reaches ~y+26, so the bar starts at y+30.
                 float by = y + 30f, bw = w - 8f, bh = 4f, bx = x + 4f;
                 Rect(frame, bx + bw / 2f, by + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
                 SpriteHelpers.DrawRectangleOutline(frame, bx, by, bw, bh, 0.5f, MFDTheme.BORDER);
-                float fw = bw * Cl(pct, 0f, 1f);
-                if (fw > 0.5f) Rect(frame, bx + fw / 2f, by + bh / 2f, fw, bh, MFDTheme.BAR_FILL);
+                float fw = bw * safePct;
+                Color barColor = safePct < 0.2f ? MFDTheme.WARN : safePct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.ACCENT;
+                if (fw > 0.5f) Rect(frame, bx + fw / 2f, by + bh / 2f, fw, bh, barColor);
                 Txt(frame, "REMAIN", bx, by + bh + 2f, 0.28f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 Txt(frame, timeStr, bx + bw, by + bh + 2f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AR);
             }

@@ -100,7 +100,6 @@ namespace IngameScript
 
                 // Initialize centralized radar control FIRST
                 radarControlModule = new RadarControlModule(parentProgram, _myJet);
-                _myJet.radarControl = radarControlModule;
                 modules.Add(radarControlModule);
 
                 airtoAirModule = new AirtoAir(parentProgram, _myJet);
@@ -130,17 +129,14 @@ namespace IngameScript
                 currentModule = null;
 
                 // Build static MFD pages for surface 1 (status grid) and surface 2 (weapons).
-                _gridPage = new GridMfdPage(parentProgram, _myJet, radarControlModule, hudProgram);
+                _gridPage = new GridMfdPage(parentProgram, _myJet, hudProgram);
                 _weaponPage = new WeaponMfdPage(hudProgram);
             }
-
-            // Exposed for pages that need access to the main MFD surface (e.g. for absolute coords).
-            public static IMyTextSurface MainSurface => lcdMain;
 
             // Default sidebar renderer — used by main menu and every module menu (fuel/battery/engine/terrain).
             public static void RenderDefaultSidebar(MySpriteDrawFrame frame, RectangleF area)
             {
-                StatusPanelRenderer.Render(frame, area, _myJet, hudProgram, currentTick);
+                StatusPanelRenderer.Render(frame, area, _myJet, hudProgram);
             }
 
             // CustomData Cache - delegates to CustomDataManager
@@ -180,7 +176,7 @@ namespace IngameScript
             {
                 // When a toolbar button is pressed, SE calls Main() twice in the same sim tick:
                 // once with UpdateType.Trigger and once with Update1. We must only process once
-                // to prevent double-advancing GameTicks, double-ticking modules, etc.
+                // to prevent double-advancing currentTick, double-ticking modules, etc.
                 if ((updateSource & UpdateType.Trigger) != 0)
                 {
                     _pendingArgument = argument;
@@ -193,7 +189,6 @@ namespace IngameScript
                 }
 
                 currentTick++;
-                Jet.GameTicks++;
 
                 // Update wall-clock timing. Clamp to avoid huge jumps after pause.
                 double dt = parentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
@@ -316,7 +311,7 @@ namespace IngameScript
                 {
                     mainPage = new MenuMfdPage("SYSTEM MENU", mainMenuOptions, showSidebar: true,
                         sidebarRenderer: (frame, panelArea) =>
-                            StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram, currentTick));
+                            StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram));
                 }
                 else
                 {
@@ -326,7 +321,7 @@ namespace IngameScript
                 _mainCapture.Clear();
                 // Only pass the snapshot while the transition window is open; null after it ends.
                 bool inTransition = _mainTransitionStart >= 0
-                    && (ElapsedSeconds - _mainTransitionStart) < 0.30;
+                    && (ElapsedSeconds - _mainTransitionStart) < UIController.PAGE_FADE_DURATION;
                 List<MySprite> prevFrame = inTransition ? _outgoingSnapshot : null;
                 uiController.Render(mainPage, lcdMain, currentMenuIndex, _mainTransitionStart, _mainCapture, prevFrame);
                 uiController.Render(_gridPage, lcdExtra);

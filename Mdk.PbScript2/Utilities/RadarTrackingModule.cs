@@ -39,8 +39,8 @@ namespace IngameScript
             public bool HasReceivedPosition { get; private set; }
 
             //Counting Positions
-            public long CurrentTime;
-            public int CurrentTick;
+            long CurrentTime;
+            int CurrentTick;
             const int ForcedRefreshRate = 40; //this is used to force a position relog on static grids
 
             // Reusable buffer for GetWaypoints to avoid allocation each tick

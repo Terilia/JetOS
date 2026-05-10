@@ -18,6 +18,7 @@ namespace IngameScript
         Vector3D interceptPoint,
         Vector3D aimPoint,
         double timeToIntercept,
+        bool isAimingAtPip,
         Color pipColor,
         Color offScreenColor,
         Color behindColor,
@@ -29,8 +30,6 @@ namespace IngameScript
                 const float MAX_DISTANCE_FOR_SCALING = 3000f;
                 const float MAX_PIP_SIZE_FACTOR = 0.1f;
                 const float MIN_PIP_SIZE_FACTOR = 0.01f;
-
-                bool isAimingAtPip = false;
 
                 // Use aimPoint (accounts for bullet drop) instead of interceptPoint (target future position)
                 Vector3D directionToIntercept = aimPoint - shooterPosition;
@@ -72,31 +71,6 @@ namespace IngameScript
 
                 bool isOnScreen = pipScreenPos.X >= 0 && pipScreenPos.X <= surfaceSize.X &&
                                   pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
-                float distanceToPip = Vector2.Distance(center, pipScreenPos);
-                float pipRadius = dynamicPipSize / 2f;
-                if (distanceToPip <= pipRadius)
-                {
-                    isAimingAtPip = true;
-                }
-                if (isAimingAtPip)
-                {
-                    for (int i = 0; i < myjet._gatlings.Count; i++)
-                    {
-                        if (!myjet._gatlings[i].Enabled)
-                            myjet._gatlings[i].Enabled = true;
-                    }
-                }
-                else
-                {
-                    if (myjet.manualfire == false)
-                    {
-                        for (int i = 0; i < myjet._gatlings.Count; i++)
-                        {
-                            if (myjet._gatlings[i].Enabled)
-                                myjet._gatlings[i].Enabled = false;
-                        }
-                    }
-                }
                 if (isOnScreen)
                 {
                     SpriteHelpers.Sp(frame, TEX_LEAD_PIP, pipScreenPos.X, pipScreenPos.Y, dynamicPipSize, dynamicPipSize, pipColor);

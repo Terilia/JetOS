@@ -36,6 +36,7 @@ namespace IngameScript
             public static readonly Color BAR_FILL      = Cr(48, 144, 48);
             public static readonly Color STATUS_VAL    = Cr(80, 144, 80);
             public static readonly Color WARN          = Cr(192, 160, 48);
+            public static readonly Color DANGER        = Cr(180, 50, 40);
             public static readonly string FONT          = "Monospace";
             public static readonly string FONT_W        = "White";
             public static readonly string SQ            = "SquareSimple";
@@ -52,9 +53,6 @@ namespace IngameScript
             private IMyTextSurface mainScreen;
             private IMyTextSurface extraScreen;
 
-            public IMyTextSurface MainScreen => mainScreen;
-            public IMyTextSurface ExtraScreen => extraScreen;
-
             public UIController(IMyTextSurface mainScreen, IMyTextSurface extraScreen)
             {
                 this.mainScreen = mainScreen;
@@ -65,7 +63,7 @@ namespace IngameScript
                 extraScreen.BackgroundColor = Cr(0, 0, 0);
             }
 
-            private const double PAGE_FADE_DURATION = 0.300;
+            internal const double PAGE_FADE_DURATION = 0.300;
             private const double SELECTION_TWEEN_DURATION = 0.080;
 
             // Per-controller selection animation state (the controller drives one menu surface).
@@ -96,7 +94,8 @@ namespace IngameScript
                         frame, sw, sh,
                         headerRight: page.HeaderRight,
                         drawFooterNav: page.ShowFooterNav,
-                        footerRight: page.FooterRight);
+                        footerRight: page.FooterRight,
+                        compact: page.CompactChrome);
                     float contentBot = MFDFrame.ContentBottom(sh);
 
                     float padX = sw * 0.019f;
@@ -130,6 +129,9 @@ namespace IngameScript
                             && (SystemManager.ElapsedSeconds - transitionStart) < PAGE_FADE_DURATION;
                         DrawMenuList(frame, sh, page.CompactRows, page.MenuItems, selectedIndex,
                             menuLeft, bodyTop, menuWidth, contentBot, inTransition);
+                        page.RenderMenuSupplement(frame,
+                            new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop),
+                            SS(surface), selectedIndex);
                     }
                     else
                         page.RenderContent(frame, contentArea, SS(surface));

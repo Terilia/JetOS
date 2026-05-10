@@ -2,6 +2,7 @@ using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
+using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -13,7 +14,6 @@ namespace IngameScript
         {
             // Core blocks
             public IMyCockpit _cockpit;
-            public List<IMyThrust> _thrusters;
             public List<IMyThrust> _thrustersbackwards;
 
             // Engine grouping (left/right split by grid position, populated in constructor)
@@ -23,10 +23,14 @@ namespace IngameScript
             public List<IMyThrust> leftAB = new List<IMyThrust>();
             public List<IMyThrust> rightAB = new List<IMyThrust>();
             public List<IMyThrust> centerAB = new List<IMyThrust>();
+            public List<IMyThrust> leftEnginesAll = new List<IMyThrust>();
+            public List<IMyThrust> rightEnginesAll = new List<IMyThrust>();
+            public List<IMyThrust> centerEnginesAll = new List<IMyThrust>();
+            public List<IMyThrust> leftABAll = new List<IMyThrust>();
+            public List<IMyThrust> rightABAll = new List<IMyThrust>();
+            public List<IMyThrust> centerABAll = new List<IMyThrust>();
 
-            // Game tick counter for consistent timing (updated by SystemManager).
-            // GameTicks is a raw call counter; GameSeconds is wall-clock elapsed (lag-resistant).
-            public static long GameTicks = 0;
+            // Wall-clock elapsed seconds (mirror of SystemManager.ElapsedSeconds — lag-resistant).
             public static double GameSeconds = 0.0;
             public static int IC, IP, IA;
 
@@ -97,9 +101,6 @@ namespace IngameScript
             private double decayCheckAccum = 0;
             private const double DECAY_CHECK_SECONDS = 1.0;      // re-check decay once per wall-clock second
 
-            // Centralized radar control
-            public RadarControlModule radarControl;
-
             // Cached gravity vector (updated once per tick by SystemManager)
             public Vector3D CachedGravity = VZ;
 
@@ -121,21 +122,12 @@ namespace IngameScript
                 if (_cockpit == null)
                 {
                     // Cannot initialize without cockpit - leave everything empty
-                    _thrusters = new List<IMyThrust>();
                     _thrustersbackwards = new List<IMyThrust>();
                     _bays = new List<IMyShipMergeBlock>();
                     return;
                 }
 
-                grid.GetBlocksOfType(
-                                    _gatlings,
-                                    t => t.CubeGrid == _cockpit.CubeGrid
-                                );
-                _thrusters = new List<IMyThrust>();
-                grid.GetBlocksOfType(
-                    _thrusters,
-                    t => t.CubeGrid == _cockpit.CubeGrid && !t.CustomName.Contains("Industrial")
-                );
+                grid.GetBlocksOfType(_gatlings, t => t.IsSameConstructAs(_cockpit));
 
                 // bays
                 _bays = new List<IMyShipMergeBlock>();
@@ -147,49 +139,24 @@ namespace IngameScript
 
                 grid.GetBlocksOfType(rightstab, g => g.CustomName.Contains("invertedstab") && g.IsSameConstructAs(_cockpit));
                 grid.GetBlocksOfType(leftstab, g => g.CustomName.Contains("normalstab") && g.IsSameConstructAs(_cockpit));
+
+                // Collect all jet-family, non-industrial thrusters on the construct.
+                // Direction filter + lateral split is deferred to ClassifyEnginesIfNeeded(),
+                // called from HUDModule.Tick. We can't filter by GridThrustDirection here
+                // because that property may return stale/Zero values during Program() ctor —
+                // the grid's thrust system hasn't necessarily registered every sub-grid thruster
+                // yet, especially for non-Large-Atmospheric subtypes (Sci-Fi, Hydrogen).
+                // First-tick deferral lets the engine register those properties before we read.
                 _thrustersbackwards = new List<IMyThrust>();
                 grid.GetBlocksOfType(
                     _thrustersbackwards,
-                    g =>
-                        g.CubeGrid == _cockpit.CubeGrid
-                        && !g.CustomName.Contains("Industrial")
-                        && g.GridThrustDirection == Vector3I.Backward
+                    g => g.IsSameConstructAs(_cockpit) && IsJetEngineCandidate(g)
                 );
-                // Group backward thrusters into L/R engine + afterburner by grid position
-                // Center thrusters (same X as cockpit) go into BOTH sides
-                // SE grid X axis: looking from cockpit forward, X+ is LEFT, X- is RIGHT
-                int cockpitX = _cockpit.Position.X;
-                for (int i = 0; i < _thrustersbackwards.Count; i++)
-                {
-                    var t = _thrustersbackwards[i];
-                    bool isLeft = t.Position.X > cockpitX;
-                    bool isRight = t.Position.X < cockpitX;
-                    bool isCenter = t.Position.X == cockpitX;
-                    bool isHydrogen = t.BlockDefinition.SubtypeId.Contains("Hydrogen");
-                    if (isHydrogen)
-                    {
-                        if (isCenter) centerAB.Add(t);
-                        else if (isLeft) leftAB.Add(t);
-                        else if (isRight) rightAB.Add(t);
-                    }
-                    else
-                    {
-                        if (isCenter) centerEngines.Add(t);
-                        else if (isLeft) leftEngines.Add(t);
-                        else if (isRight) rightEngines.Add(t);
-                    }
-                }
 
                 hudBlock = grid.GetBlockWithName("Fighter HUD [HFPS]");
                 hud = hudBlock as IMyTextSurface;
-                grid.GetBlocksOfType(
-                    tanks,
-                    g => g.CubeGrid == _cockpit.CubeGrid && g.CustomName.Contains("Jet")
-                );
-                grid.GetBlocksOfType(
-                    batteries,
-                    b => b.CubeGrid == _cockpit.CubeGrid
-                );
+                grid.GetBlocksOfType(tanks, g => g.IsSameConstructAs(_cockpit) && g.CustomName.Contains("Jet"));
+                grid.GetBlocksOfType(batteries, b => b.IsSameConstructAs(_cockpit));
             }
             private int ExtractBayNumber(string name)
             {
@@ -200,6 +167,102 @@ namespace IngameScript
                     return number;
                 }
                 return -1;
+            }
+
+            // ------------------------------
+            // ENGINE CLASSIFICATION (deferred from ctor — see Jet ctor comment)
+            // ------------------------------
+
+            // Diagnostic output of the most recent classification pass.
+            // HUDModule echoes this so the pilot can see what got assigned where and why.
+            public string EngineDebug = "";
+            static readonly Vector3I FORWARD_PROPULSION_DIRECTION = Vector3I.Backward;
+            static readonly Vector3I REVERSE_PROPULSION_DIRECTION = Vector3I.Forward;
+
+            public void ClassifyEnginesIfNeeded()
+            {
+                if (_cockpit == null) return;
+
+                leftEngines.Clear(); rightEngines.Clear(); centerEngines.Clear();
+                leftAB.Clear(); rightAB.Clear(); centerAB.Clear();
+                leftEnginesAll.Clear(); rightEnginesAll.Clear(); centerEnginesAll.Clear();
+                leftABAll.Clear(); rightABAll.Clear(); centerABAll.Clear();
+
+                Vector3D cockpitRight = _cockpit.WorldMatrix.Right;
+                Vector3D cockpitPos = _cockpit.GetPosition();
+                const double LATERAL_TOLERANCE = 1.25;
+
+                int rejected = 0, reverseRecognized = 0;
+                StringBuilder rejectList = null;
+                for (int i = 0; i < _thrustersbackwards.Count; i++)
+                {
+                    var t = _thrustersbackwards[i];
+                    if (t == null) continue;
+                    Vector3I dir = t.GridThrustDirection;
+                    bool forwardPropulsion = dir == FORWARD_PROPULSION_DIRECTION;
+                    bool reversePropulsion = dir == REVERSE_PROPULSION_DIRECTION;
+                    if (!forwardPropulsion && !reversePropulsion)
+                    {
+                        rejected++;
+                        if (rejected <= 8)
+                        {
+                            if (rejectList == null) rejectList = new StringBuilder();
+                            rejectList.Append("  rej dir=").Append(dir)
+                                .Append(' ').Append(t.CustomName).Append('\n');
+                        }
+                        continue;
+                    }
+                    if (reversePropulsion) reverseRecognized++;
+
+                    double rightOffset = Vector3D.Dot(t.GetPosition() - cockpitPos, cockpitRight);
+                    bool isLeft = rightOffset < -LATERAL_TOLERANCE;
+                    bool isRight = rightOffset > LATERAL_TOLERANCE;
+                    bool isCenter = !isLeft && !isRight;
+                    bool isHydrogen = t.BlockDefinition.SubtypeId.Contains("Hydrogen");
+                    if (isHydrogen)
+                    {
+                        AddEngineToSide(t, isLeft, isRight, leftABAll, centerABAll, rightABAll);
+                        if (forwardPropulsion)
+                            AddEngineToSide(t, isLeft, isRight, leftAB, centerAB, rightAB);
+                    }
+                    else
+                    {
+                        AddEngineToSide(t, isLeft, isRight, leftEnginesAll, centerEnginesAll, rightEnginesAll);
+                        if (forwardPropulsion)
+                            AddEngineToSide(t, isLeft, isRight, leftEngines, centerEngines, rightEngines);
+                    }
+                }
+
+                EngineDebug =
+                    $"Engines: cand={_thrustersbackwards.Count} rev={reverseRecognized} rej={rejected}\n" +
+                    $"  USE ATMO L/C/R: {leftEngines.Count}/{centerEngines.Count}/{rightEngines.Count}\n" +
+                    $"  USE AB   L/C/R: {leftAB.Count}/{centerAB.Count}/{rightAB.Count}\n" +
+                    $"  ALL ATMO L/C/R: {leftEnginesAll.Count}/{centerEnginesAll.Count}/{rightEnginesAll.Count}\n" +
+                    $"  ALL AB   L/C/R: {leftABAll.Count}/{centerABAll.Count}/{rightABAll.Count}\n" +
+                    (rejectList != null ? rejectList.ToString() : "");
+            }
+
+            static void AddEngineToSide(IMyThrust t, bool isLeft, bool isRight,
+                List<IMyThrust> left, List<IMyThrust> center, List<IMyThrust> right)
+            {
+                if (isLeft) left.Add(t);
+                else if (isRight) right.Add(t);
+                else center.Add(t);
+            }
+
+            static bool IsJetEngineCandidate(IMyThrust t)
+            {
+                if (t == null) return false;
+                string subtype = t.BlockDefinition.SubtypeId ?? "";
+                string name = t.CustomName ?? "";
+                if (HasText(subtype, "Industrial") || HasText(name, "Industrial")) return false;
+                return HasText(subtype, "Atmospheric") || HasText(name, "Atmospheric")
+                    || HasText(subtype, "Hydrogen") || HasText(name, "Hydrogen");
+            }
+
+            static bool HasText(string text, string value)
+            {
+                return text != null && text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
             }
 
             // ------------------------------
@@ -484,7 +547,6 @@ namespace IngameScript
             /// Cockpit WorldMatrix and Position if needed for calculations.
             /// </summary>
             public Vector3D GetCockpitPosition() => _cockpit?.GetPosition() ?? VZ;
-            public MatrixD GetCockpitMatrix() => _cockpit?.WorldMatrix ?? MatrixD.Identity;
 
             // ------------------------------
             // THRUSTERS

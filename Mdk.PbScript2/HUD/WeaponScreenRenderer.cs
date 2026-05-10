@@ -15,6 +15,12 @@ namespace IngameScript
             private bool _wasLocked = false;
             private double _lockAcquiredAt = -1;
             private const double LOCK_FLASH_DURATION = 0.20;
+            private string _lastSelectedContactKey = "";
+            private double _selectedChangedAt = -1;
+            private bool[] _lastBayReady = new bool[0];
+            private double[] _bayChangedAt = new double[0];
+            private const double TARGET_PANEL_FLASH_DURATION = 0.22;
+            private const double BAY_READY_FLASH_DURATION = 0.22;
 
             // Renders weapon-screen content into the supplied frame/area. Chrome is drawn
             // by the host MfdPage; this method only fills the inner content rect.
@@ -45,18 +51,33 @@ namespace IngameScript
 
                     // ── Selected target detail box ──
                     float detailH = 95f;
-                    MFDFrame.Rect(frame, sw / 2f, secY + detailH / 2f, sw - margin * 2, detailH, MFDTheme.PANEL_BG);
-                    SpriteHelpers.DrawRectangleOutline(frame, margin, secY, sw - margin * 2, detailH, 1f, MFDTheme.BORDER_LIGHT);
-
                     var selected = myjet.GetSelectedEnemy();
+                    string selectedKey = selected.HasValue ? ContactKey(selected.Value) : "";
+                    if (selectedKey != _lastSelectedContactKey)
+                    {
+                        _lastSelectedContactKey = selectedKey;
+                        _selectedChangedAt = SystemManager.ElapsedSeconds;
+                    }
+                    double selectedT = TransitionT(_selectedChangedAt, TARGET_PANEL_FLASH_DURATION);
+                    Color detailBorder = selectedT < 1
+                        ? Anim.LerpColor(selected.HasValue ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT_MID,
+                            MFDTheme.BORDER_LIGHT, Anim.EaseOut(selectedT))
+                        : MFDTheme.BORDER_LIGHT;
+
+                    MFDFrame.Rect(frame, sw / 2f, secY + detailH / 2f, sw - margin * 2, detailH, MFDTheme.PANEL_BG);
+                    SpriteHelpers.DrawRectangleOutline(frame, margin, secY, sw - margin * 2, detailH, 1f, detailBorder);
+
                     if (selected.HasValue)
                     {
                         DrawSelectedTargetDetail(frame, selected.Value, shooterPosition, currentVelocity, margin, secY, sw);
                     }
                     else
                     {
+                        Color noTargetColor = selectedT < 1
+                            ? Anim.LerpColor(MFDTheme.DIM_TEXT_MID, MFDTheme.DIM_TEXT, Anim.EaseOut(selectedT))
+                            : MFDTheme.DIM_TEXT;
                         MFDFrame.Txt(frame, "NO TGT", sw / 2f, secY + detailH / 2f - 12f, 1.0f,
-                            MFDTheme.DIM_TEXT, MFDTheme.AC);
+                            noTargetColor, MFDTheme.AC);
                     }
 
                     secY += detailH + 8f;
@@ -77,28 +98,14 @@ namespace IngameScript
                             MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
-                    // ── Bottom section: bay strip + missile TOF ──
+                    // ── Bottom section: bay strip ──
                     int bayCount = myjet._bays != null ? myjet._bays.Count : 0;
-                    float tofH = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 30f) : 0f;
                     float bayH = bayCount > 0 ? 52f : 0f;
-                    float bottomY = contentBot - tofH - bayH;
+                    float bottomY = contentBot - bayH;
 
                     if (bayCount > 0)
                     {
                         DrawBayStrip(frame, sw / 2f, bottomY + bayH / 2f, myjet._bays);
-                        bottomY += bayH;
-                    }
-
-                    if (activeMissiles.Count > 0)
-                    {
-                        MFDFrame.Rect(frame, sw / 2f, bottomY - 5f, sw - margin * 4, 1f, MFDTheme.BORDER);
-                        bottomY += 5f;
-
-                        MFDFrame.Txt(frame, "MSL IN FLIGHT", sw / 2f, bottomY, 0.55f,
-                            MFDTheme.STATUS_RDY, MFDTheme.AC);
-                        bottomY += 20f;
-
-                        DrawMissileTOFToScreen(frame, sw / 2f, bottomY);
                     }
                 }
             }
@@ -228,7 +235,7 @@ namespace IngameScript
 
                         float segH = runIsOk ? height - 2f : (height - 2f) * 0.5f;
                         float segY = runIsOk ? y + 1f + segH / 2f : y + height - 1f - segH / 2f;
-                        Color segC = runIsOk ? MFDTheme.ACCENT : Cr(180, 50, 40);
+                        Color segC = runIsOk ? MFDTheme.ACCENT : MFDTheme.DANGER;
 
                         MFDFrame.Rect(frame, segX + segW / 2f, segY, segW, segH, segC);
 
@@ -246,8 +253,7 @@ namespace IngameScript
                 float textX = margin + 6f;
                 float textY = startY;
 
-                float bottomReserve = activeMissiles.Count > 0 ? (activeMissiles.Count * 20f + 45f) : 10f;
-                int maxRows = (int)((contentBot - startY - bottomReserve) / LINE_HEIGHT);
+                int maxRows = (int)((contentBot - startY - 10f) / LINE_HEIGHT);
                 maxRows = Mn(maxRows, 10);
 
                 for (int i = 0; i < Mn(maxRows, enemies.Count); i++)
@@ -301,6 +307,21 @@ namespace IngameScript
                 return contact.Matches(selected.Value);
             }
 
+            private static string ContactKey(Jet.EnemyContact contact)
+            {
+                if (contact.EntityId != 0) return contact.EntityId.ToString();
+                return (contact.Name ?? "") + ":" + contact.SourceIndex.ToString();
+            }
+
+            private static double TransitionT(double startedAt, double duration)
+            {
+                if (startedAt < 0 || duration <= 0) return 1;
+                double t = (SystemManager.ElapsedSeconds - startedAt) / duration;
+                if (t < 0) return 0;
+                if (t > 1) return 1;
+                return t;
+            }
+
             private double CalculateBearingToTarget(Vector3D targetPos, Vector3D shooterPos)
             {
                 if (cockpit == null) return 0;
@@ -333,47 +354,48 @@ namespace IngameScript
                 return bearingDeg;
             }
 
-            private void DrawMissileTOFToScreen(MySpriteDrawFrame frame, float centerX, float startY)
-            {
-                if (activeMissiles.Count == 0) return;
-
-                const float TEXT_SCALE = 0.7f;
-                const float LINE_HEIGHT = 20f;
-
-                activeMissiles.RemoveAll(m => (totalElapsedTime - m.LaunchTime).TotalSeconds > m.EstimatedTOF + 5);
-
-                for (int i = 0; i < Mn(5, activeMissiles.Count); i++)
-                {
-                    var missile = activeMissiles[i];
-                    double timeRemaining = missile.EstimatedTOF - (totalElapsedTime - missile.LaunchTime).TotalSeconds;
-
-                    if (timeRemaining > 0)
-                    {
-                        string tofText = $"MSL {missile.BayIndex + 1}: {timeRemaining:F1}s \u2192 TGT";
-                        Color tofColor = timeRemaining < 3 ? MFDTheme.WARN : MFDTheme.STATUS_RDY;
-
-                        float yPos = startY + i * LINE_HEIGHT;
-                        // Tall narrow missile silhouette to the left of the TOF text.
-                        SpriteHelpers.Sp(frame, TEX_MISSILE, centerX - 78f, yPos + 7f, 6f, 16f, tofColor);
-                        MFDFrame.Txt(frame, tofText, centerX, yPos, TEXT_SCALE, tofColor, MFDTheme.AC);
-                    }
-                }
-            }
-
             // Bay status strip \u2014 5:4-ish bay icons, filled when missile attached.
             private void DrawBayStrip(MySpriteDrawFrame frame, float centerX, float y, List<IMyShipMergeBlock> bays)
             {
                 int n = Mn(bays.Count, 8);
                 if (n == 0) return;
+                EnsureBayTransitionState(bays, n);
                 const float W = 54f, H = 42f, SP = 6f;
                 float totalW = n * W + (n - 1) * SP;
                 float startX = centerX - totalW / 2f + W / 2f;
                 for (int i = 0; i < n; i++)
                 {
                     bool loaded = MissileBayHelper.IsBayReady(bays[i]);
+                    if (loaded != _lastBayReady[i])
+                    {
+                        _lastBayReady[i] = loaded;
+                        _bayChangedAt[i] = SystemManager.ElapsedSeconds;
+                    }
+
                     string tex = loaded ? TEX_BAY_LOADED : TEX_BAY_EMPTY;
                     Color c = loaded ? MFDTheme.STATUS_RDY : MFDTheme.DIM_TEXT_MID;
+                    double t = TransitionT(_bayChangedAt[i], BAY_READY_FLASH_DURATION);
+                    if (t < 1)
+                    {
+                        Color flash = loaded ? MFDTheme.ACCENT : MFDTheme.WARN;
+                        c = Anim.LerpColor(flash, c, Anim.EaseOut(t));
+                    }
                     SpriteHelpers.Sp(frame, tex, startX + i * (W + SP), y, W, H, c);
+                }
+            }
+
+            private void EnsureBayTransitionState(List<IMyShipMergeBlock> bays, int n)
+            {
+                if (_lastBayReady != null && _lastBayReady.Length == n
+                    && _bayChangedAt != null && _bayChangedAt.Length == n)
+                    return;
+
+                _lastBayReady = new bool[n];
+                _bayChangedAt = new double[n];
+                for (int i = 0; i < n; i++)
+                {
+                    _lastBayReady[i] = MissileBayHelper.IsBayReady(bays[i]);
+                    _bayChangedAt[i] = -1;
                 }
             }
 
