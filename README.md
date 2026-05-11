@@ -1,154 +1,197 @@
 # JetOS
 
-A fighter jet operating system for Space Engineers programmable blocks. Provides a full HUD, weapon systems, radar, targeting pod, gun turret auto-tracking, and flight control. Built with [MDK2](https://github.com/malware-dev/MDK2).
+JetOS is a cockpit operating system for Space Engineers fighter craft. It runs as an
+MDK2 programmable block script and brings the aircraft's flight display, tactical
+picture, weapon management, radar control, terrain page, canard damping, and
+multi-function displays into one integrated system.
 
-## Features
+The project is built for aircraft that use Space Engineers AI blocks, custom LCD
+sprites, missile bays, rotor/hinge gun mounts, and a three-screen cockpit layout.
 
-- **HUD** — F/A-18 style heads-up display with artificial horizon, pitch ladder, flight path marker, speed/altitude tapes, compass, G-force, AoA, and throttle indicator
-- **Radar & RWR** — Multi-pair AI block radar with centralized tracking, threat analysis, and Radar Warning Receiver
-- **Targeting Pod** — Camera raycast acquisition (35 km range) with rotor/hinge servo tracking and LCD feed
-- **Air-to-Air** — Radar lock, passive scanning, AIM-9 lock/search tones, missile bay management
-- **Air-to-Ground** — Missile bay selection, bombardment patterns, top-down attack mode
-- **Gun Turrets** — Rotor+hinge auto-tracking with ballistic lead, mirror-mounted left/right configs
-- **Lead Pip** — Iterative intercept solver (Newton's method with gravity) for gun aiming
-- **Flight Control** — PID-based AoA stabilization with automatic engagement
-- **Configuration** — In-game settings module with category/parameter/value hierarchy
-- **Multi-Target Tracking** — 5-slot target array with enemy contact list, decay, and deduplication
+## Capabilities
+
+- **Flight HUD** - artificial horizon, pitch ladder, flight path marker, heading,
+  speed and altitude tapes, AoA, G-load, throttle state, lead pip, radar overlay.
+- **Radar and RWR** - coordinated AI Flight/Combat block pairs, radar search and
+  lock states, threat contacts, selected target tracking, and warning tones.
+- **Weapons** - air-to-air bay selection, target data transfer, missile launch
+  setup, weapon screen timelines, and rotor/hinge gun tracking with ballistic lead.
+- **Aircraft control** - MIL/afterburner throttle gate, thrust handling, stabilizer
+  trim, and optional canard AoA damping.
+- **MFD system** - three coordinated text surfaces using the NYINAH CORP dark
+  green phosphor theme, shared chrome, page transitions, grid/status view, weapon
+  page, terrain page, and menu navigation.
+- **Sprite mod support** - custom `JetOS_*` LCD sprites for HUD glyphs, radar
+  contacts, bay icons, MFD corners, warning markers, and aircraft symbology.
 
 ## Requirements
 
-- [MDK2](https://github.com/malware-dev/MDK2) (Malware's Development Kit 2)
-- .NET Framework 4.8 / C# 6.0
-- Space Engineers (PC)
+- Space Engineers for PC
+- [MDK2](https://github.com/malware-dev/MDK2)
+- .NET Framework 4.8
+- C# 6.0
+- Optional: the included JetOS sprite mod in `Mod/testmod`
+- Optional: a TerrainAPI world mod that exposes the `TerrainAPI` programmable
+  block property used by the terrain page
 
 ## Build
 
-```bash
-# Release build — auto-deploys to %APPDATA%/SpaceEngineers/IngameScripts/local/Mdk.PbScript2
+```powershell
 dotnet build Mdk.PbScript2.sln --configuration Release
-
-# Debug build
 dotnet build Mdk.PbScript2.sln --configuration Debug
 ```
 
-There are no automated tests — verification is done in-game. Minification level is configured in `Mdk.PbScript2/Mdk.PbScript2.mdk.ini`.
+The Release build is packaged by MDK2 and deploys to:
 
-## Project Structure
-
-```
-Mdk.PbScript2/
-├── Program.cs                  Entry point (constructor, Main, slot helpers)
-├── SystemManager.cs            Static orchestrator (module init, tick loop, input routing)
-├── Jet.cs                      Hardware abstraction (block refs, target slots, enemy list)
-├── Modules/
-│   ├── ProgramModule.cs        Abstract base class for all modules
-│   ├── HUDModule.cs            Flight instruments, stabilizer PID, lead pip
-│   ├── RadarControlModule.cs   Centralized radar + RWR
-│   ├── AirtoAir.cs             Air-to-air missiles and radar lock
-│   ├── AirToGround.cs          Ground attack missile bay management
-│   ├── RaycastCameraControl.cs Targeting pod (camera raycast + servo tracking)
-│   ├── GunControlModule.cs     Gun turret auto-tracking (rotor+hinge)
-│   └── ConfigurationModule.cs  Runtime config with settings menu
-├── HUD/
-│   ├── HorizonRenderer.cs      Artificial horizon, pitch ladder, flight path marker
-│   ├── InstrumentRenderer.cs   Speed/altitude tapes, compass, G-force, throttle
-│   ├── RadarRenderer.cs        Radar display overlay
-│   ├── TargetingRenderer.cs    Lead pip, target boxes, lock indicators
-│   └── WeaponScreenRenderer.cs Weapon status LCD
-├── UI/
-│   ├── UIController.cs         LCD rendering (main screen, extra screen, custom frames)
-│   ├── UIElements.cs           UI primitives (UIElement, UIContainer, UILabel)
-│   └── GridVisualization.cs    Ship grid outline display
-├── Utilities/
-│   ├── BallisticsCalculator.cs  Iterative intercept solver
-│   ├── CircularBuffer.cs        Fixed-size circular buffer
-│   ├── CommonTypes.cs           Shared types (RWRWarning, EnemyContact, etc.)
-│   ├── CustomDataManager.cs     Dictionary-cached CustomData read/write
-│   ├── NavigationHelper.cs      Vector math and heading calculation
-│   ├── RadarTrackingModule.cs   AI block-based target tracking
-│   ├── SoundManager.cs          Priority-based dual-channel audio
-│   └── SpriteHelpers.cs         Sprite creation helpers
-├── Extensions/
-│   └── RandomExtensions.cs      Extension methods (NextFloat)
-└── Diagnostics/
-    └── TurretDiagnostic.cs      Standalone turret debug script (excluded from build)
+```text
+%APPDATA%\SpaceEngineers\IngameScripts\local\Mdk.PbScript2
 ```
 
-All `.cs` files use `partial class Program` inside the `IngameScript` namespace — MDK2 merges them into a single compilation unit for Space Engineers.
+There are no automated tests in this repository. Verification is done by building
+successfully, loading the programmable block script in-game, and checking the
+cockpit displays and block interactions on the grid.
 
 ## In-Game Setup
 
 ### Required Blocks
 
-| Block | Name | Purpose |
-|-------|------|---------|
-| Cockpit | `Jet Pilot Seat` | Primary pilot seat (script won't init without it) |
-| Text Panel / Cockpit | `JetOS` | OS display — surfaces 0, 1, 2 for main UI, extra info, weapons |
-| Text Surface | `Fighter HUD` | Heads-up display |
+| Block type | Required name | Purpose |
+| --- | --- | --- |
+| Cockpit | `Jet Pilot Seat` | Primary ship controller and flight reference |
+| Text surface provider | `JetOS [HFPS]` | Main MFD provider with at least three surfaces |
+| Text surface | `Fighter HUD [HFPS]` | Forward HUD display surface |
 
 ### Optional Blocks
 
-| Block | Name | Purpose |
-|-------|------|---------|
-| AI Flight + AI Combat | `AI Flight` / `AI Combat` | Primary radar pair |
-| AI Flight + AI Combat | `AI Flight N` / `AI Combat N` | Additional radar/RWR pairs (2-99, auto-detected) |
-| Merge Block | `Bay 1`, `Bay 2`, ... | Missile bays (sorted numerically) |
-| Rotor + Hinge | `Gun Rotor Left/Right`, `Gun Hinge Left/Right` | Gun turret assemblies |
-| Camera | `Camera Targeting Turret` | Targeting pod raycast |
-| LCD | `LCD Targeting Pod` | Targeting pod display |
-| Rotor + Hinge | `Targeting Rotor`, `Targeting Hinge` | Targeting pod servo |
-| Remote Control | `Remote Control` | Targeting pod reference |
-| Sound Block | `Sound Block Warning` | Altitude/speed warnings |
-| Sound Block | `Canopy Side Plate Sound Block` | Weapon lock/search tones |
-| Group | `invertedstab` / `normalstab` | Right/left stabilizer groups |
+| Block type | Naming convention | Used by |
+| --- | --- | --- |
+| AI Flight + AI Combat | `AI Flight`, `AI Combat`, `AI Flight N`, `AI Combat N` | Radar and RWR |
+| Merge blocks | `Bay 1`, `Bay 2`, ... | Missile bay selection and launch |
+| Rotor + hinge | `Gun Rotor Left/Right`, `Gun Hinge Left/Right` | Auto-tracking gun mounts |
+| Canards | `Canard L [Ani]`, `Canard R [Ani]` | AoA damping |
+| Sound block | `Sound Block Warning` | Altitude, threat, and system warnings |
+| Sound block | `Canopy Side Plate Sound Block` | Weapon search and lock tones |
+| Stabilizer groups | names containing `normalstab` or `invertedstab` | Trim and stabilization |
+| Hydrogen tanks | names containing `Jet` | Fuel display |
 
-Thrusters with `"Industrial"` in the name are excluded. Gas tanks with `"Jet"` in the name are treated as hydrogen tanks.
+Thrusters with `Industrial` in the name are ignored. Hydrogen thrusters are treated
+as afterburners; atmospheric thrusters provide the normal and MIL thrust stages.
 
-### Controls
+### TerrainAPI Mod
 
-Toolbar arguments on the Programmable Block (numpad 1-9):
+The terrain page depends on a separate TerrainAPI mod. That mod is not included in
+this repository and may not be publicly available; JetOS only contains the client
+side that talks to it.
 
-| Key | Function |
-|-----|----------|
-| 1 / 2 | Navigate up / down |
-| 3 | Select / execute |
-| 4 | Back |
-| 5-8 | Module-specific hotkeys |
-| 6 / 7 | Global AoA trim (decrease / increase) |
-| 8 | Cycle target slots |
-| 9 | Return to main menu |
+When the mod is loaded in the world, it exposes a `TerrainAPI` terminal property on
+the programmable block. JetOS uses that property to download the planet heightmap
+in chunks, then performs terrain lookups locally for the MFD map. If the property
+is missing, JetOS disables terrain features silently and the rest of the system can
+continue running.
+
+## Controls
+
+JetOS is controlled through programmable block toolbar arguments, usually mapped to
+numpad-style cockpit buttons.
+
+| Argument | Action |
+| --- | --- |
+| `1` / `2` | Navigate up / down |
+| `3` | Select |
+| `4` | Back |
+| `5` | Module-specific function |
+| `6` / `7` | Global AoA trim down / up |
+| `8` | Cycle target |
+| `9` | Return to main menu |
+
+Modules can override navigation and special-function handling when they own the
+current MFD page.
+
+## Repository Layout
+
+```text
+Mdk.PbScript2/
+  Program.cs                  Entry point and MDK-compatible shell
+  SystemManager.cs            Initialization, tick loop, input routing
+  Jet.cs                      Grid hardware model and target database
+  Modules/                    HUD, radar, weapons, guns, canards, terrain, config
+  HUD/                        Flight, targeting, radar, and weapon renderers
+  UI/                         MFD pages, chrome, transitions, grid/status panels
+  Utilities/                  Ballistics, sound, terrain data, sprites, CustomData
+  Diagnostics/                Standalone in-game debug scripts, excluded from build
+
+Mod/testmod/                  JetOS LCD sprite mod sources and textures
+Tools/                        Sprite and workshop helper tooling
+docs/                         Architecture notes, demos, and subsystem references
+```
+
+Every compiled `.cs` file follows the MDK programmable block pattern:
+
+```csharp
+namespace IngameScript
+{
+    partial class Program
+    {
+        // JetOS code lives here.
+    }
+}
+```
 
 ## Documentation
 
-Detailed system documentation with diagrams lives in [`docs/`](docs/):
+The core references are:
 
 | Document | Contents |
-|----------|----------|
-| [Architecture](docs/architecture.md) | Tick loop, initialization order, input routing, module system |
-| [Target Tracking](docs/target-tracking.md) | Sensor → enemyList → selection → GPS sync → missiles |
-| [HUD Rendering](docs/hud-rendering.md) | Render pipeline, each renderer's role, lead pip calculation |
-| [Weapons & Radar](docs/weapons.md) | Radar pairs, RWR threat assessment, missile fire, gun turrets |
-| [Sound System](docs/sound-system.md) | Dual-channel audio, priority system, 3-tick state machine |
+| --- | --- |
+| [Architecture](docs/architecture.md) | Initialization order, tick loop, module system |
+| [HUD Rendering](docs/hud-rendering.md) | HUD pipeline, renderers, symbology |
+| [Target Tracking](docs/target-tracking.md) | Contact acquisition, decay, target selection |
+| [Weapons](docs/weapons.md) | Radar, RWR, missile bays, gun control |
+| [Sound System](docs/sound-system.md) | Dual-channel warning and weapon audio |
+| [Terrain System](docs/terrain-system.md) | TerrainAPI heightmap loading and MFD page |
+| [SE API Reference](docs/se-api-reference.md) | Verified Space Engineers API usage |
+| [SE Scripting Oddities](docs/se-scripting-oddities.md) | Documented engine and PB quirks |
 
-## Architecture
+Browser-based demos and visual references live under `docs/interactive/`.
 
-**SystemManager** orchestrates all modules — initializes them (order matters: RadarControlModule first), runs the tick loop, and background-ticks HUD, radar, air-to-air, and gun control even when they're not the active module.
+## Sprite Mod
 
-**Jet** is the hardware abstraction layer holding all block references, a 5-slot `TargetSlot[]` array for multi-target tracking, and a decaying `EnemyContact` list with proximity-based deduplication.
+The script references sprites by subtype id, for example `JetOS_FPM`,
+`JetOS_RangeRing`, and `JetOS_MFD_Corner`. The source SVGs and generated PNG/DDS
+assets live under `Mod/testmod`.
 
-**Modules** inherit from `ProgramModule` and implement `GetOptions()`, `ExecuteOption()`, and optionally `Tick()`, `HandleSpecialFunction()`, `HandleNavigation()`, `HandleBack()`, and `GetHotkeys()`.
+The sprites are white on transparent and tinted by the script at runtime, so the
+same asset can be used for normal, warning, lock, dim, and emphasis states.
 
-**Target data flow**: sensors (raycast camera, AI block radar) write to target slots and the enemy list. The HUD reads the active slot for lead pip rendering. Weapon modules read it for missile GPS programming. Gun turrets independently track the closest enemy from the enemy list.
+For local testing, junction the mod folder into the Space Engineers mods directory
+and enable it in the world:
 
-## Debugging
-
-```csharp
-ParentProgram.Echo($"Debug: {value}");
-ParentProgram.Echo($"Instructions: {ParentProgram.Runtime.CurrentInstructionCount}");
+```powershell
+New-Item -ItemType Junction `
+  -Path "$env:APPDATA\SpaceEngineers\Mods\testmod" `
+  -Target "$PWD\Mod\testmod"
 ```
 
-The script runs at `UpdateFrequency.Update1` (every tick). Space Engineers enforces ~50,000 instructions per tick.
+## Development Notes
+
+- Target framework: `.NET Framework 4.8`
+- Language version: `C# 6.0`
+- Runtime cadence: `UpdateFrequency.Update1`
+- Instruction budget: Space Engineers programmable blocks are tight, so rendering,
+  radar updates, terrain loading, and CustomData access are written with allocation
+  and instruction count in mind.
+- Minification is configured in `Mdk.PbScript2/Mdk.PbScript2.mdk.ini`.
+- `Diagnostics/` scripts are intentionally excluded from the packaged PB script.
+
+## Visual Direction
+
+JetOS uses a restrained tactical MFD style: dark green background, phosphor text,
+gold corporate accents, compact data panels, and sprite-based HUD symbols. A good
+wordmark direction would be **Rajdhani SemiBold** or **IBM Plex Sans Condensed**.
+Both fit the cockpit-instrument tone without turning the project into a generic
+sci-fi logo.
 
 ## License
 
-Private repository.
+No public license has been added. Treat the repository as source-available unless
+a license file is provided.
