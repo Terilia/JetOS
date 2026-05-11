@@ -365,6 +365,7 @@ FodyWeavers.xsd
 # Claude Code
 .claude/
 CLAUDE.md
+AGENTS.md
 
 # AI-generated analysis/session notes (not part of source)
 project.md
