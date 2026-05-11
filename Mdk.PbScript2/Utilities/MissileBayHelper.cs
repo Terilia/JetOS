@@ -1,6 +1,5 @@
 using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
-using System;
 using System.Collections.Generic;
 using VRage;
 using VRageMath;
@@ -138,9 +137,9 @@ namespace IngameScript
                     {
                         bay.ApplyAction("Fire");
                     }
-                    catch (Exception e)
+                    catch
                     {
-                        program?.Echo($"Bay {i} fire failed: {e.Message}");
+                        program?.Echo($"B{i} fire");
                     }
                 }
             }
@@ -175,9 +174,9 @@ namespace IngameScript
                     {
                         bays[i].ApplyAction("Fire");
                     }
-                    catch (Exception e)
+                    catch
                     {
-                        program?.Echo($"Bay {i} fire failed: {e.Message}");
+                        program?.Echo($"B{i} fire");
                     }
                     return;
                 }
@@ -208,7 +207,7 @@ namespace IngameScript
                 }
             }
 
-            public const string WEAPON_HOTKEYS = "5: Fire Next Available Bay\n";
+            public const string WEAPON_HOTKEYS = "5 FIRE\n";
 
             public static void HandleWeaponHotkey(
                 int key,
@@ -248,7 +247,7 @@ namespace IngameScript
                             "{0}{1} {2} {3}",
                             colorChar,
                             baySymbol,
-                            bays[i]?.CustomName ?? "Unknown Bay",
+                            bays[i]?.CustomName ?? "Bay?",
                             bayStatus
                         )
                     );

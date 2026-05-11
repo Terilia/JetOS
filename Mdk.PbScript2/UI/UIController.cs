@@ -207,7 +207,7 @@ namespace IngameScript
                 float padX = bcWidth * 0.019f;
                 float scale = sh * 0.00055f * 1.1f;
                 float ty = y + bcH * 0.15f;
-                Txt(frame, "SYSTEM MENU", padX, ty, scale, MFDTheme.DIM_TEXT);
+                Txt(frame, "SYS", padX, ty, scale, MFDTheme.DIM_TEXT);
                 Txt(frame, ">", padX + bcWidth * 0.20f, ty, scale, MFDTheme.BORDER);
                 Txt(frame, (path ?? "").ToUpper(), padX + bcWidth * 0.23f, ty, scale, MFDTheme.NORMAL_TEXT);
 

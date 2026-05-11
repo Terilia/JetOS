@@ -55,7 +55,7 @@ namespace IngameScript
             public override bool HasSidebar => _showSidebar || _module != null;
             // Module menus halve the row height (matches pre-refactor behavior); the main menu stays roomy.
             public override bool CompactRows => _module != null;
-            public override string HeaderRight => "MFD-1";
+            public override string HeaderRight => "M1";
             public override string FooterRight => _module != null ? _module.GetHotkeys() : "";
         }
     }

@@ -67,7 +67,7 @@ namespace IngameScript
             {
                 myJet = jet;
                 cockpit = jet._cockpit;
-                name = "Gun Control";
+                name = "Gun";
 
                 leftTurret = new TurretAssembly { Name = "Left" };
                 rightTurret = new TurretAssembly { Name = "Right" };
@@ -160,24 +160,24 @@ namespace IngameScript
 
                 return new string[]
                 {
-                    $"Auto-Track [{controlStatus}]",
-                    $"Ammo: {totalAmmo} rounds",
-                    $"Left: {leftStatus} [{leftLock}]",
-                    $"Right: {rightStatus} [{rightLock}]",
-                    "Center Turrets"
+                    $"AUTO [{controlStatus}]",
+                    $"AMMO {totalAmmo}",
+                    $"L {leftStatus} [{leftLock}]",
+                    $"R {rightStatus} [{rightLock}]",
+                    "CENTER"
                 };
             }
 
             private string GetTurretStatus(TurretAssembly turret)
             {
                 if (turret.Rotor == null || turret.Hinge == null)
-                    return "MISSING";
+                    return "MISS";
                 if (!turret.Rotor.IsFunctional || !turret.Hinge.IsFunctional)
-                    return "DAMAGED";
+                    return "DMG";
                 if (turret.Gun == null)
                     return "NO GUN";
                 if (!turret.Gun.IsFunctional)
-                    return "GUN DMG";
+                    return "GDMG";
                 return "OK";
             }
 
@@ -209,7 +209,7 @@ namespace IngameScript
 
             public override string GetHotkeys()
             {
-                return "5: Toggle Auto-Track\n6: Center Turrets";
+                return "5 AUTO\n6 CENTER";
             }
 
             private void ToggleControl()

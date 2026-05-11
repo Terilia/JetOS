@@ -12,7 +12,7 @@ namespace IngameScript
             {
                 ParentProgram = program;
             }
-            public string name = "program";
+            public string name = "";
             public abstract string[] GetOptions();
             public abstract void ExecuteOption(int index);
             // Override to render a custom MFD page instead of the default menu list.

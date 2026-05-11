@@ -10,8 +10,6 @@ namespace IngameScript
         {
             // Priority constants - higher value = higher priority
             public const int PRIORITY_NONE = 0;
-            public const int PRIORITY_SEARCH = 1;     // AIM9Search
-            public const int PRIORITY_LOCK = 2;        // AIM9Lock
             public const int PRIORITY_RWR = 3;         // RWR Alert
             public const int PRIORITY_ALTITUDE = 4;    // Altitude warning (pilot safety)
 
@@ -38,29 +36,20 @@ namespace IngameScript
             }
 
             private static SoundChannel warningChannel;
-            private static SoundChannel weaponChannel;
 
             public static void Initialize(IMyGridTerminalSystem grid)
             {
                 warningChannel = new SoundChannel();
-                weaponChannel = new SoundChannel();
 
                 grid.GetBlocksOfType(
                     warningChannel.blocks,
                     b => b.CustomName.Contains("Sound Block Warning")
                 );
 
-                grid.GetBlocksOfType(
-                    weaponChannel.blocks,
-                    b => b.CustomName.Contains("Canopy Side Plate Sound Block")
-                );
-                weaponChannel.volume = 0.3f;
-
                 // Prep all blocks to a known clean state so the first
                 // Play() call works reliably. Without this, blocks may
                 // be disabled or mid-play from a previous script run.
                 PrepChannel(warningChannel);
-                PrepChannel(weaponChannel);
             }
 
             private static void PrepChannel(SoundChannel ch)
@@ -90,21 +79,6 @@ namespace IngameScript
                 }
             }
 
-            /// <summary>
-            /// Request a sound on the weapon channel (AIM9 lock/search tones).
-            /// Highest priority request each tick wins.
-            /// </summary>
-            public static void RequestWeapon(string sound, int priority, double loopSeconds = 5.0)
-            {
-                if (weaponChannel == null) return;
-                if (priority >= weaponChannel.requestedPriority)
-                {
-                    weaponChannel.requestedSound = sound;
-                    weaponChannel.requestedPriority = priority;
-                    weaponChannel.requestedLoopSeconds = loopSeconds;
-                }
-            }
-
             public static void Tick(double currentSeconds)
             {
                 if (warningChannel != null)
@@ -112,12 +86,6 @@ namespace IngameScript
                     TickChannel(warningChannel, currentSeconds);
                     warningChannel.requestedSound = "";
                     warningChannel.requestedPriority = PRIORITY_NONE;
-                }
-                if (weaponChannel != null)
-                {
-                    TickChannel(weaponChannel, currentSeconds);
-                    weaponChannel.requestedSound = "";
-                    weaponChannel.requestedPriority = PRIORITY_NONE;
                 }
             }
 

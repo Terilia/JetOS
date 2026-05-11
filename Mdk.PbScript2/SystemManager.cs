@@ -1,8 +1,6 @@
 using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
-using System;
 using System.Collections.Generic;
-using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -105,7 +103,7 @@ namespace IngameScript
                 airtoAirModule = new AirtoAir(parentProgram, _myJet);
                 modules.Add(airtoAirModule);
 
-                hudProgram = new HUDModule(parentProgram, _myJet, lcdWeapons, radarControlModule);
+                hudProgram = new HUDModule(parentProgram, _myJet, radarControlModule);
                 modules.Add(hudProgram);
                 uiController = new UIController(lcdMain, lcdExtra);
 
@@ -197,16 +195,15 @@ namespace IngameScript
                 ElapsedSeconds += dt;
                 Jet.GameSeconds = ElapsedSeconds;
 
-                // Cache gravity once per tick for all modules
-                if (_myJet._cockpit != null)
-                    _myJet.CachedGravity = _myJet._cockpit.GetNaturalGravity();
+                // Cache cockpit, resource, and engine display state once per tick.
+                _myJet.UpdateTickCache();
 
-                double velocity = _myJet.GetVelocity();
+                double velocity = _myJet.CockpitSpeed;
                 double velocityKnots = velocity * 1.94384;
-                double altitude = _myJet.GetAltitude();
+                double altitude = _myJet.SurfaceAltitude;
 
                 // Terrain: download chunks during init, update tangent vectors when ready
-                TerrainData.Tick(parentProgram.Me, _myJet.GetCockpitPosition());
+                TerrainData.Tick(parentProgram.Me, _myJet.CockpitPosition);
 
                 // Altitude warning with hysteresis
                 float altWarn = GetConfigValue("altitude_warning");
@@ -309,7 +306,7 @@ namespace IngameScript
                 MfdPage mainPage;
                 if (currentModule == null)
                 {
-                    mainPage = new MenuMfdPage("SYSTEM MENU", mainMenuOptions, showSidebar: true,
+                    mainPage = new MenuMfdPage("SYS", mainMenuOptions, showSidebar: true,
                         sidebarRenderer: (frame, panelArea) =>
                             StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram));
                 }

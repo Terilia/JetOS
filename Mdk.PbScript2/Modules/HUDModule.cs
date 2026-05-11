@@ -1,8 +1,6 @@
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
-using System;
 using System.Collections.Generic;
-using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -33,7 +31,6 @@ namespace IngameScript
             internal static Color HUD_RADAR_FRIENDLY => THEME_RADAR_FRIENDLY[_cachedTheme];
             internal static readonly Color HUD_EMPHASIS = Color.Yellow;
             internal static readonly Color HUD_WARNING = Color.Red;
-            internal static readonly Color HUD_INFO = Color.White;
 
             // --- Layout Constants ---
             private const float INFO_BOX_Y_OFFSET_FACTOR = 1.85f;
@@ -49,11 +46,9 @@ namespace IngameScript
             // --- Component References ---
             internal IMyCockpit cockpit;
             internal IMyTextSurface hud;
-            internal IMyTextSurface weaponScreen;
             internal IMyTerminalBlock hudBlock;
             internal List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
             internal List<IMyTerminalBlock> rightstab = new List<IMyTerminalBlock>();
-            private List<IMyThrust> thrusters = new List<IMyThrust>();
             internal List<IMyGasTank> tanks = new List<IMyGasTank>();
             private List<IMyDoor> airbrakes = new List<IMyDoor>();
             internal Jet myjet;
@@ -171,17 +166,15 @@ namespace IngameScript
             // CONSTRUCTOR
             // =============================================
 
-            public HUDModule(Program program, Jet jet, IMyTextSurface weaponSurface, RadarControlModule radar) : base(program)
+            public HUDModule(Program program, Jet jet, RadarControlModule radar) : base(program)
             {
                 cockpit = jet._cockpit;
                 hudBlock = jet.hudBlock;
-                weaponScreen = weaponSurface;
                 radarControl = radar;
 
                 rightstab = jet.rightstab;
                 leftstab = jet.leftstab;
 
-                thrusters = jet._thrustersbackwards;
                 tanks = jet.tanks;
                 // Disable hydrogen tanks on startup
                 SetTanksEnabled(false);
@@ -212,14 +205,14 @@ namespace IngameScript
                 hud.ScriptForegroundColor = Color.White;
 
                 ParentProgram.GridTerminalSystem.GetBlocksOfType(airbrakes, b => b.IsSameConstructAs(ParentProgram.Me));
-                name = "HUD Control";
+                name = "HUD";
             }
 
             // =============================================
             // MODULE INTERFACE
             // =============================================
 
-            public override string[] GetOptions() => new string[] { "Back to Main Menu" };
+            public override string[] GetOptions() => new string[] { "Back" };
             public override void ExecuteOption(int index) { if (index == 0) SystemManager.ReturnToMainMenu(); }
 
             // =============================================
@@ -230,11 +223,6 @@ namespace IngameScript
             {
                 if (!ValidateHUDState())
                     return;
-
-                // Engine direction classification was deferred from Jet ctor — re-runs every
-                // tick to pick up cold-init thrusters as they register, plus mid-game changes.
-                myjet.ClassifyEnginesIfNeeded();
-                ParentProgram.Echo(myjet.EngineDebug);
 
                 CacheTheme();
 
@@ -250,7 +238,7 @@ namespace IngameScript
                 UpdateThrottleControl(throttle, jumpthrottle);
 
                 double heading = CalculateHeading();
-                Vector3D currentVelocity = LV(cockpit);
+                Vector3D currentVelocity = myjet.CockpitVelocity;
                 RenderHUD(heading, gravity, gravityDirection, currentVelocity, worldMatrix);
             }
 
@@ -267,10 +255,10 @@ namespace IngameScript
                 float centerY = hudCenter.Y;
                 float pixelsPerDegree = SY(hud) / 16f;
 
-                Vector3D shooterPosition = GP(cockpit);
-                double altitude = GetAltitude();
+                Vector3D shooterPosition = myjet.CockpitPosition;
+                double altitude = myjet.SurfaceAltitude;
 
-                MatrixD worldToCockpitMatrix = MatrixD.Transpose(WM(cockpit));
+                MatrixD worldToCockpitMatrix = MatrixD.Transpose(worldMatrix);
 
                 using (var frame = hud.DrawFrame())
                 {
@@ -354,7 +342,7 @@ namespace IngameScript
 
                             if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
                                 DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, HUD_INFO);
+                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
                             if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
                                 DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
@@ -387,16 +375,11 @@ namespace IngameScript
                 bool caution = false;
                 if (myjet.tanks != null && myjet.tanks.Count > 0)
                 {
-                    double fuelPct, fuelSec;
-                    myjet.GetFuelStatus(out fuelPct, out fuelSec);
-                    if (fuelPct < 0.15) caution = true;
+                    if (myjet.FuelPct < 0.15) caution = true;
                 }
                 if (myjet.batteries != null && myjet.batteries.Count > 0)
                 {
-                    float curMWh, maxMWh, netDrain;
-                    myjet.GetBatteryStatus(out curMWh, out maxMWh, out netDrain);
-                    float bp = maxMWh > 0 ? curMWh / maxMWh : 1f;
-                    if (bp < 0.20f) caution = true;
+                    if (myjet.BatteryPct < 0.20f) caution = true;
                 }
 
                 // ---- Warning conditions (high-priority alerts) ----
@@ -445,7 +428,7 @@ namespace IngameScript
                 out Vector3D upVector, out Vector3D gravity, out bool inGravity,
                 out Vector3D gravityDirection)
             {
-                worldMatrix = WM(cockpit);
+                worldMatrix = myjet.CockpitMatrix;
                 forwardVector = worldMatrix.Forward;
                 upVector = worldMatrix.Up;
                 Vector3D leftVector = worldMatrix.Left;
@@ -463,10 +446,10 @@ namespace IngameScript
                     ) * (180 / PI);
                 }
 
-                velocity = cockpit.GetShipSpeed();
+                velocity = myjet.CockpitSpeed;
                 mach = velocity / SEA_LEVEL_SPEED_OF_SOUND;
 
-                Vector3D currentVelocity = LV(cockpit);
+                Vector3D currentVelocity = myjet.CockpitVelocity;
 
                 // VVI: vertical component of velocity (positive = climbing)
                 if (inGravity)
@@ -481,10 +464,10 @@ namespace IngameScript
                 if (gForces > peakGForce)
                     peakGForce = gForces;
 
-                double altitude = GetAltitude();
+                double altitude = myjet.SurfaceAltitude;
                 double aoa = CalculateAngleOfAttack(
-                    WF(cockpit),
-                    LV(cockpit),
+                    forwardVector,
+                    currentVelocity,
                     upVector
                 );
 
@@ -719,12 +702,25 @@ namespace IngameScript
 
             private double CalculateHeading()
             {
-                return NavigationHelper.CalculateHeading(cockpit);
-            }
-
-            internal double GetAltitude()
-            {
-                return myjet.GetAltitude();
+                Vector3D gravity = myjet.CachedGravity;
+                Vector3D worldUp = gravity.LengthSquared() > 1e-6 ? -VN(gravity) : Vector3D.Up;
+                Vector3D forwardHorizontal = Vector3D.Reject(myjet.CockpitMatrix.Forward, worldUp);
+                if (forwardHorizontal.LengthSquared() < 1e-8) return 0;
+                forwardHorizontal.Normalize();
+                Vector3D northHorizontal = Vector3D.Reject(new Vector3D(0, 0, -1), worldUp);
+                Vector3D eastHorizontal;
+                if (northHorizontal.LengthSquared() < 1e-8)
+                {
+                    eastHorizontal = VN(Vector3D.Reject(new Vector3D(1, 0, 0), worldUp));
+                    northHorizontal = VX(worldUp, eastHorizontal);
+                }
+                else
+                {
+                    northHorizontal.Normalize();
+                    eastHorizontal = VX(northHorizontal, worldUp);
+                }
+                double headingDegrees = ToDeg(At2(VD(forwardHorizontal, eastHorizontal), VD(forwardHorizontal, northHorizontal)));
+                return headingDegrees < 0 ? headingDegrees + 360.0 : headingDegrees;
             }
 
             internal double CalculateAngleOfAttack(Vector3D forwardVector, Vector3D velocity, Vector3D upVector)

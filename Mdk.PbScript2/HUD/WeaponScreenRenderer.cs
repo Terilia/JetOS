@@ -46,7 +46,7 @@ namespace IngameScript
 
                     // ── Section: TARGET LIST ──
                     float secY = contentY + 6f;
-                    DrawWpnSectionTitle(frame, sw, secY, "TARGET LIST");
+                    MFDFrame.Txt(frame, "TGT", sw / 2f, secY, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
                     secY += 16f;
 
                     // ── Selected target detail box ──
@@ -94,7 +94,7 @@ namespace IngameScript
                     }
                     else
                     {
-                        MFDFrame.Txt(frame, "NO CONTACTS", sw / 2f, secY + 10f, 0.6f,
+                        MFDFrame.Txt(frame, "NO TGT", sw / 2f, secY + 10f, 0.6f,
                             MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
@@ -110,26 +110,6 @@ namespace IngameScript
                 }
             }
 
-            private static void DrawWpnSectionTitle(MySpriteDrawFrame frame, float sw, float y, string text)
-            {
-                float margin = sw * 0.019f;
-                float textW = text.Length * sw * 0.012f;
-                float cx = sw / 2f;
-                float halfGap = textW / 2f + 8f;
-                float lineLeft = margin;
-                float lineRight = sw - margin;
-
-                float leftW = cx - halfGap - lineLeft;
-                if (leftW > 2f)
-                    MFDFrame.Rect(frame, lineLeft + leftW / 2f, y + 5f, leftW, 1f, MFDTheme.BORDER);
-                float rightStart = cx + halfGap;
-                float rightW = lineRight - rightStart;
-                if (rightW > 2f)
-                    MFDFrame.Rect(frame, rightStart + rightW / 2f, y + 5f, rightW, 1f, MFDTheme.BORDER);
-
-                MFDFrame.Txt(frame, text, cx, y, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
-            }
-
             private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
                 float textX = margin + 8f;
@@ -138,7 +118,7 @@ namespace IngameScript
 
                 // Row 1: Name + track mode badge
                 string name = contact.Name;
-                if (string.IsNullOrEmpty(name)) name = "UNKNOWN";
+                if (string.IsNullOrEmpty(name)) name = "UNK";
                 if (name.Length > 14) name = name.Substring(0, 14);
 
                 bool stale = contact.IsStale;
@@ -278,7 +258,7 @@ namespace IngameScript
                     MFDFrame.Txt(frame, marker, textX, textY, TEXT_SCALE, contactColor);
 
                     string cName = contact.Name;
-                    if (string.IsNullOrEmpty(cName)) cName = "UNKNOWN";
+                    if (string.IsNullOrEmpty(cName)) cName = "UNK";
                     if (cName.Length > 12) cName = cName.Substring(0, 12);
                     MFDFrame.Txt(frame, cName, textX + 14f, textY, TEXT_SCALE, contactColor);
 
@@ -296,7 +276,7 @@ namespace IngameScript
 
                 if (enemies.Count > maxRows)
                 {
-                    MFDFrame.Txt(frame, $"+{enemies.Count - maxRows} more", screenWidth / 2f, textY, 0.45f,
+                        MFDFrame.Txt(frame, $"+{enemies.Count - maxRows}", screenWidth / 2f, textY, 0.45f,
                         MFDTheme.DIM_TEXT, MFDTheme.AC);
                 }
             }
@@ -414,7 +394,7 @@ namespace IngameScript
 
                 SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, Cr(100, 100, 100, 150), 2f);
 
-                SpriteHelpers.Tt(frame, "GUN AUTO-TRACK", center.X, center.Y - coneRadius - 30f, 0.6f, HUD_PRIMARY, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(frame, "GUN AUTO", center.X, center.Y - coneRadius - 30f, 0.6f, HUD_PRIMARY, MFDTheme.AC, MFDTheme.FONT_W);
 
                 Vector2 leftIndicatorPos = V2(center.X - coneRadius - 40f, center.Y);
                 DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking);
@@ -433,11 +413,11 @@ namespace IngameScript
                 }
                 else if (gunControl.IsLeftTracking || gunControl.IsRightTracking)
                 {
-                    SpriteHelpers.Tt(frame, "TRACKING", center.X, center.Y + coneRadius + 20f, 0.7f, HUD_EMPHASIS, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(frame, "TRACK", center.X, center.Y + coneRadius + 20f, 0.7f, HUD_EMPHASIS, MFDTheme.AC, MFDTheme.FONT_W);
                 }
                 else
                 {
-                    SpriteHelpers.Tt(frame, "SEARCHING", center.X, center.Y + coneRadius + 20f, 0.6f, HUD_SECONDARY, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(frame, "SRCH", center.X, center.Y + coneRadius + 20f, 0.6f, HUD_SECONDARY, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 

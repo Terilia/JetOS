@@ -2,7 +2,6 @@ using Sandbox.ModAPI.Ingame;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
-using System.Text;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -103,6 +102,19 @@ namespace IngameScript
 
             // Cached gravity vector (updated once per tick by SystemManager)
             public Vector3D CachedGravity = VZ;
+            public MatrixD CockpitMatrix = MatrixD.Identity;
+            public Vector3D CockpitPosition = VZ;
+            public Vector3D CockpitVelocity = VZ;
+            public double CockpitSpeed = 0;
+            public double SurfaceAltitude = 0;
+            public double FuelPct = 0, FuelSec = 0;
+            public float BatteryCurMWh = 0, BatteryMaxMWh = 0, BatteryNetDrainMW = 0, BatteryPct = 0;
+            public int LeftUseFn, LeftUseTot, RightUseFn, RightUseTot;
+            public int LeftAllFn, LeftAllTot, RightAllFn, RightAllTot;
+            public int LeftAbFn, LeftAbTot, RightAbFn, RightAbTot;
+            public float LeftUseCurKN, LeftUseMaxKN, RightUseCurKN, RightUseMaxKN, LeftAbCurKN, RightAbCurKN;
+            double engineClassifyAge = double.MaxValue;
+            const double ENGINE_CLASSIFY_SECONDS = 1.0;
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -173,27 +185,39 @@ namespace IngameScript
             // ENGINE CLASSIFICATION (deferred from ctor — see Jet ctor comment)
             // ------------------------------
 
-            // Diagnostic output of the most recent classification pass.
-            // HUDModule echoes this so the pilot can see what got assigned where and why.
-            public string EngineDebug = "";
+            public void UpdateTickCache()
+            {
+                if (_cockpit == null) return;
+                CockpitMatrix = WM(_cockpit);
+                CockpitPosition = GP(_cockpit);
+                CockpitVelocity = LV(_cockpit);
+                CockpitSpeed = _cockpit.GetShipSpeed();
+                _cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out SurfaceAltitude);
+                CachedGravity = _cockpit.GetNaturalGravity();
+                ClassifyEnginesIfNeeded();
+                UpdateResourceCache();
+                UpdateEngineMetricCache();
+            }
+
             static readonly Vector3I FORWARD_PROPULSION_DIRECTION = Vector3I.Backward;
             static readonly Vector3I REVERSE_PROPULSION_DIRECTION = Vector3I.Forward;
 
             public void ClassifyEnginesIfNeeded()
             {
                 if (_cockpit == null) return;
+                engineClassifyAge += SystemManager.DeltaSeconds;
+                if (engineClassifyAge < ENGINE_CLASSIFY_SECONDS) return;
+                engineClassifyAge = 0;
 
                 leftEngines.Clear(); rightEngines.Clear(); centerEngines.Clear();
                 leftAB.Clear(); rightAB.Clear(); centerAB.Clear();
                 leftEnginesAll.Clear(); rightEnginesAll.Clear(); centerEnginesAll.Clear();
                 leftABAll.Clear(); rightABAll.Clear(); centerABAll.Clear();
 
-                Vector3D cockpitRight = _cockpit.WorldMatrix.Right;
-                Vector3D cockpitPos = _cockpit.GetPosition();
+                Vector3D cockpitRight = CockpitMatrix.Right;
+                Vector3D cockpitPos = CockpitPosition;
                 const double LATERAL_TOLERANCE = 1.25;
 
-                int rejected = 0, reverseRecognized = 0;
-                StringBuilder rejectList = null;
                 for (int i = 0; i < _thrustersbackwards.Count; i++)
                 {
                     var t = _thrustersbackwards[i];
@@ -202,17 +226,7 @@ namespace IngameScript
                     bool forwardPropulsion = dir == FORWARD_PROPULSION_DIRECTION;
                     bool reversePropulsion = dir == REVERSE_PROPULSION_DIRECTION;
                     if (!forwardPropulsion && !reversePropulsion)
-                    {
-                        rejected++;
-                        if (rejected <= 8)
-                        {
-                            if (rejectList == null) rejectList = new StringBuilder();
-                            rejectList.Append("  rej dir=").Append(dir)
-                                .Append(' ').Append(t.CustomName).Append('\n');
-                        }
                         continue;
-                    }
-                    if (reversePropulsion) reverseRecognized++;
 
                     double rightOffset = Vector3D.Dot(t.GetPosition() - cockpitPos, cockpitRight);
                     bool isLeft = rightOffset < -LATERAL_TOLERANCE;
@@ -232,14 +246,41 @@ namespace IngameScript
                             AddEngineToSide(t, isLeft, isRight, leftEngines, centerEngines, rightEngines);
                     }
                 }
+            }
 
-                EngineDebug =
-                    $"Engines: cand={_thrustersbackwards.Count} rev={reverseRecognized} rej={rejected}\n" +
-                    $"  USE ATMO L/C/R: {leftEngines.Count}/{centerEngines.Count}/{rightEngines.Count}\n" +
-                    $"  USE AB   L/C/R: {leftAB.Count}/{centerAB.Count}/{rightAB.Count}\n" +
-                    $"  ALL ATMO L/C/R: {leftEnginesAll.Count}/{centerEnginesAll.Count}/{rightEnginesAll.Count}\n" +
-                    $"  ALL AB   L/C/R: {leftABAll.Count}/{centerABAll.Count}/{rightABAll.Count}\n" +
-                    (rejectList != null ? rejectList.ToString() : "");
+            void UpdateResourceCache()
+            {
+                GetFuelStatus(out FuelPct, out FuelSec);
+                GetBatteryStatus(out BatteryCurMWh, out BatteryMaxMWh, out BatteryNetDrainMW);
+                BatteryPct = BatteryMaxMWh > 0 ? Cl(BatteryCurMWh / BatteryMaxMWh, 0f, 1f) : 0f;
+            }
+
+            void UpdateEngineMetricCache()
+            {
+                CacheEngineSide(leftEnginesAll, leftABAll, leftEngines, leftAB,
+                    out LeftAllFn, out LeftAllTot, out LeftUseFn, out LeftUseTot,
+                    out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAbCurKN);
+                CacheEngineSide(rightEnginesAll, rightABAll, rightEngines, rightAB,
+                    out RightAllFn, out RightAllTot, out RightUseFn, out RightUseTot,
+                    out RightAbFn, out RightAbTot, out RightUseCurKN, out RightUseMaxKN, out RightAbCurKN);
+            }
+
+            static void CacheEngineSide(List<IMyThrust> allEng, List<IMyThrust> allAb,
+                List<IMyThrust> useEng, List<IMyThrust> useAb,
+                out int allFn, out int allTot, out int useFn, out int useTot,
+                out int abFn, out int abTot, out float useCur, out float useMax, out float abCur)
+            {
+                int af, at, ef, et;
+                GetEngineHealth(allEng, out af, out at);
+                GetEngineHealth(allAb, out abFn, out abTot);
+                allFn = af + abFn; allTot = at + abTot;
+                GetEngineHealth(useEng, out ef, out et);
+                GetEngineHealth(useAb, out af, out at);
+                useFn = ef + af; useTot = et + at;
+                float cur, max, abMax;
+                GetEngineThrust(useEng, out cur, out max);
+                GetEngineThrust(useAb, out abCur, out abMax);
+                useCur = cur + abCur; useMax = max + abMax;
             }
 
             static void AddEngineToSide(IMyThrust t, bool isLeft, bool isRight,
@@ -421,7 +462,7 @@ namespace IngameScript
             {
                 _sortBuffer.Clear();
                 if (_cockpit == null) return _sortBuffer;
-                Vector3D cockpitPos = GetCockpitPosition();
+                Vector3D cockpitPos = CockpitPosition;
                 for (int i = 0; i < enemyList.Count; i++)
                 {
                     double distance = VDi(enemyList[i].Position, cockpitPos);
@@ -520,33 +561,6 @@ namespace IngameScript
             // ------------------------------
             // COCKPIT & SHIP INFO
             // ------------------------------
-
-            /// <summary>
-            /// Gets the current velocity in m/s of the ship.
-            /// </summary>
-            public double GetVelocity()
-            {
-                if (_cockpit == null)
-                    return 0.0;
-                return _cockpit.GetShipSpeed(); // m/s
-            }
-
-            /// <summary>
-            /// Attempts to get altitude from cockpit (Surface-level).
-            /// </summary>
-            public double GetAltitude()
-            {
-                if (_cockpit == null)
-                    return 0.0;
-                double altitude = 0.0;
-                _cockpit.TryGetPlanetElevation(MyPlanetElevation.Surface, out altitude);
-                return altitude;
-            }
-
-            /// <summary>
-            /// Cockpit WorldMatrix and Position if needed for calculations.
-            /// </summary>
-            public Vector3D GetCockpitPosition() => _cockpit?.GetPosition() ?? VZ;
 
             // ------------------------------
             // THRUSTERS

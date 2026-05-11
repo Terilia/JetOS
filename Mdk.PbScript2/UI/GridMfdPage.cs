@@ -17,7 +17,7 @@ namespace IngameScript
             public GridMfdPage(Program program, Jet jet, HUDModule hud)
             { _program = program; _jet = jet; _hud = hud; }
 
-            public override string HeaderRight => "STATUS";
+            public override string HeaderRight => "STAT";
             public override bool CompactChrome => true;
 
             public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)

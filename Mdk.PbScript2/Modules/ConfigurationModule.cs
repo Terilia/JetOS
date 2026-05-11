@@ -16,19 +16,20 @@ namespace IngameScript
             private int categoryIndex = 0;
             private int parameterIndex = 0;
 
-            const string C_W = "Warnings";
-            const string C_GC = "Gun Control";
-            const string C_HT = "HUD Toggles";
-            const string C_RA = "Reset All";
-            const string S_SEL = "SELECT to save";
-            const string S_BCK = "BACK to cancel";
+            const string C_W = "Warn";
+            const string C_GC = "Gun";
+            const string C_HT = "HUD";
+            const string C_TH = "Theme";
+            const string C_RA = "Reset";
+            const string S_SEL = "3 SAVE";
+            const string S_BCK = "4 BACK";
 
             private string[] categories = new string[]
             {
                 C_W,
                 C_GC,
                 C_HT,
-                "HUD Theme",
+                C_TH,
                 C_RA
             };
 
@@ -84,30 +85,30 @@ namespace IngameScript
             private void InitializeConfigs()
             {
                 // WARNINGS
-                AddConfig(C_W, "altitude_warning", "Altitude Warning", 150f, 100f, 1000f, 10f, "m");
-                AddConfig(C_W, "speed_warning", "Speed Warning", 360f, 100f, 600f, 10f, "kts");
-                AddConfig(C_W, "bingo_fuel", "Bingo Fuel", 0.20f, 0.05f, 0.50f, 0.05f, "%");
+                AddConfig(C_W, "altitude_warning", "Alt Warn", 150f, 100f, 1000f, 10f, "m");
+                AddConfig(C_W, "speed_warning", "Spd Warn", 360f, 100f, 600f, 10f, "kts");
+                AddConfig(C_W, "bingo_fuel", "Bingo", 0.20f, 0.05f, 0.50f, 0.05f, "%");
                 AddConfig(C_W, "low_fuel", "Low Fuel", 0.35f, 0.10f, 0.60f, 0.05f, "%");
 
                 // GUN CONTROL
                 AddConfig(C_GC, "gun_kp", "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
                 AddConfig(C_GC, "gun_max_rpm", "Max RPM", 30f, 5f, 60f, 5f, "RPM");
-                AddConfig(C_GC, "gun_lock_threshold", "Lock Threshold", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
-                AddConfig(C_GC, "gun_max_range", "Max Range", 6000f, 1000f, 15000f, 500f, "m");
-                AddConfig(C_GC, "gun_muzzle_velocity", "Muzzle Velocity", 1100f, 200f, 2000f, 50f, "m/s");
+                AddConfig(C_GC, "gun_lock_threshold", "Lock", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
+                AddConfig(C_GC, "gun_max_range", "Range", 6000f, 1000f, 15000f, 500f, "m");
+                AddConfig(C_GC, "gun_muzzle_velocity", "Muzzle", 1100f, 200f, 2000f, 50f, "m/s");
 
                 // HUD TOGGLES (1=on, 0=off)
-                AddToggle(C_HT, "hud_radar", "Radar Minimap");
-                AddToggle(C_HT, "hud_gun_funnel", "Gun Funnel");
-                AddToggle(C_HT, "hud_target_brackets", "Target Brackets");
-                AddToggle(C_HT, "hud_gforce", "G-Force");
+                AddToggle(C_HT, "hud_radar", "Radar");
+                AddToggle(C_HT, "hud_gun_funnel", "Funnel");
+                AddToggle(C_HT, "hud_target_brackets", "Tgt Brkt");
+                AddToggle(C_HT, "hud_gforce", "G");
                 AddToggle(C_HT, "hud_aoa", "AOA Indexer");
-                AddToggle(C_HT, "hud_fpm", "Flight Path Marker");
+                AddToggle(C_HT, "hud_fpm", "FPM");
                 AddToggle(C_HT, "hud_compass", "Compass");
-                AddToggle(C_HT, "hud_breakaway", "Breakaway Warning");
+                AddToggle(C_HT, "hud_breakaway", "Break");
 
                 // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
-                AddConfig("HUD Theme", "hud_theme", "Color Theme", 0f, 0f, 3f, 1f);
+                AddConfig(C_TH, "hud_theme", "Color", 0f, 0f, 3f, 1f);
 
             }
 
@@ -194,7 +195,7 @@ namespace IngameScript
                 return 0f;
             }
 
-            private static readonly string[] themeNames = { "Green", "Blue", "Amber", "White" };
+            private static readonly string[] themeNames = { "G", "B", "A", "W" };
 
             public override string[] GetOptions()
             {
@@ -207,7 +208,7 @@ namespace IngameScript
                         string selectedCategory = categories[categoryIndex];
                         if (selectedCategory == C_RA)
                         {
-                            return new string[] { "Reset All to Defaults", "Back" };
+                            return new string[] { "Reset All", "Back" };
                         }
                         List<string> options = new List<string>();
                         foreach (var kvp in allConfigs)
@@ -219,7 +220,7 @@ namespace IngameScript
                                 options.Add($"{p.DisplayName}: {FormatValue(p)}{modified}");
                             }
                         }
-                        options.Add("Reset Category");
+                        options.Add("Reset Cat");
                         options.Add("Back");
                         return options.ToArray();
 
@@ -234,13 +235,10 @@ namespace IngameScript
                                 string themeName = idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
                                 return new string[]
                                 {
-                                    $"Adjusting: {param.DisplayName}",
-                                    "",
-                                    "^ / V  Cycle Theme",
-                                    $"  Current: {themeName}",
-                                    "",
-                                    "0-Green 1-Blue 2-Amber 3-White",
-                                    "",
+                                    $"ADJ {param.DisplayName}",
+                                    "1/2 THEME",
+                                    $"NOW {themeName}",
+                                    "0G 1B 2A 3W",
                                     S_SEL,
                                     S_BCK
                                 };
@@ -250,26 +248,21 @@ namespace IngameScript
                                 string toggle = param.Value > 0.5f ? "ON" : "OFF";
                                 return new string[]
                                 {
-                                    $"Adjusting: {param.DisplayName}",
-                                    "",
-                                    "^ / V  Toggle",
-                                    $"  Current: {toggle}",
-                                    "",
+                                    $"ADJ {param.DisplayName}",
+                                    "1/2 TOG",
+                                    $"NOW {toggle}",
                                     S_SEL,
                                     S_BCK
                                 };
                             }
                             return new string[]
                             {
-                                $"Adjusting: {param.DisplayName}",
-                                "",
-                                "^ Increase (Navigate Up)",
-                                $"  Current: {param.Value:F2}{param.Unit}",
-                                "V Decrease (Navigate Down)",
-                                "",
-                                $"Default: {param.DefaultValue:F2}{param.Unit}",
-                                $"Range: {param.MinValue:F2} - {param.MaxValue:F2}{param.Unit}",
-                                "",
+                                $"ADJ {param.DisplayName}",
+                                "1 +",
+                                $"NOW {param.Value:F2}{param.Unit}",
+                                "2 -",
+                                $"DEF {param.DefaultValue:F2}{param.Unit}",
+                                $"{param.MinValue:F2}-{param.MaxValue:F2}{param.Unit}",
                                 S_SEL,
                                 S_BCK
                             };

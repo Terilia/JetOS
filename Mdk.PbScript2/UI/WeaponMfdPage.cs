@@ -12,7 +12,7 @@ namespace IngameScript
             readonly HUDModule _hud;
             public WeaponMfdPage(HUDModule hud) { _hud = hud; }
 
-            public override string HeaderRight => "WEAPONS";
+            public override string HeaderRight => "WPN";
 
             public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
             {

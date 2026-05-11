@@ -1,4 +1,3 @@
-using System;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -22,23 +21,18 @@ namespace IngameScript
                 float w = area.Width, areaH = area.Height;
                 float gap = 6f, resH = 46f;
 
-                double fuelPct, fuelSec;
-                jet.GetFuelStatus(out fuelPct, out fuelSec);
                 if (jet.tanks.Count > 0)
                 {
-                    _animFuel.SetTarget(fuelPct);
-                    DrawResCard(frame, x, y, w, resH, "H2 FUEL", (float)_animFuel.Value, FmtTime(fuelSec), TEX_FUEL_TANK, 18f, 22f);
+                    _animFuel.SetTarget(jet.FuelPct);
+                    DrawResCard(frame, x, y, w, resH, "H2", (float)_animFuel.Value, FmtTime(jet.FuelSec), TEX_FUEL_TANK, 18f, 22f);
                     y += resH + gap;
                 }
 
-                float curMWh, maxMWh, netDrain;
-                jet.GetBatteryStatus(out curMWh, out maxMWh, out netDrain);
                 if (jet.batteries.Count > 0)
                 {
-                    float bp = maxMWh > 0 ? curMWh / maxMWh : 0f;
-                    _animBattery.SetTarget(bp);
-                    string bt = netDrain > 0.001f ? FmtTime(curMWh / netDrain * 3600) : netDrain < -0.001f ? "CHRG" : "---";
-                    DrawResCard(frame, x, y, w, resH, "BATTERY", (float)_animBattery.Value, bt, TEX_BATTERY, 22f, 16f);
+                    _animBattery.SetTarget(jet.BatteryPct);
+                    string bt = jet.BatteryNetDrainMW > 0.001f ? FmtTime(jet.BatteryCurMWh / jet.BatteryNetDrainMW * 3600) : jet.BatteryNetDrainMW < -0.001f ? "CHRG" : "---";
+                    DrawResCard(frame, x, y, w, resH, "BATT", (float)_animBattery.Value, bt, TEX_BATTERY, 22f, 16f);
                     y += resH + gap;
                 }
 
@@ -63,7 +57,7 @@ namespace IngameScript
                     && !(SystemManager.currentModule is TerrainModule))
                     TerrainModule.RenderMinimap(frame, area, jet);
                 else
-                    Txt(frame, "NO TERRAIN", x + w / 2f, y + h / 2f - 6f, 0.35f, Cr(42, 74, 42));
+                    Txt(frame, "NO TER", x + w / 2f, y + h / 2f - 6f, 0.35f, Cr(42, 74, 42));
             }
 
             // ════════════════════════════════════════
@@ -73,27 +67,17 @@ namespace IngameScript
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
-                Txt(frame, "THRUST", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
+                Txt(frame, "THR", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
                 float midX = x + w / 2f, colW = (w - 16f) / 2f, top = y + 16f, colH = h - 20f;
-                DrawEngCol(frame, x + 4f, top, colW, colH,
-                    jet.leftEnginesAll, jet.leftABAll, jet.leftEngines, jet.leftAB, "ENG L");
-                DrawEngCol(frame, midX + 4f, top, colW, colH,
-                    jet.rightEnginesAll, jet.rightABAll, jet.rightEngines, jet.rightAB, "ENG R");
+                DrawEngCol(frame, x + 4f, top, colW, colH, jet.LeftAllFn, jet.LeftAllTot,
+                    jet.LeftUseCurKN, jet.LeftUseMaxKN, jet.LeftAbCurKN, "ENG L");
+                DrawEngCol(frame, midX + 4f, top, colW, colH, jet.RightAllFn, jet.RightAllTot,
+                    jet.RightUseCurKN, jet.RightUseMaxKN, jet.RightAbCurKN, "ENG R");
             }
 
             static void DrawEngCol(MySpriteDrawFrame frame, float x, float y, float w, float colH,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> allEng,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> allAb,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> driveEng,
-                System.Collections.Generic.List<Sandbox.ModAPI.Ingame.IMyThrust> driveAb, string label)
+                int fn, int tot, float tCur, float tMax, float abCur, string label)
             {
-                int fn, tot, abFn, abTot;
-                Jet.GetEngineHealth(allEng, out fn, out tot);
-                Jet.GetEngineHealth(allAb, out abFn, out abTot);
-                fn += abFn; tot += abTot;
-                float curKN, maxKN; Jet.GetEngineThrust(driveEng, out curKN, out maxKN);
-                float abCur, abMax; Jet.GetEngineThrust(driveAb, out abCur, out abMax);
-                float tMax = maxKN + abMax, tCur = curKN + abCur;
                 float pct = tMax > 0 ? tCur / tMax : 0f; bool dmg = fn < tot;
                 Txt(frame, label, x, y, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
                 Txt(frame, $"{fn}/{tot}", x + w, y, 0.3f, dmg ? MFDTheme.WARN : MFDTheme.ACCENT, MFDTheme.AR);
@@ -142,7 +126,7 @@ namespace IngameScript
                 float fw = bw * safePct;
                 Color barColor = safePct < 0.2f ? MFDTheme.WARN : safePct < 0.5f ? MFDTheme.STATUS_VAL : MFDTheme.ACCENT;
                 if (fw > 0.5f) Rect(frame, bx + fw / 2f, by + bh / 2f, fw, bh, barColor);
-                Txt(frame, "REMAIN", bx, by + bh + 2f, 0.28f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                Txt(frame, "REM", bx, by + bh + 2f, 0.28f, MFDTheme.DIM_TEXT, MFDTheme.AL);
                 Txt(frame, timeStr, bx + bw, by + bh + 2f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AR);
             }
 

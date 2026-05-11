@@ -32,20 +32,12 @@ namespace IngameScript
             }
             catch (NullReferenceException e)
             {
-                // Log the error for debugging
-                Echo($"NullRef Error: {e.Message}");
-                Echo($"Stack: {e.StackTrace}");
-                // Reinitialize to recover from missing blocks
+                Echo($"NRE {e.Message}");
                 SystemManager.Initialize(this);
             }
             catch (Exception e)
             {
-                // Log unexpected errors but don't hide them
-                Echo($"CRITICAL ERROR: {e.GetType().Name}");
-                Echo($"Message: {e.Message}");
-                Echo($"Stack: {e.StackTrace}");
-                // Don't automatically reinitialize on unexpected errors
-                // This helps identify bugs during development
+                Echo($"ERR {e.GetType().Name}: {e.Message}");
             }
         }
 

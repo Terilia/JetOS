@@ -58,7 +58,7 @@ namespace IngameScript
             {
                 return new string[]
                 {
-                    string.Format("Canards [{0}]", StatusText),
+                    string.Format("AUTO [{0}]", StatusText),
                     string.Format("Gain- [{0:F1}]", gain),
                     string.Format("Gain+ [{0:F1}]", gain)
                 };
@@ -97,7 +97,7 @@ namespace IngameScript
 
             public override string GetHotkeys()
             {
-                return "CANARD CONTROL";
+                return "";
             }
 
             // True while this module is actively commanding the stabs.
@@ -219,8 +219,7 @@ namespace IngameScript
                 SpriteHelpers.DrawRectangleOutline(f, x, y, w, h, 1f, MFDTheme.BORDER);
                 SpriteHelpers.Bx(f, x + w / 2f, y, w, 1f, MFDTheme.GOLD_LINE);
 
-                SpriteHelpers.Tt(f, "CANARD TILT", x + 8f, y + 8f, 0.46f, MFDTheme.CORP_GOLD, MFDTheme.AL);
-                SpriteHelpers.Tt(f, "NEUTRAL + L/R", x + w - 8f, y + 10f, 0.32f, MFDTheme.DIM_TEXT, MFDTheme.AR);
+                SpriteHelpers.Tt(f, "TILT", x + 8f, y + 8f, 0.46f, MFDTheme.CORP_GOLD, MFDTheme.AL);
 
                 float cx = x + w * 0.42f;
                 float cy = y + h * 0.49f;
@@ -247,11 +246,12 @@ namespace IngameScript
 
                 float rx = x + w - 8f;
                 float my = y + 38f;
-                DrawMetric(f, rx, my, "L", _module.DisplayCmdL.ToString("+0.0;-0.0;0.0"), Cr(110, 205, 110));
-                DrawMetric(f, rx, my + 28f, "R", _module.DisplayCmdR.ToString("+0.0;-0.0;0.0"), Cr(190, 164, 82));
-                DrawMetric(f, rx, my + 56f, "BETA", _module.DisplayBeta.ToString("+0.0;-0.0;0.0"), MFDTheme.STATUS_VAL);
+                string fmt = "+0.0;-0.0;0.0";
+                DrawMetric(f, rx, my, "L", _module.DisplayCmdL.ToString(fmt), Cr(110, 205, 110));
+                DrawMetric(f, rx, my + 28f, "R", _module.DisplayCmdR.ToString(fmt), Cr(190, 164, 82));
+                DrawMetric(f, rx, my + 56f, "B", _module.DisplayBeta.ToString(fmt), MFDTheme.STATUS_VAL);
 
-                string spill = _module.SpillActive ? "SPILL " + _module.StabCmd.ToString("+0.0;-0.0;0.0") : "SPILL no";
+                string spill = _module.SpillActive ? "S " + _module.StabCmd.ToString(fmt) : "S no";
                 SpriteHelpers.Tt(f, spill, x + 8f, y + h - 20f, 0.34f,
                     _module.SpillActive ? MFDTheme.WARN : MFDTheme.DIM_TEXT, MFDTheme.AL);
             }

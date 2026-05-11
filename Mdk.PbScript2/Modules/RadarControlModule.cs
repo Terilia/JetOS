@@ -1,9 +1,7 @@
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
-using System;
 using System.Collections.Generic;
-using System.Text;
 using VRageMath;
 
 namespace IngameScript
@@ -50,27 +48,6 @@ namespace IngameScript
             {
                 public string CurrentEnemyName = "";
                 public double SecondsSinceEnemyChange = 0;
-                public List<Vector3D> PositionHistory;
-                public int HistoryIndex = 0;
-                public double PositionSampleAccum = 0; // accumulator for sampling interval
-
-                public RWRTrackingState()
-                {
-                    PositionHistory = new List<Vector3D>();
-                    for (int i = 0; i < 10; i++)
-                    {
-                        PositionHistory.Add(VZ);
-                    }
-                }
-
-                public void ClearHistory()
-                {
-                    for (int i = 0; i < PositionHistory.Count; i++)
-                    {
-                        PositionHistory[i] = VZ;
-                    }
-                    HistoryIndex = 0;
-                }
             }
 
             private List<RWRTrackingState> rwrStates = new List<RWRTrackingState>();
@@ -82,8 +59,6 @@ namespace IngameScript
 
             // True when ANY pool radar in LOCKED state matches the selected enemy
             public bool IsTrackLocked { get; private set; }
-
-            private string lastConsoleOutput = "";
 
             // Accumulated absolute time for radar tracking (in ticks)
             private long accumulatedTimeTicks = 0;
@@ -99,15 +74,13 @@ namespace IngameScript
             private const double ACTIVATION_COOLDOWN_SECONDS = 0.167;
             // Wall-clock seconds before a LOCKED radar that lost its target reverts to IDLE
             private const double LOST_TARGET_TIMEOUT_SECONDS = 2.0;
-            // RWR sampling interval for position history
-            private const double RWR_POSITION_SAMPLE_SECONDS = 0.167;
             // RWR stabilization delay before threat classification fires
             private const double RWR_STABILIZATION_SECONDS = 0.5;
 
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
                 myJet = jet;
-                name = "Radar & RWR Control";
+                name = "Radar/RWR";
 
                 // Auto-detect all AI Flight/Combat pairs (1-99)
                 for (int i = 1; i <= 99; i++)
@@ -143,7 +116,6 @@ namespace IngameScript
                 // Assign initial roles — NO ApplyAction here (unreliable in constructor)
                 ReassignRoles();
 
-                program.Echo($"RadarControl: {allRadars.Count} radars, Pool: {GetSweepTrackPoolSize()}, RWR: {GetActiveRWRCount()}");
             }
 
             public override string[] GetOptions()
@@ -152,7 +124,7 @@ namespace IngameScript
 
                 if (allRadars.Count == 0)
                 {
-                    options.Add("No radars detected");
+                    options.Add("NO RAD");
                     return options.ToArray();
                 }
 
@@ -160,8 +132,8 @@ namespace IngameScript
                 options.Add(string.Format("RWR [{0}]", rwrEnabled ? "ON" : "OFF"));
                 int activeRWR = GetActiveRWRCount();
                 int poolSize = GetSweepTrackPoolSize();
-                options.Add(string.Format("RWR Units + (Current: {0}/{1})", activeRWR, allRadars.Count));
-                options.Add(string.Format("RWR Units - (Current: {0}/{1})", activeRWR, allRadars.Count));
+                options.Add(string.Format("RWR+ {0}/{1}", activeRWR, allRadars.Count));
+                options.Add(string.Format("RWR- {0}/{1}", activeRWR, allRadars.Count));
 
                 // RWR Status
                 if (rwrEnabled)
@@ -169,11 +141,11 @@ namespace IngameScript
                     int threatCount = activeThreats.Count;
                     if (threatCount > 0)
                     {
-                        options.Add(string.Format("RWR: {0} THREAT{1}", threatCount, threatCount > 1 ? "S" : ""));
+                        options.Add(string.Format("{0} THR", threatCount));
                     }
                     else
                     {
-                        options.Add("RWR: Scanning...");
+                        options.Add("RWR SCAN");
                     }
                 }
 
@@ -185,10 +157,10 @@ namespace IngameScript
                     switch (state.Role)
                     {
                         case RadarRole.SEARCHING:
-                            roleStr = $"R{i + 1}: SEARCHING";
+                            roleStr = $"R{i + 1}: SRCH";
                             break;
                         case RadarRole.LOCKED:
-                            roleStr = $"R{i + 1}: LOCKED [{state.TrackedName}]";
+                            roleStr = $"R{i + 1}: LOCK [{state.TrackedName}]";
                             break;
                         case RadarRole.RWR:
                             roleStr = $"R{i + 1}: RWR";
@@ -200,8 +172,8 @@ namespace IngameScript
                     options.Add(roleStr);
                 }
 
-                options.Add($"Pool: {poolSize} | RWR: {activeRWR}");
-                options.Add($"Total Contacts: {myJet.enemyList.Count}");
+                options.Add($"P {poolSize} R {activeRWR}");
+                options.Add($"TGT {myJet.enemyList.Count}");
 
                 return options.ToArray();
             }
@@ -219,7 +191,6 @@ namespace IngameScript
                         {
                             foreach (var state in rwrStates)
                             {
-                                state.ClearHistory();
                                 state.CurrentEnemyName = "";
                                 state.SecondsSinceEnemyChange = 0;
                             }
@@ -389,16 +360,14 @@ namespace IngameScript
 
                     Vector3D playerPos = GP(myJet._cockpit);
                     Vector3D playerVel = LV(myJet._cockpit);
-                    Vector3D gravity = myJet.CachedGravity;
 
                     int rwrCount = GetActiveRWRCount();
                     for (int i = 0; i < rwrCount; i++)
                     {
-                        ProcessRWR(i, playerPos, playerVel, gravity);
+                        ProcessRWR(i, playerPos, playerVel);
                     }
 
                     ManageWarningSounds();
-                    UpdateConsoleOutput();
                 }
 
                 // ============================================================
@@ -639,7 +608,7 @@ namespace IngameScript
 
             public override string GetHotkeys()
             {
-                return "Radar Control is a status display";
+                return "";
             }
 
             // ==== Pool / RWR Size Helpers ====
@@ -697,7 +666,7 @@ namespace IngameScript
                 return poolSize + rwrIndex;
             }
 
-            private void ProcessRWR(int rwrIndex, Vector3D playerPos, Vector3D playerVel, Vector3D gravity)
+            private void ProcessRWR(int rwrIndex, Vector3D playerPos, Vector3D playerVel)
             {
                 int radarIndex = GetRWRRadarIndex(rwrIndex);
 
@@ -708,7 +677,6 @@ namespace IngameScript
                 var state = rwrStates[rwrIndex];
 
                 double dt = SystemManager.DeltaSeconds;
-                state.PositionSampleAccum += dt;
 
                 if (radar.IsTracking && radar.HasReceivedPosition)
                 {
@@ -722,7 +690,6 @@ namespace IngameScript
                         {
                             state.CurrentEnemyName = "";
                             state.SecondsSinceEnemyChange = 0;
-                            state.ClearHistory();
                         }
                         return;
                     }
@@ -731,23 +698,15 @@ namespace IngameScript
                     {
                         state.CurrentEnemyName = enemyName;
                         state.SecondsSinceEnemyChange = 0;
-                        state.ClearHistory();
                     }
                     else
                     {
                         state.SecondsSinceEnemyChange += dt;
                     }
 
-                    if (state.PositionSampleAccum >= RWR_POSITION_SAMPLE_SECONDS)
-                    {
-                        state.PositionHistory[state.HistoryIndex] = enemyPos;
-                        state.HistoryIndex = (state.HistoryIndex + 1) % state.PositionHistory.Count;
-                        state.PositionSampleAccum = 0;
-                    }
-
                     if (state.SecondsSinceEnemyChange >= RWR_STABILIZATION_SECONDS)
                     {
-                        bool isThreatening = IsThreatening(enemyPos, enemyVel, playerPos, playerVel, gravity, state.PositionHistory);
+                        bool isThreatening = IsThreatening(enemyPos, enemyVel, playerPos, playerVel);
 
                         if (isThreatening)
                         {
@@ -766,12 +725,11 @@ namespace IngameScript
                     {
                         state.CurrentEnemyName = "";
                         state.SecondsSinceEnemyChange = 0;
-                        state.ClearHistory();
                     }
                 }
             }
 
-            private bool IsThreatening(Vector3D enemyPos, Vector3D enemyVel, Vector3D playerPos, Vector3D playerVel, Vector3D gravity, List<Vector3D> positionHistory)
+            private bool IsThreatening(Vector3D enemyPos, Vector3D enemyVel, Vector3D playerPos, Vector3D playerVel)
             {
                 Vector3D relativePos = playerPos - enemyPos;
                 Vector3D relativeVel = playerVel - enemyVel;
@@ -818,56 +776,6 @@ namespace IngameScript
                 }
             }
 
-            private void UpdateConsoleOutput()
-            {
-                var sb = new StringBuilder();
-                sb.Append("RWR: ");
-
-                int activeCount = GetActiveRWRCount();
-                for (int i = 0; i < activeCount; i++)
-                {
-                    if (i > 0) sb.Append(" ");
-
-                    sb.Append("R").Append(i + 1).Append(":");
-
-                    int radarIndex = GetRWRRadarIndex(i);
-                    if (radarIndex < allRadars.Count && allRadars[radarIndex].IsTracking)
-                    {
-                        sb.Append("A,T");
-
-                        bool isThreat = false;
-                        bool isIncoming = false;
-                        foreach (var threat in activeThreats)
-                        {
-                            if (threat.RWRIndex == i)
-                            {
-                                isThreat = true;
-                                if (threat.IsIncoming)
-                                    isIncoming = true;
-                                break;
-                            }
-                        }
-
-                        if (isIncoming)
-                            sb.Append(",H+");
-                        else if (isThreat)
-                            sb.Append(",H");
-                        else
-                            sb.Append(",-");
-                    }
-                    else
-                    {
-                        sb.Append("A,-,-");
-                    }
-                }
-
-                string newOutput = sb.ToString();
-                if (newOutput != lastConsoleOutput)
-                {
-                    ParentProgram.Echo(newOutput);
-                    lastConsoleOutput = newOutput;
-                }
-            }
         }
     }
 }

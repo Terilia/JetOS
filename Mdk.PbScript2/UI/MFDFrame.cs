@@ -52,7 +52,7 @@ namespace IngameScript
                 // Brand
                 Txt(frame, MFDTheme.NC, padX, hy + headerH * 0.15f, titleScale, MFDTheme.CORP_GOLD);
                 float corpW = sw * 0.22f;
-                Txt(frame, "TACTICAL SYSTEM " + Jet.IC + "/" + Jet.IA + "/" + Jet.IP, padX + corpW, hy + headerH * 0.22f, smallScale, MFDTheme.MID_TEXT);
+                Txt(frame, "TAC " + Jet.IC + "/" + Jet.IA + "/" + Jet.IP, padX + corpW, hy + headerH * 0.22f, smallScale, MFDTheme.MID_TEXT);
 
                 // Header right text
                 if (headerRight != null)
@@ -68,7 +68,7 @@ namespace IngameScript
 
                 if (drawFooterNav)
                 {
-                    Txt(frame, "1 UP  2 DN  3 SEL  4 BACK  5-8 FN  9 MENU",
+                    Txt(frame, "1/2 NAV 3 SEL 4 BACK 5-8 FN 9 MENU",
                         padX, fy + footerH * 0.15f, tinyScale, MFDTheme.DIM_TEXT);
                 }
 

@@ -43,6 +43,7 @@ namespace IngameScript
             public static bool Ready => _ready;
             public static bool Loading => _downloading;
             public static double CellSize => _cellSize > 0 ? _cellSize : DEFAULT_CELL;
+            public static double MeanR => _meanR;
             public static Vector3D GridFwd => _gridFwd;
             public static Vector3D GridRight => _gridRight;
             public static float DownloadProgress => _total > 0 ? (float)_offset / _total : 0f;

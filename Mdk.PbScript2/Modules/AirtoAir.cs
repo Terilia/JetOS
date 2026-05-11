@@ -46,9 +46,9 @@ namespace IngameScript
 
                 var options = new List<string>
                 {
-                    "Fire Selected Bays",
-                    "Toggle Selected Bays",
-                    string.Format("Topdown [{0}]", isTopdownEnabled ? "ON" : "OFF"),
+                    "Fire Sel",
+                    "Toggle Sel",
+                    string.Format("TD [{0}]", isTopdownEnabled ? "ON" : "OFF"),
                 };
 
                 MissileBayHelper.BuildBayOptionList(options, missileBays, baySelected);
