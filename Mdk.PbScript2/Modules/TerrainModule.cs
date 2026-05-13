@@ -359,26 +359,13 @@ namespace IngameScript
             static void DrawContacts(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr, Jet j)
             {
                 var sel = j.GetSelectedEnemy();
-                float h = ma / 2f;
                 for (int i = 0; i < j.enemyList.Count; i++)
                 {
                     var e = j.enemyList[i];
-                    Vector3D to = e.Position - sp;
-                    float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
-                    bool off = Ab(dx) > h || Ab(dy) > h;
-                    Vector2 p = ClipMap(cx, cy, dx, dy, h - 3f);
                     bool s = sel.HasValue && e.Matches(sel.Value);
                     Color c = e.IsStale ? MFDTheme.DIM_TEXT : s ? MFDTheme.BRIGHT_TEXT : j.GetEnemyContactColor(e);
-                    float z = s ? 15f : off ? 10f : 11f;
-                    SpriteHelpers.Sp(f, s ? TEX_C_HOSTILE : TEX_C_UNKNOWN, p.X, p.Y, z, z, c);
-                    if (!s) continue;
-                    string n = SE(e.Name) ? "TGT" : e.Name;
-                    if (n.Length > 9) n = n.Substring(0, 9);
-                    bool l = p.X < cx;
-                    float tx = p.X + (l ? 8f : -8f);
-                    var a = l ? MFDTheme.AL : MFDTheme.AR;
-                    MFDFrame.Txt(f, n, tx, p.Y + 7f, 0.3f, c, a);
-                    MFDFrame.Txt(f, SpriteHelpers.FormatRange(VDi(sp, e.Position)) + " " + AD(TerrainData.Alt(e.Position) - TerrainData.Alt(sp)), tx, p.Y + 18f, 0.25f, c, a);
+                    DrawMapContact(f, cx, cy, ma, ppm, sp, jf, jr, e.Position, SE(e.Name) ? "TGT" : e.Name,
+                        s ? TEX_C_HOSTILE : TEX_C_UNKNOWN, c, s, s);
                 }
             }
 
@@ -416,27 +403,39 @@ namespace IngameScript
             static void DrawFriendlyJets(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
             {
                 var friends = FriendlyJetTelemetry.GetActiveFriends();
-                float h = ma / 2f;
                 Color blue = Cr(70, 150, 255);
                 for (int i = 0; i < friends.Count; i++)
                 {
                     var friend = friends[i];
-                    Vector3D to = friend.Position - sp;
-                    float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
-                    Vector2 p = ClipMap(cx, cy, dx, dy, h - 4f);
-                    float vx = (float)VD(friend.Velocity, jr) * ppm;
-                    float vy = -(float)VD(friend.Velocity, jf) * ppm;
-                    float vl = (float)Math.Sqrt(vx * vx + vy * vy);
-                    if (vl > 0.1f)
-                    {
-                        float tl = Cl(vl * 3f, 5f, 15f);
-                        Vector2 q = V2(p.X - vx / vl * tl, p.Y - vy / vl * tl);
-                        AF(f, q, p, 1f, Cr(blue, 0.55f));
-                    }
-                    Sq(p.X + 1f, p.Y + 1f, 7f, 7f, Cr(0, 0, 0, 180));
-                    Sq(p.X, p.Y, 7f, 7f, Cr(blue, 0.85f));
-                    Sq(p.X, p.Y, 4f, 4f, blue);
+                    DrawMapContact(f, cx, cy, ma, ppm, sp, jf, jr, friend.Position, FriendlyLabel(friend.Id),
+                        TEX_C_FRIENDLY, blue, true, false);
                 }
+            }
+
+            static void DrawMapContact(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr,
+                Vector3D pos, string label, string sprite, Color c, bool showInfo, bool selected)
+            {
+                float h = ma / 2f;
+                Vector3D to = pos - sp;
+                float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
+                bool off = Ab(dx) > h || Ab(dy) > h;
+                Vector2 p = ClipMap(cx, cy, dx, dy, h - 3f);
+                float z = selected ? 15f : off ? 10f : 11f;
+                SpriteHelpers.Sp(f, sprite, p.X, p.Y, z, z, c);
+                if (!showInfo) return;
+                string n = SE(label) ? "TGT" : label;
+                if (n.Length > 9) n = n.Substring(0, 9);
+                bool l = p.X < cx;
+                float tx = p.X + (l ? 8f : -8f);
+                var a = l ? MFDTheme.AL : MFDTheme.AR;
+                MFDFrame.Txt(f, n, tx, p.Y + 7f, 0.3f, c, a);
+                MFDFrame.Txt(f, SpriteHelpers.FormatRange(VDi(sp, pos)) + " " + AD(TerrainData.Alt(pos) - TerrainData.Alt(sp)), tx, p.Y + 18f, 0.25f, c, a);
+            }
+
+            static string FriendlyLabel(long id)
+            {
+                string s = id.ToString();
+                return "FR " + (s.Length > 4 ? s.Substring(s.Length - 4) : s);
             }
 
             static string AD(double v)
