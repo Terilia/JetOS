@@ -179,7 +179,7 @@ namespace IngameScript
                 textY += 16f;
 
                 // Row 4: Source + tracking timeline
-                string sourceText = contact.SourceIndex == 0 ? "RDR" : $"RWR{contact.SourceIndex}";
+                string sourceText = contact.SourceIndex < 0 ? "DL" : contact.SourceIndex == 0 ? "RDR" : $"RWR{contact.SourceIndex}";
                 MFDFrame.Txt(frame, sourceText, textX, textY, 0.45f, MFDTheme.DIM_TEXT);
 
                 float timelineX = screenWidth / 2f - 10f;
