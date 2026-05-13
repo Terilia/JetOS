@@ -80,7 +80,7 @@ namespace IngameScript
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
                 myJet = jet;
-                name = "Radar/RWR";
+                name = "Radar";
 
                 // Auto-detect all AI Flight/Combat pairs (1-99)
                 for (int i = 1; i <= 99; i++)
