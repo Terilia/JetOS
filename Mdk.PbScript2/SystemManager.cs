@@ -186,6 +186,7 @@ namespace IngameScript
 
                 // Cache cockpit, resource, and engine display state once per tick.
                 _myJet.UpdateTickCache();
+                FriendlyJetTelemetry.Tick(parentProgram, _myJet);
 
                 double velocity = _myJet.CockpitSpeed;
                 double velocityKnots = velocity * 1.94384;

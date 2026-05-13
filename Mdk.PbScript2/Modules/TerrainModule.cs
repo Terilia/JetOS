@@ -94,6 +94,7 @@ namespace IngameScript
                 DrawFlightPath(frame, cx, ccy, ma, ppm, jet.CockpitVelocity, jF, jR);
                 DrawContacts(frame, cx, ccy, ma, ppm, sp, jF, jR, jet);
                 DrawMissiles(frame, cx, ccy, ma, ppm, sp, jF, jR);
+                DrawFriendlyJets(frame, cx, ccy, ma, ppm, sp, jF, jR);
                 DrawProfile(frame, ml, mt + ma + 4f, ma, profH - 7f, sp, jet.CockpitVelocity, jF, VN(-jet.CachedGravity), ZS[zoom]);
                 SpriteHelpers.DrawCircleOutline(frame, V2(cx, ccy), ma * 0.25f, Cr(MFDTheme.BORDER, 0.4f), 1f);
                 SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
@@ -409,6 +410,32 @@ namespace IngameScript
                         m.Acquired ? MFDTheme.BRIGHT_TEXT : MFDTheme.WARN);
                     if (m.ActiveTrackingUnlocked)
                         MFDFrame.Txt(f, "AI", p.X + 6f, p.Y + 3f, 0.26f, MFDTheme.ACCENT);
+                }
+            }
+
+            static void DrawFriendlyJets(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
+            {
+                var friends = FriendlyJetTelemetry.GetActiveFriends();
+                float h = ma / 2f;
+                Color blue = Cr(70, 150, 255);
+                for (int i = 0; i < friends.Count; i++)
+                {
+                    var friend = friends[i];
+                    Vector3D to = friend.Position - sp;
+                    float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
+                    Vector2 p = ClipMap(cx, cy, dx, dy, h - 4f);
+                    float vx = (float)VD(friend.Velocity, jr) * ppm;
+                    float vy = -(float)VD(friend.Velocity, jf) * ppm;
+                    float vl = (float)Math.Sqrt(vx * vx + vy * vy);
+                    if (vl > 0.1f)
+                    {
+                        float tl = Cl(vl * 3f, 5f, 15f);
+                        Vector2 q = V2(p.X - vx / vl * tl, p.Y - vy / vl * tl);
+                        AF(f, q, p, 1f, Cr(blue, 0.55f));
+                    }
+                    Sq(p.X + 1f, p.Y + 1f, 7f, 7f, Cr(0, 0, 0, 180));
+                    Sq(p.X, p.Y, 7f, 7f, Cr(blue, 0.85f));
+                    Sq(p.X, p.Y, 4f, 4f, blue);
                 }
             }
 
