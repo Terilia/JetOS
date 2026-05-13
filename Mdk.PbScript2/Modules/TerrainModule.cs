@@ -15,6 +15,7 @@ namespace IngameScript
             int zoom = 2;
             const int FD = 16, SD = 8, SS = 6;
             const float HP = 1.5708f;
+            const float FRIENDLY_CONTACT_SCALE = 1.18f;
 
             // 4 thresholds: warm = above you (danger), cool = below (safe)
             static readonly double[] TH = { -500, 0, 200, 800 };
@@ -408,19 +409,19 @@ namespace IngameScript
                 {
                     var friend = friends[i];
                     DrawMapContact(f, cx, cy, ma, ppm, sp, jf, jr, friend.Position, FriendlyLabel(friend.Id),
-                        TEX_C_FRIENDLY, blue, true, false);
+                        TEX_C_FRIENDLY, blue, true, false, FRIENDLY_CONTACT_SCALE);
                 }
             }
 
             static void DrawMapContact(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr,
-                Vector3D pos, string label, string sprite, Color c, bool showInfo, bool selected)
+                Vector3D pos, string label, string sprite, Color c, bool showInfo, bool selected, float sizeScale = 1f)
             {
                 float h = ma / 2f;
                 Vector3D to = pos - sp;
                 float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
                 bool off = Ab(dx) > h || Ab(dy) > h;
                 Vector2 p = ClipMap(cx, cy, dx, dy, h - 3f);
-                float z = selected ? 15f : off ? 10f : 11f;
+                float z = (selected ? 15f : off ? 10f : 11f) * sizeScale;
                 SpriteHelpers.Sp(f, sprite, p.X, p.Y, z, z, c);
                 if (!showInfo) return;
                 string n = SE(label) ? "TGT" : label;
