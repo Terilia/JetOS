@@ -366,6 +366,13 @@ namespace IngameScript
                     }
                 }
 
+                if (existingIndex >= 0 && sourceIndex < 0)
+                {
+                    var old = enemyList[existingIndex];
+                    if (old.SourceIndex >= 0 && old.AgeSeconds <= 3.0)
+                        return;
+                }
+
                 EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, entityId, accel);
 
                 // Carry over and advance tracking history
