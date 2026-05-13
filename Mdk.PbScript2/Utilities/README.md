@@ -18,20 +18,12 @@ Static helper class for navigation calculations.
 - Projects forward vector onto horizontal plane using gravity
 - Returns 0 if gravity is not available
 
-### CommonTypes.cs
-Common data structures shared across modules:
-
-- `RWRWarning` - Radar Warning Receiver threat data (position, type, incoming flag)
-- `Player` - Player entity for mini-games
-- `Obstacle` - Obstacle entity for mini-games
-- `Vector2I` - Integer 2D vector for grid calculations
-
-### RadarTrackingModule.cs (Deprecated)
-Legacy radar tracking using AI block pairs. Replaced by centralized `RadarControlModule`.
+### RadarTrackingModule.cs
+AI block target extraction used by centralized `RadarControlModule`.
 
 - Tracks targets via AI Flight + Combat block combinations
-- Maintained for backward compatibility
-- New code should use `Jet.radarControl` instead
+- Reads combat-block target waypoints without enabling flight autopilot
+- Provides target position, velocity, entity id, and name to radar control
 
 ## Architecture Notes
 

@@ -9,7 +9,7 @@ namespace IngameScript
             public static bool TryParseGps(string gpsString, out Vector3D result)
             {
                 result = default(Vector3D);
-                if (string.IsNullOrEmpty(gpsString) || !gpsString.StartsWith("GPS:"))
+                if (SE(gpsString) || !gpsString.StartsWith("GPS:"))
                     return false;
 
                 var parts = gpsString.Split(':');
@@ -28,8 +28,7 @@ namespace IngameScript
 
             public static string FormatGps(Vector3D position)
             {
-                return string.Format("GPS:Target:{0}:{1}:{2}:#FF75C9F1:",
-                    position.X, position.Y, position.Z);
+                return $"GPS:Target:{position.X}:{position.Y}:{position.Z}:#FF75C9F1:";
             }
 
             public static double GetAspectAngleDeg(Vector3D velocity, Vector3D relativePos)

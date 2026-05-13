@@ -72,7 +72,7 @@ namespace IngameScript
                         padX, fy + footerH * 0.15f, tinyScale, MFDTheme.DIM_TEXT);
                 }
 
-                if (!string.IsNullOrEmpty(footerRight))
+                if (!SE(footerRight))
                     Txt(frame, footerRight, sw - padX, fy + footerH * 0.15f,
                         tinyScale, MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
                 else

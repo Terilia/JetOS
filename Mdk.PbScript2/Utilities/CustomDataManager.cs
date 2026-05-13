@@ -37,7 +37,7 @@ namespace IngameScript
 
                 foreach (var line in lines)
                 {
-                    if (string.IsNullOrWhiteSpace(line))
+                    if (SW(line))
                         continue;
 
                     int colonIndex = line.IndexOf(':');

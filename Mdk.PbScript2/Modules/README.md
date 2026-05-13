@@ -41,7 +41,8 @@ Features:
 - Manages all AI Flight/Combat block pairs
 - Tracks multiple enemy contacts with decay
 - Assigns radars to requesting modules
-- Threat detection and warning
+- Feeds sweep/track and RWR observations into the shared contact list
+- Runs RWR threat detection and warning audio
 
 ### AirtoAir.cs
 Consolidated missile weapons module (air-to-air and air-to-ground).

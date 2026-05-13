@@ -1,3 +1,4 @@
+using SpaceEngineers.Game.ModAPI.Ingame;
 using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
@@ -36,9 +37,9 @@ namespace IngameScript
                     y += resH + gap;
                 }
 
-                float engH = 90f, remaining = area.Position.Y + areaH - y;
-                if (remaining > engH + gap + 50f)
-                { DrawEngCard(frame, x, y, w, engH, jet); y += engH + gap; }
+                float mslH = 90f, remaining = area.Position.Y + areaH - y;
+                if (remaining > mslH + gap + 50f)
+                { DrawMissileCard(frame, x, y, w, mslH, jet); y += mslH + gap; }
 
                 float mapH = area.Position.Y + areaH - y;
                 if (mapH > 50f)
@@ -61,44 +62,63 @@ namespace IngameScript
             }
 
             // ════════════════════════════════════════
-            // ENGINE + RESOURCE CARDS
+            // MISSILE + RESOURCE CARDS
             // ════════════════════════════════════════
-            static void DrawEngCard(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
+            static void DrawMissileCard(MySpriteDrawFrame frame, float x, float y, float w, float h, Jet jet)
             {
                 Rect(frame, x + w / 2f, y + h / 2f, w, h, MFDTheme.PANEL_BG);
                 SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 1f, MFDTheme.BORDER_LIGHT);
-                Txt(frame, "THR", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
-                float midX = x + w / 2f, colW = (w - 16f) / 2f, top = y + 16f, colH = h - 20f;
-                DrawEngCol(frame, x + 4f, top, colW, colH, jet.LeftAllFn, jet.LeftAllTot,
-                    jet.LeftUseCurKN, jet.LeftUseMaxKN, jet.LeftAbCurKN, "ENG L");
-                DrawEngCol(frame, midX + 4f, top, colW, colH, jet.RightAllFn, jet.RightAllTot,
-                    jet.RightUseCurKN, jet.RightUseMaxKN, jet.RightAbCurKN, "ENG R");
+                Txt(frame, "MSL", x + w / 2f, y + 2f, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AC);
+                var bays = jet._bays;
+                int n = bays != null ? Mn(bays.Count, 12) : 0, rdy = 0, air = 0, active = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    int bayNum = MissileBayHelper.GetBayNumber(bays[i], i + 1);
+                    MissileBayHelper.MissileStatus ms;
+                    if (MissileBayHelper.TryGetMissileStatus(bayNum, out ms))
+                    {
+                        air++;
+                        if (ms.ActiveTrackingUnlocked) active++;
+                    }
+                    if (MissileBayHelper.IsBayReady(bays[i])) rdy++;
+                }
+                Txt(frame, $"RDY {rdy}/{n}", x + 4f, y + 15f, 0.30f, MFDTheme.STATUS_VAL);
+                Txt(frame, $"AIR {air}", x + w - 4f, y + 15f, 0.30f, air > 0 ? MFDTheme.WARN : MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
+                if (active > 0)
+                    Txt(frame, "AI UNLOCKED", x + w / 2f, y + 15f, 0.24f, MFDTheme.ACCENT, MFDTheme.AC);
+                float bx = x + 4f, by = y + 30f, bw = (w - 14f) / 4f, bh = (h - 40f) / 3f;
+                for (int i = 0; i < 12; i++)
+                {
+                    float cx = bx + (i % 4) * (bw + 2f), cy = by + (i / 4) * (bh + 2f);
+                    if (i < n) DrawBayCell(frame, cx + 1f, cy + 1f, bw - 2f, bh - 2f, bays[i], i + 1);
+                    else DrawEmptyBayCell(frame, cx + 1f, cy + 1f, bw - 2f, bh - 2f);
+                }
             }
 
-            static void DrawEngCol(MySpriteDrawFrame frame, float x, float y, float w, float colH,
-                int fn, int tot, float tCur, float tMax, float abCur, string label)
+            static void DrawBayCell(MySpriteDrawFrame frame, float x, float y, float w, float h, IMyShipMergeBlock bay, int fallback)
             {
-                float pct = tMax > 0 ? tCur / tMax : 0f; bool dmg = fn < tot;
-                Txt(frame, label, x, y, 0.32f, MFDTheme.DIM_TEXT_MID, MFDTheme.AL);
-                Txt(frame, $"{fn}/{tot}", x + w, y, 0.3f, dmg ? MFDTheme.WARN : MFDTheme.ACCENT, MFDTheme.AR);
-                float bx = x + 2f, bw = w - 4f, bt = y + 14f, bh = colH - 28f;
-                if (bh < 6f) bh = 6f;
-                Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, MFDTheme.BAR_TRACK);
-                SpriteHelpers.DrawRectangleOutline(frame, bx, bt, bw, bh, 0.5f, MFDTheme.BORDER);
-                if (dmg && fn > 0) {
-                    float ch = bh * Cl((float)fn / tot, 0f, 1f);
-                    Rect(frame, bx + bw / 2f, bt + bh - ch / 2f, bw, ch, Cr(12, 22, 12));
-                    // Diagonal hatch over the DAMAGED portion (top of bar) to make the
-                    // failure visually obvious — dim red overlay so it doesn't drown the bar.
-                    float dmgH = bh - ch;
-                    if (dmgH > 2f) SpriteHelpers.Sp(frame, TEX_HATCH, bx + bw / 2f, bt + dmgH / 2f, bw, dmgH, Cr(MFDTheme.WARN, 0.55f));
-                    if (ch > 1f && ch < bh - 1f) Rect(frame, bx + bw / 2f, bt + bh - ch, bw + 2f, 1f, MFDTheme.WARN);
+                int bayNum = MissileBayHelper.GetBayNumber(bay, fallback);
+                MissileBayHelper.MissileStatus ms;
+                bool live = MissileBayHelper.TryGetMissileStatus(bayNum, out ms);
+                bool ready = MissileBayHelper.IsBayReady(bay);
+                Color c = live ? (ms.Acquired ? MFDTheme.ACCENT : MFDTheme.WARN) : ready ? MFDTheme.STATUS_RDY : MFDTheme.DIM_TEXT_MID;
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, live ? Cr(c, 0.16f) : Cr(4, 8, 4, 180));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 0.5f, c);
+                Txt(frame, bayNum.ToString(), x + 2f, y, 0.24f, MFDTheme.DIM_TEXT_MID);
+                if (live)
+                {
+                    Sq(x + w - 7f, y + 8f, 7f, 2f, c, 1.5708f);
+                    Txt(frame, MissileBayHelper.FormatEta(ms.Eta), x + w / 2f, y + h / 2f - 5f, 0.46f, c, MFDTheme.AC);
+                    if (ms.ActiveTrackingUnlocked)
+                        Txt(frame, "AI", x + w / 2f, y + h - 11f, 0.22f, MFDTheme.ACCENT, MFDTheme.AC);
                 }
-                else if (!dmg) Rect(frame, bx + bw / 2f, bt + bh / 2f, bw, bh, Cr(12, 22, 12));
-                float fh = bh * Cl(pct, 0f, 1f);
-                if (fh > 0.5f) Rect(frame, bx + bw / 2f, bt + bh - fh / 2f, bw, fh, abCur > 0.1f ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
-                Txt(frame, tMax > 0 ? $"{tCur,4:F0}/{tMax,4:F0}" : " ---/ ---", x + w / 2f, bt + bh + 1f, 0.28f, MFDTheme.STATUS_VAL, MFDTheme.AC);
-                if (tMax > 0) Txt(frame, "kN", x + w / 2f, bt + bh + 11f, 0.24f, MFDTheme.DIM_TEXT, MFDTheme.AC);
+                else Txt(frame, ready ? "RDY" : "---", x + w / 2f, y + h / 2f - 4f, 0.27f, c, MFDTheme.AC);
+            }
+
+            static void DrawEmptyBayCell(MySpriteDrawFrame frame, float x, float y, float w, float h)
+            {
+                Rect(frame, x + w / 2f, y + h / 2f, w, h, Cr(2, 4, 2, 120));
+                SpriteHelpers.DrawRectangleOutline(frame, x, y, w, h, 0.5f, MFDTheme.BORDER);
             }
 
             static void DrawResCard(MySpriteDrawFrame frame, float x, float y, float w, float h, string title, float pct, string timeStr, string iconTex = null, float iconW = 9f, float iconH = 9f)

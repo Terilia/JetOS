@@ -100,7 +100,7 @@ namespace IngameScript
 
                     // ── Bottom section: bay strip ──
                     int bayCount = myjet._bays != null ? myjet._bays.Count : 0;
-                    float bayH = bayCount > 0 ? 52f : 0f;
+                    float bayH = bayCount > 8 ? 76f : bayCount > 0 ? 52f : 0f;
                     float bottomY = contentBot - bayH;
 
                     if (bayCount > 0)
@@ -118,7 +118,7 @@ namespace IngameScript
 
                 // Row 1: Name + track mode badge
                 string name = contact.Name;
-                if (string.IsNullOrEmpty(name)) name = "UNK";
+                if (SE(name)) name = "UNK";
                 if (name.Length > 14) name = name.Substring(0, 14);
 
                 bool stale = contact.IsStale;
@@ -258,7 +258,7 @@ namespace IngameScript
                     MFDFrame.Txt(frame, marker, textX, textY, TEXT_SCALE, contactColor);
 
                     string cName = contact.Name;
-                    if (string.IsNullOrEmpty(cName)) cName = "UNK";
+                    if (SE(cName)) cName = "UNK";
                     if (cName.Length > 12) cName = cName.Substring(0, 12);
                     MFDFrame.Txt(frame, cName, textX + 14f, textY, TEXT_SCALE, contactColor);
 
@@ -337,12 +337,15 @@ namespace IngameScript
             // Bay status strip \u2014 5:4-ish bay icons, filled when missile attached.
             private void DrawBayStrip(MySpriteDrawFrame frame, float centerX, float y, List<IMyShipMergeBlock> bays)
             {
-                int n = Mn(bays.Count, 8);
+                int n = Mn(bays.Count, 12);
                 if (n == 0) return;
                 EnsureBayTransitionState(bays, n);
-                const float W = 54f, H = 42f, SP = 6f;
-                float totalW = n * W + (n - 1) * SP;
+                bool twoRows = n > 8;
+                int cols = twoRows ? 6 : n;
+                float W = twoRows ? 40f : 54f, H = twoRows ? 28f : 42f, SP = twoRows ? 4f : 6f, RG = 4f;
+                float totalW = cols * W + (cols - 1) * SP;
                 float startX = centerX - totalW / 2f + W / 2f;
+                float topY = y - (twoRows ? H + RG / 2f : 0f);
                 for (int i = 0; i < n; i++)
                 {
                     bool loaded = MissileBayHelper.IsBayReady(bays[i]);
@@ -360,7 +363,28 @@ namespace IngameScript
                         Color flash = loaded ? MFDTheme.ACCENT : MFDTheme.WARN;
                         c = Anim.LerpColor(flash, c, Anim.EaseOut(t));
                     }
-                    SpriteHelpers.Sp(frame, tex, startX + i * (W + SP), y, W, H, c);
+                    float x = startX + (i % cols) * (W + SP);
+                    float by = twoRows ? topY + (i / cols) * (H + RG) : y;
+                    SpriteHelpers.Sp(frame, tex, x, by, W, H, c);
+                    int bayNum = MissileBayHelper.GetBayNumber(bays[i], i + 1);
+                    MissileBayHelper.MissileStatus ms;
+                    if (!loaded && MissileBayHelper.TryGetMissileStatus(bayNum, out ms))
+                    {
+                        string eta = MissileBayHelper.FormatEta(ms.Eta);
+                        Color tc = ms.Eta >= 0 && ms.Eta < 5 ? MFDTheme.DANGER :
+                            ms.ActiveTrackingUnlocked ? MFDTheme.BRIGHT_TEXT :
+                            ms.Acquired ? MFDTheme.ACCENT : MFDTheme.WARN;
+                        float ts = twoRows ? 0.72f : 1.0f;
+                        float ty = by - (twoRows ? 10f : 14f);
+                        MFDFrame.Txt(frame, eta, x + 1f, ty + 1f, ts, Cr(0, 0, 0, 210), MFDTheme.AC);
+                        MFDFrame.Txt(frame, eta, x, ty, ts, tc, MFDTheme.AC);
+                        if (ms.ActiveTrackingUnlocked)
+                        {
+                            float labelY = by + (twoRows ? 8f : 12f);
+                            MFDFrame.Txt(frame, "AI", x + 1f, labelY + 1f, 0.34f, Cr(0, 0, 0, 220), MFDTheme.AC);
+                            MFDFrame.Txt(frame, "AI", x, labelY, 0.34f, MFDTheme.ACCENT, MFDTheme.AC);
+                        }
+                    }
                 }
             }
 

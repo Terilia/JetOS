@@ -203,7 +203,7 @@ namespace IngameScript
                     _cachedNameEntityId = currentId;
 
                     string detailedInfo = L_CombatBLock.DetailedInfo;
-                    if (string.IsNullOrEmpty(detailedInfo))
+                    if (SE(detailedInfo))
                     {
                         _cachedName = "";
                         return _cachedName;

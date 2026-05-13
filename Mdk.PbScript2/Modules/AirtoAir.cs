@@ -20,9 +20,9 @@ namespace IngameScript
                 myJet = jet;
                 missileBays = jet._bays;
                 baySelected = new bool[missileBays.Count];
-                isTopdownEnabled = SystemManager.GetCustomDataValue("Topdown") == "true";
+                isTopdownEnabled = SystemManager.GetCustomDataValue(CD_TOPDOWN) == S_TRUE;
                 // AntiAir is always on — the protocol expects it and we want live target updates regardless of mode.
-                SystemManager.SetCustomDataValue("AntiAir", "true");
+                SystemManager.SetCustomDataValue(CD_ANTI_AIR, S_TRUE);
                 name = "Weapons";
             }
 
@@ -48,7 +48,7 @@ namespace IngameScript
                 {
                     "Fire Sel",
                     "Toggle Sel",
-                    string.Format("TD [{0}]", isTopdownEnabled ? "ON" : "OFF"),
+                    $"TD [{(isTopdownEnabled ? "ON" : "OFF")}]",
                 };
 
                 MissileBayHelper.BuildBayOptionList(options, missileBays, baySelected);
@@ -71,7 +71,7 @@ namespace IngameScript
                         break;
                     case 2:
                         isTopdownEnabled = !isTopdownEnabled;
-                        SystemManager.SetCustomDataValue("Topdown", isTopdownEnabled ? "true" : "false");
+                        SystemManager.SetCustomDataValue(CD_TOPDOWN, isTopdownEnabled ? S_TRUE : S_FALSE);
                         break;
                     default:
                         if (index >= BayOffset && index - BayOffset < missileBays.Count)
@@ -82,6 +82,8 @@ namespace IngameScript
 
             public override void Tick()
             {
+                MissileBayHelper.PollMissileStatus(ParentProgram);
+
                 if (!myJet.HasSelectedEnemy() && myJet.enemyList.Count > 0)
                 {
                     var closest = myJet.GetClosestNEnemies(1);

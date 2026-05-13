@@ -58,9 +58,9 @@ namespace IngameScript
             {
                 return new string[]
                 {
-                    string.Format("AUTO [{0}]", StatusText),
-                    string.Format("Gain- [{0:F1}]", gain),
-                    string.Format("Gain+ [{0:F1}]", gain)
+                    $"AUTO [{StatusText}]",
+                    $"Gain- [{gain:F1}]",
+                    $"Gain+ [{gain:F1}]"
                 };
             }
 

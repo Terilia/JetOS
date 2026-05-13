@@ -136,17 +136,19 @@ Order (DO NOT REORDER):
 
 ## RWR Threat Assessment
 
-Each RWR radar independently tracks an enemy and evaluates whether it's a threat. The state machine waits 30 ticks of stable tracking before classifying:
+Each RWR radar independently watches an enemy, publishes that observation into the same `enemyList` used by sweep/track radars, and evaluates whether the contact is a threat. RWR does not use the pool radar lock choreography; it only feeds contacts after its own AI block already reports a valid target position.
+
+The state machine waits 0.5 seconds of stable identity before classifying:
 
 ```mermaid
 flowchart TD
     RWR["RWR radar N"] --> TR{IsTracking &amp; HasReceivedPosition?}
     TR -- "No" --> CL["Clear state"]
-    TR -- "Yes" --> EN{Enemy name changed?}
-    EN -- "Yes" --> RST["Reset history<br/>TicksSinceEnemyChange = 0"]
-    EN -- "No" --> INC["TicksSinceEnemyChange++"]
-    INC --> HIST["Every 10 ticks: append position to circular buffer (size 10)"]
-    HIST --> ST{TicksSinceEnemyChange &gt;= 30?}
+    TR -- "Yes" --> PUB["UpdateOrAddEnemy()<br/>feed shared contact list"]
+    PUB --> EN{Entity/name changed?}
+    EN -- "Yes" --> RST["Reset stable timer"]
+    EN -- "No" --> INC["Stable timer += dt"]
+    INC --> ST{Stable &gt;= 0.5s?}
     ST -- "No" --> WAIT["Wait for stable track"]
     ST -- "Yes" --> AS["IsThreatening()"]
 
@@ -162,15 +164,15 @@ flowchart TD
     ASP -- "No" --> SAFE
     ASP -- "Yes" --> THR
 
-    THR --> SND["SoundManager.RequestWarning('RWR', P3)"]
-    SAFE --> WW["Add as non-threat warning"]
+    THR --> SND["SoundManager.RequestWarning('Alert 2', P3)"]
+    SAFE --> CNT["Count as RWR track, not threat"]
 
     style THR fill:#8b0000,color:#fff
 ```
 
 **Threat criteria summary:** the enemy must be on a closing trajectory, within 300s of closest approach, missing the player by less than 500m, and oriented within 90° of heading toward the player. Static enemies trigger if their aspect angle (relative to the relative-position vector) is < 30° — meaning they're pointed at us.
 
-**Source:** `Modules/RadarControlModule.cs:711-799` (ProcessRWR + IsThreatening)
+**Source:** `Modules/RadarControlModule.cs` (`ProcessRWR`, `IsThreatening`, and `ManageWarningSounds`)
 
 ---
 

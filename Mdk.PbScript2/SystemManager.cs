@@ -65,26 +65,15 @@ namespace IngameScript
                 if (cockpit != null && cockpit.SurfaceCount >= 3)
                 {
                     lcdMain = cockpit.GetSurface(0);
-                    lcdMain.ContentType = ContentType.SCRIPT;
-                    lcdMain.BackgroundColor = Color.Transparent;
+                    PrepSurface(lcdMain);
                     lcdExtra = cockpit.GetSurface(1);
-                    lcdExtra.ContentType = ContentType.SCRIPT;
-                    lcdExtra.BackgroundColor = Color.Transparent;
+                    PrepSurface(lcdExtra);
                     lcdWeapons = cockpit.GetSurface(2);
-                    lcdWeapons.ContentType = ContentType.SCRIPT;
-                    lcdWeapons.Script = "";
+                    PrepSurface(lcdWeapons);
                     lcdWeapons.BackgroundColor = Color.Black;
                     lcdWeapons.ScriptBackgroundColor = Color.Black;
                     lcdWeapons.ScriptForegroundColor = Color.White;
                     lcdWeapons.FontColor = Cr(25, 217, 140, 255);
-                    lcdWeapons.FontSize = 0.1f;
-                    lcdWeapons.TextPadding = 0f;
-                    lcdWeapons.Alignment = MFDTheme.AC;
-
-                    for (int i = 0; i < 3; i++)
-                    {
-                        cockpit.GetSurface(i).FontColor = Cr(25, 217, 140, 255);
-                    }
                 }
 
                 parentProgram = program;
@@ -105,7 +94,7 @@ namespace IngameScript
 
                 hudProgram = new HUDModule(parentProgram, _myJet, radarControlModule);
                 modules.Add(hudProgram);
-                uiController = new UIController(lcdMain, lcdExtra);
+                uiController = new UIController();
 
                 configModule = new ConfigurationModule(parentProgram);
                 modules.Add(configModule);
@@ -180,7 +169,7 @@ namespace IngameScript
                     _pendingArgument = argument;
                     return;
                 }
-                if (!string.IsNullOrEmpty(_pendingArgument))
+                if (!SE(_pendingArgument))
                 {
                     argument = _pendingArgument;
                     _pendingArgument = null;
@@ -206,8 +195,8 @@ namespace IngameScript
                 TerrainData.Tick(parentProgram.Me, _myJet.CockpitPosition);
 
                 // Altitude warning with hysteresis
-                float altWarn = GetConfigValue("altitude_warning");
-                float spdWarn = GetConfigValue("speed_warning");
+                float altWarn = GetConfigValue(CFG_ALTITUDE_WARNING);
+                float spdWarn = GetConfigValue(CFG_SPEED_WARNING);
                 if (altitudeWarningActive)
                 {
                     if (velocityKnots < spdWarn - 20 || altitude > altWarn + 40)
@@ -228,7 +217,7 @@ namespace IngameScript
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(argument))
+                if (SW(argument))
                 {
                     DisplayMenu();
                 }
@@ -408,7 +397,7 @@ namespace IngameScript
                 Vector3D targetPos = selected.Value.Position;
                 Vector3D targetVel = selected.Value.Velocity;
 
-                SetCustomDataValue("Cached", NavigationHelper.FormatGps(targetPos));
+                SetCustomDataValue(CD_CACHED, NavigationHelper.FormatGps(targetPos));
                 string speedValue = $"{targetVel.X}:{targetVel.Y}:{targetVel.Z}:#FF75C9F1:";
                 SetCustomDataValue("CachedSpeed", speedValue);
             }

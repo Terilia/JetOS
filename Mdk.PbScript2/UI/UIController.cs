@@ -50,19 +50,6 @@ namespace IngameScript
 
         class UIController
         {
-            private IMyTextSurface mainScreen;
-            private IMyTextSurface extraScreen;
-
-            public UIController(IMyTextSurface mainScreen, IMyTextSurface extraScreen)
-            {
-                this.mainScreen = mainScreen;
-                this.extraScreen = extraScreen;
-                PrepareTextSurfaceForSprites(mainScreen);
-                PrepareTextSurfaceForSprites(extraScreen);
-                mainScreen.BackgroundColor = MFDTheme.BG;
-                extraScreen.BackgroundColor = Cr(0, 0, 0);
-            }
-
             internal const double PAGE_FADE_DURATION = 0.300;
             private const double SELECTION_TWEEN_DURATION = 0.080;
 
@@ -114,7 +101,7 @@ namespace IngameScript
                     // Only pad the body when there's a title to breathe around. Custom-content
                     // pages (Weapons, Grid, Terrain) self-pad and want every pixel below chrome.
                     float bodyTop = menuTop;
-                    if (!string.IsNullOrEmpty(page.Title))
+                    if (!SE(page.Title))
                     {
                         bodyTop += sh * 0.020f;
                         DrawSectionTitle(frame, sw, sh, bodyTop, menuLeft, menuWidth, page.Title, titleScale);
@@ -309,17 +296,6 @@ namespace IngameScript
             // ── Sprite primitives (delegate to Shortcuts so the verbose initializer lives in one place) ──
             private static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
             private static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
-
-            private void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
-            {
-                textSurface.ContentType = ContentType.SCRIPT;
-                textSurface.Script = "";
-                textSurface.BackgroundColor = Color.Transparent;
-                textSurface.FontColor = Color.Black;
-                textSurface.FontSize = 0.1f;
-                textSurface.TextPadding = 0f;
-                textSurface.Alignment = MFDTheme.AC;
-            }
         }
     }
 }

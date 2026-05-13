@@ -52,7 +52,7 @@ namespace IngameScript
             {
                 if (_probed) return;
                 _probed = true;
-                if (me.GetProperty("TerrainAPI") == null) _off = true;
+                if (me.GetProperty(TERRAIN_API) == null) _off = true;
             }
 
             /// <summary>
@@ -66,8 +66,8 @@ namespace IngameScript
 
                 _cmd.Clear();
                 _cmd.Append("P;").Append(DEFAULT_CELL);
-                me.SetValue<StringBuilder>("TerrainAPI", _cmd);
-                _sb = me.GetValue<StringBuilder>("TerrainAPI");
+                me.SetValue<StringBuilder>(TERRAIN_API, _cmd);
+                _sb = me.GetValue<StringBuilder>(TERRAIN_API);
                 if (_sb == null) return;
 
                 string resp = _sb.ToString();
@@ -114,9 +114,9 @@ namespace IngameScript
             {
                 _cmd.Clear();
                 _cmd.Append("C;").Append(_offset).Append(';').Append(CHUNK);
-                me.SetValue<StringBuilder>("TerrainAPI", _cmd);
+                me.SetValue<StringBuilder>(TERRAIN_API, _cmd);
                 // Re-fetch response SB — plugin may replace it after SetValue
-                _sb = me.GetValue<StringBuilder>("TerrainAPI");
+                _sb = me.GetValue<StringBuilder>(TERRAIN_API);
                 if (_sb == null || _sb.Length < 2) return;
 
                 string resp = _sb.ToString();

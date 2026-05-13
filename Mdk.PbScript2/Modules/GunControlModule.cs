@@ -51,11 +51,11 @@ namespace IngameScript
             private const float KD_LOS = 1.0f;
 
             // --- Configurable (read from config) ---
-            private float KP => SystemManager.GetConfigValue("gun_kp");
-            private float MAX_VELOCITY_RPM => SystemManager.GetConfigValue("gun_max_rpm");
-            private float LOCK_THRESHOLD_DEG => SystemManager.GetConfigValue("gun_lock_threshold");
-            private double MUZZLE_VELOCITY => SystemManager.GetConfigValue("gun_muzzle_velocity");
-            private double MAX_ENGAGE_RANGE => SystemManager.GetConfigValue("gun_max_range");
+            private float KP => SystemManager.GetConfigValue(CFG_GUN_KP);
+            private float MAX_VELOCITY_RPM => SystemManager.GetConfigValue(CFG_GUN_MAX_RPM);
+            private float LOCK_THRESHOLD_DEG => SystemManager.GetConfigValue(CFG_GUN_LOCK_THRESHOLD);
+            private double MUZZLE_VELOCITY => SystemManager.GetConfigValue(CFG_GUN_MUZZLE_VELOCITY);
+            private double MAX_ENGAGE_RANGE => SystemManager.GetConfigValue(CFG_GUN_MAX_RANGE);
 
             // --- Block Names ---
             private const string ROTOR_LEFT_NAME = "Gun Rotor Left";

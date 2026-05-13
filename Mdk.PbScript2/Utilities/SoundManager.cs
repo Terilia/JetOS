@@ -125,7 +125,7 @@ namespace IngameScript
                             b.SelectedSound = ch.pendingSound;
                             b.Volume = ch.volume;
                         }
-                        if (!string.IsNullOrEmpty(ch.pendingSound))
+                        if (!SE(ch.pendingSound))
                         {
                             ch.state = 3;
                             ch.delay = FRAME_DELAY;
@@ -158,18 +158,18 @@ namespace IngameScript
 
                     if (desired != ch.activeSound)
                     {
-                        if (!string.IsNullOrEmpty(desired))
+                        if (!SE(desired))
                         {
                             ch.pendingSound = desired;
                             needsChange = true;
                         }
-                        else if (!string.IsNullOrEmpty(ch.activeSound))
+                        else if (!SE(ch.activeSound))
                         {
                             ch.pendingSound = "";
                             needsChange = true;
                         }
                     }
-                    else if (!string.IsNullOrEmpty(desired) && !string.IsNullOrEmpty(ch.activeSound))
+                    else if (!SE(desired) && !SE(ch.activeSound))
                     {
                         if (currentSeconds - ch.playStartSeconds >= ch.activeLoopSeconds)
                         {

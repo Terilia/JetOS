@@ -11,6 +11,21 @@ namespace IngameScript
         static class MissileBayHelper
         {
             public const string IGC_CHANNEL_PREFIX = "JETOS_MSL_";
+            const string IGC_STATUS_CHANNEL = "JETOS_MSL_STAT";
+            const double STATUS_TIMEOUT = 8.0;
+            static IMyBroadcastListener _statusListener;
+            static readonly List<MissileStatus> _missileStatus = new List<MissileStatus>();
+
+            public struct MissileStatus
+            {
+                public int Bay;
+                public Vector3D Position;
+                public Vector3D Velocity;
+                public double Eta;
+                public bool Acquired;
+                public bool ActiveTrackingUnlocked;
+                public double SeenAt;
+            }
 
             public static bool IsBayReady(IMyShipMergeBlock bay)
             {
@@ -50,6 +65,99 @@ namespace IngameScript
                 return fallback;
             }
 
+            public static int GetBayNumber(IMyShipMergeBlock bay, int fallback)
+            {
+                return ExtractBayNumber(bay, fallback);
+            }
+
+            static void UpsertStatus(MissileStatus s)
+            {
+                for (int i = 0; i < _missileStatus.Count; i++)
+                {
+                    if (_missileStatus[i].Bay == s.Bay)
+                    {
+                        _missileStatus[i] = s;
+                        return;
+                    }
+                }
+                _missileStatus.Add(s);
+            }
+
+            static void PruneStatus()
+            {
+                double now = SystemManager.ElapsedSeconds;
+                for (int i = _missileStatus.Count - 1; i >= 0; i--)
+                    if (now - _missileStatus[i].SeenAt > STATUS_TIMEOUT)
+                        _missileStatus.RemoveAt(i);
+            }
+
+            public static void PollMissileStatus(Program program)
+            {
+                if (program == null) return;
+                if (_statusListener == null)
+                    _statusListener = program.IGC.RegisterBroadcastListener(IGC_STATUS_CHANNEL);
+                while (_statusListener.HasPendingMessage)
+                {
+                    MyIGCMessage msg = _statusListener.AcceptMessage();
+                    if (msg.Data is MyTuple<int, Vector3D, Vector3D, double, bool, bool>)
+                    {
+                        var t = (MyTuple<int, Vector3D, Vector3D, double, bool, bool>)msg.Data;
+                        UpsertStatus(new MissileStatus
+                        {
+                            Bay = t.Item1,
+                            Position = t.Item2,
+                            Velocity = t.Item3,
+                            Eta = t.Item4,
+                            Acquired = t.Item5,
+                            ActiveTrackingUnlocked = t.Item6,
+                            SeenAt = SystemManager.ElapsedSeconds
+                        });
+                    }
+                    else if (msg.Data is MyTuple<int, Vector3D, Vector3D, double, bool>)
+                    {
+                        var t = (MyTuple<int, Vector3D, Vector3D, double, bool>)msg.Data;
+                        UpsertStatus(new MissileStatus
+                        {
+                            Bay = t.Item1,
+                            Position = t.Item2,
+                            Velocity = t.Item3,
+                            Eta = t.Item4,
+                            Acquired = t.Item5,
+                            ActiveTrackingUnlocked = false,
+                            SeenAt = SystemManager.ElapsedSeconds
+                        });
+                    }
+                }
+                PruneStatus();
+            }
+
+            public static List<MissileStatus> GetActiveMissileStatus()
+            {
+                PruneStatus();
+                return _missileStatus;
+            }
+
+            public static bool TryGetMissileStatus(int bay, out MissileStatus status)
+            {
+                PruneStatus();
+                for (int i = 0; i < _missileStatus.Count; i++)
+                {
+                    if (_missileStatus[i].Bay == bay)
+                    {
+                        status = _missileStatus[i];
+                        return true;
+                    }
+                }
+                status = default(MissileStatus);
+                return false;
+            }
+
+            public static string FormatEta(double eta)
+            {
+                if (eta < 0 || eta > 99) return "--";
+                return ((int)(eta + 0.999)).ToString();
+            }
+
             static bool TryGetTargetPosition(Jet jet, out Vector3D pos)
             {
                 pos = default(Vector3D);
@@ -62,7 +170,7 @@ namespace IngameScript
                         return true;
                     }
                 }
-                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out pos);
+                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue(CD_CACHED), out pos);
             }
 
             static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)
@@ -79,7 +187,7 @@ namespace IngameScript
                         return true;
                     }
                 }
-                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue("Cached"), out pos);
+                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue(CD_CACHED), out pos);
             }
 
             /// <summary>
@@ -100,9 +208,9 @@ namespace IngameScript
 
                 string gps = NavigationHelper.FormatGps(targetPos);
 
-                SystemManager.SetCustomDataValue("Topdown", topdown ? "true" : "false");
-                SystemManager.SetCustomDataValue("AntiAir", "true");
-                SystemManager.SetCustomDataValue("Cached", gps);
+                SystemManager.SetCustomDataValue(CD_TOPDOWN, topdown ? S_TRUE : S_FALSE);
+                SystemManager.SetCustomDataValue(CD_ANTI_AIR, S_TRUE);
+                SystemManager.SetCustomDataValue(CD_CACHED, gps);
 
                 for (int i = 0; i < bays.Count; i++)
                 {
@@ -165,9 +273,9 @@ namespace IngameScript
                     string gps = NavigationHelper.FormatGps(targetPos);
                     int bayNum = ExtractBayNumber(bays[i], i + 1);
 
-                    SystemManager.SetCustomDataValue("Topdown", topdown ? "true" : "false");
-                    SystemManager.SetCustomDataValue("AntiAir", "true");
-                    SystemManager.SetCustomDataValue("Cached", gps);
+                    SystemManager.SetCustomDataValue(CD_TOPDOWN, topdown ? S_TRUE : S_FALSE);
+                    SystemManager.SetCustomDataValue(CD_ANTI_AIR, S_TRUE);
+                    SystemManager.SetCustomDataValue(CD_CACHED, gps);
                     SystemManager.SetCustomDataValue(bayNum.ToString(), gps);
 
                     try
@@ -242,15 +350,7 @@ namespace IngameScript
                     var mergeBlock = bays[i] as IMyShipMergeBlock;
                     bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
                     char colorChar = ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
-                    options.Add(
-                        string.Format(
-                            "{0}{1} {2} {3}",
-                            colorChar,
-                            baySymbol,
-                            bays[i]?.CustomName ?? "Bay?",
-                            bayStatus
-                        )
-                    );
+                    options.Add($"{colorChar}{baySymbol} {bays[i]?.CustomName ?? "Bay?"} {bayStatus}");
                 }
             }
         }

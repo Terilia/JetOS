@@ -21,7 +21,7 @@ namespace IngameScript
 
             internal static void CacheTheme()
             {
-                int t = (int)SystemManager.GetConfigValue("hud_theme");
+                int t = (int)SystemManager.GetConfigValue(CFG_HUD_THEME);
                 _cachedTheme = (t >= 0 && t < THEME_PRIMARY.Length) ? t : 0;
             }
 
@@ -274,7 +274,7 @@ namespace IngameScript
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
                     DrawAircraftSymbol(frame, centerX, centerY);
                     DrawBankAngleMarkers(frame, centerX, centerY, (float)roll, pixelsPerDegree);
-                    if (SystemManager.GetConfigValue("hud_fpm") > 0.5f)
+                    if (SystemManager.GetConfigValue(CFG_HUD_FPM) > 0.5f)
                         DrawFlightPathMarker(frame, currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
@@ -286,20 +286,20 @@ namespace IngameScript
 
                     DrawFlightInfo(frame, _displayThrottle.Value);
                     DrawSpeedIndicatorF18StyleKph(frame, _displaySpeedKph.Value);
-                    if (SystemManager.GetConfigValue("hud_compass") > 0.5f)
+                    if (SystemManager.GetConfigValue(CFG_HUD_COMPASS) > 0.5f)
                         DrawCompass(frame, heading);
                     DrawAltitudeIndicatorF18Style(frame, _displayAltitude.Value, _displayVvi.Value);
-                    if (SystemManager.GetConfigValue("hud_gforce") > 0.5f)
+                    if (SystemManager.GetConfigValue(CFG_HUD_GFORCE) > 0.5f)
                         DrawGForceIndicator(frame, smoothedGForces, peakGForce);
 
-                    if (velocity > 1.0 && SystemManager.GetConfigValue("hud_aoa") > 0.5f)
+                    if (velocity > 1.0 && SystemManager.GetConfigValue(CFG_HUD_AOA) > 0.5f)
                     {
                         Vector3D acceleration = (currentVelocity - previousVelocity) / SystemManager.DeltaSeconds;
                         DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
                     }
 
                     // Radar minimap
-                    if (SystemManager.GetConfigValue("hud_radar") > 0.5f)
+                    if (SystemManager.GetConfigValue(CFG_HUD_RADAR) > 0.5f)
                         DrawRadarMinimap(frame, cockpit, hud);
 
                     Vector2 surfaceSize = SS(hud);
@@ -319,7 +319,7 @@ namespace IngameScript
                         // computing the lead and the bullet actually spawning.
                         Vector3D activeTargetPos = selectedEnemy.Value.Position
                             + (activeTargetVel - currentVelocity) * SystemManager.DeltaSeconds;
-                        double muzzleVelocity = SystemManager.GetConfigValue("gun_muzzle_velocity");
+                        double muzzleVelocity = SystemManager.GetConfigValue(CFG_GUN_MUZZLE_VELOCITY);
                         double range = VDi(shooterPosition, activeTargetPos);
 
                         Vector3D interceptPoint;
@@ -340,14 +340,14 @@ namespace IngameScript
                                 isAimingAtPip = distanceToPip <= pipRadius;
                             }
 
-                            if (SystemManager.GetConfigValue("hud_gun_funnel") > 0.5f)
+                            if (SystemManager.GetConfigValue(CFG_HUD_GUN_FUNNEL) > 0.5f)
                                 DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
                             DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
-                            if (SystemManager.GetConfigValue("hud_target_brackets") > 0.5f)
+                            if (SystemManager.GetConfigValue(CFG_HUD_TARGET_BRACKETS) > 0.5f)
                                 DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
 
-                        if (SystemManager.GetConfigValue("hud_breakaway") > 0.5f)
+                        if (SystemManager.GetConfigValue(CFG_HUD_BREAKAWAY) > 0.5f)
                             DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition, activeTargetVel);
                     }
                     if (!myjet.manualfire)

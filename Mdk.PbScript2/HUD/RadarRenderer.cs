@@ -237,7 +237,7 @@ namespace IngameScript
                 {
                     string wingmanKey = "Wingman" + w;
                     string value;
-                    if (SystemManager.TryGetCustomDataValue(wingmanKey, out value) && !string.IsNullOrEmpty(value))
+                    if (SystemManager.TryGetCustomDataValue(wingmanKey, out value) && !SE(value))
                     {
                         Vector3D pos;
                         if (NavigationHelper.TryParseGps(value, out pos))

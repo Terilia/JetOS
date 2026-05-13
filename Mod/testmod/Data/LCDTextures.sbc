@@ -56,6 +56,7 @@
       <SpritePath>Textures\Sprites\JetOS_Bay_Loaded.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_BG_GridDot
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -64,7 +65,9 @@
       <TexturePath>Textures\Sprites\JetOS_BG_GridDot.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_BG_GridDot.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_BG_ScanLine
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -73,6 +76,7 @@
       <TexturePath>Textures\Sprites\JetOS_BG_ScanLine.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_BG_ScanLine.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -137,6 +141,7 @@
       <SpritePath>Textures\Sprites\JetOS_GaugeNeedle.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_Glyph_Back
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -145,7 +150,9 @@
       <TexturePath>Textures\Sprites\JetOS_Glyph_Back.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Glyph_Back.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Glyph_Check
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -154,6 +161,7 @@
       <TexturePath>Textures\Sprites\JetOS_Glyph_Check.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Glyph_Check.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -191,6 +199,7 @@
       <SpritePath>Textures\Sprites\JetOS_HeadingChevron.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_Icon_Ammo
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -199,7 +208,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Ammo.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Ammo.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Canard
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -208,7 +219,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Canard.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Canard.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Config
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -217,7 +230,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Config.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Config.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Fuel
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -226,7 +241,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Fuel.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Fuel.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Gun
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -235,7 +252,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Gun.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Gun.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_HUD
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -244,7 +263,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_HUD.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_HUD.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Power
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -253,7 +274,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Power.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Power.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Radar
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -262,7 +285,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Radar.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Radar.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Terrain
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -271,7 +296,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Terrain.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Terrain.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Icon_Weapons
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -280,7 +307,9 @@
       <TexturePath>Textures\Sprites\JetOS_Icon_Weapons.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Icon_Weapons.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_KeyHint_Box
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -289,6 +318,7 @@
       <TexturePath>Textures\Sprites\JetOS_KeyHint_Box.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_KeyHint_Box.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -344,6 +374,7 @@
       <SpritePath>Textures\Sprites\JetOS_MFD_Corner.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_Missile
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -352,7 +383,9 @@
       <TexturePath>Textures\Sprites\JetOS_Missile.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Missile.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Missile_Heat
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -361,7 +394,9 @@
       <TexturePath>Textures\Sprites\JetOS_Missile_Heat.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Missile_Heat.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_Missile_Radar
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -370,6 +405,7 @@
       <TexturePath>Textures\Sprites\JetOS_Missile_Radar.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Missile_Radar.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -380,6 +416,7 @@
       <SpritePath>Textures\Sprites\JetOS_NavArrow.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_NoSignal
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -388,6 +425,7 @@
       <TexturePath>Textures\Sprites\JetOS_NoSignal.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_NoSignal.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -398,6 +436,7 @@
       <SpritePath>Textures\Sprites\JetOS_OwnShip.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_PitchRung_Inverted
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -406,6 +445,7 @@
       <TexturePath>Textures\Sprites\JetOS_PitchRung_Inverted.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_PitchRung_Inverted.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -425,6 +465,7 @@
       <SpritePath>Textures\Sprites\JetOS_PitchRung_Pos.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_PitchRung_Zero
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -433,7 +474,9 @@
       <TexturePath>Textures\Sprites\JetOS_PitchRung_Zero.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_PitchRung_Zero.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_RadarSweep
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -442,6 +485,7 @@
       <TexturePath>Textures\Sprites\JetOS_RadarSweep.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_RadarSweep.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -470,6 +514,7 @@
       <SpritePath>Textures\Sprites\JetOS_StatusDot.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_StatusRing
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -478,7 +523,9 @@
       <TexturePath>Textures\Sprites\JetOS_StatusRing.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_StatusRing.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
+    <!-- Unused sprite: JetOS_TapeBug
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -487,6 +534,7 @@
       <TexturePath>Textures\Sprites\JetOS_TapeBug.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_TapeBug.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
     <LCDTextureDefinition>
       <Id>
@@ -506,6 +554,7 @@
       <SpritePath>Textures\Sprites\JetOS_TargetBracket.dds</SpritePath>
     </LCDTextureDefinition>
 
+    <!-- Unused sprite: JetOS_Warning
     <LCDTextureDefinition>
       <Id>
         <TypeId>LCDTextureDefinition</TypeId>
@@ -514,6 +563,7 @@
       <TexturePath>Textures\Sprites\JetOS_Warning.dds</TexturePath>
       <SpritePath>Textures\Sprites\JetOS_Warning.dds</SpritePath>
     </LCDTextureDefinition>
+    -->
 
   </LCDTextures>
 </Definitions>

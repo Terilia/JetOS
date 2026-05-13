@@ -372,7 +372,6 @@ Mdk.PbScript2/
 ├── Utilities/
 │   ├── BallisticsCalculator.cs # Iterative intercept solver
 │   ├── CircularBuffer.cs       # Fixed-size running buffer
-│   ├── CommonTypes.cs          # Shared structs (RWRWarning, Vector2I, ...)
 │   ├── CustomDataManager.cs    # Dictionary cache
 │   ├── MissileBayHelper.cs     # Bay selection + fire pipeline
 │   ├── NavigationHelper.cs     # Vector math, GPS parsing

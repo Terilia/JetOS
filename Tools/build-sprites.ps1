@@ -11,6 +11,36 @@ $spritesDir = Join-Path $repoRoot 'Mod\testmod\Textures\Sprites'
 $dataDir    = Join-Path $repoRoot 'Mod\testmod\Data'
 $texconv    = Join-Path $repoRoot 'Tools\texconv\texconv.exe'
 
+$disabledSpriteNames = @(
+    'JetOS_BG_GridDot',
+    'JetOS_BG_ScanLine',
+    'JetOS_Glyph_Back',
+    'JetOS_Glyph_Check',
+    'JetOS_Icon_Ammo',
+    'JetOS_Icon_Canard',
+    'JetOS_Icon_Config',
+    'JetOS_Icon_Fuel',
+    'JetOS_Icon_Gun',
+    'JetOS_Icon_HUD',
+    'JetOS_Icon_Power',
+    'JetOS_Icon_Radar',
+    'JetOS_Icon_Terrain',
+    'JetOS_Icon_Weapons',
+    'JetOS_KeyHint_Box',
+    'JetOS_Missile',
+    'JetOS_Missile_Heat',
+    'JetOS_Missile_Radar',
+    'JetOS_NoSignal',
+    'JetOS_PitchRung_Inverted',
+    'JetOS_PitchRung_Zero',
+    'JetOS_RadarSweep',
+    'JetOS_StatusRing',
+    'JetOS_TapeBug',
+    'JetOS_Warning'
+)
+$disabledSprites = @{}
+foreach ($name in $disabledSpriteNames) { $disabledSprites[$name] = $true }
+
 if (-not (Test-Path $sourcesDir)) { throw "Sources dir not found: $sourcesDir" }
 if (-not (Test-Path $texconv))    { throw "texconv not found: $texconv" }
 
@@ -73,6 +103,29 @@ function Convert-PngToDds {
     & $texconv -f BC3_UNORM -m 1 -y -nologo -o $OutDir $Png | Out-Null
 }
 
+function Add-LcdTextureDefinition {
+    param([System.Text.StringBuilder]$Builder, [string]$Name, [bool]$Commented)
+
+    if ($Commented) {
+        [void]$Builder.AppendLine("    <!-- Unused sprite: $Name")
+    }
+
+    [void]$Builder.AppendLine('    <LCDTextureDefinition>')
+    [void]$Builder.AppendLine('      <Id>')
+    [void]$Builder.AppendLine('        <TypeId>LCDTextureDefinition</TypeId>')
+    [void]$Builder.AppendLine("        <SubtypeId>$Name</SubtypeId>")
+    [void]$Builder.AppendLine('      </Id>')
+    [void]$Builder.AppendLine("      <TexturePath>Textures\Sprites\$Name.dds</TexturePath>")
+    [void]$Builder.AppendLine("      <SpritePath>Textures\Sprites\$Name.dds</SpritePath>")
+    [void]$Builder.AppendLine('    </LCDTextureDefinition>')
+
+    if ($Commented) {
+        [void]$Builder.AppendLine('    -->')
+    }
+
+    [void]$Builder.AppendLine('')
+}
+
 # ---- Walk all SVGs ----
 $svgs = Get-ChildItem $sourcesDir -Filter '*.svg' | Sort-Object Name
 if (-not $svgs) { throw "No SVG sources found in $sourcesDir" }
@@ -111,16 +164,12 @@ $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine('<Definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">')
 [void]$sb.AppendLine('  <LCDTextures>')
 [void]$sb.AppendLine('')
+$activeCount = 0
+$disabledCount = 0
 foreach ($name in $ok) {
-    [void]$sb.AppendLine('    <LCDTextureDefinition>')
-    [void]$sb.AppendLine('      <Id>')
-    [void]$sb.AppendLine('        <TypeId>LCDTextureDefinition</TypeId>')
-    [void]$sb.AppendLine("        <SubtypeId>$name</SubtypeId>")
-    [void]$sb.AppendLine('      </Id>')
-    [void]$sb.AppendLine("      <TexturePath>Textures\Sprites\$name.dds</TexturePath>")
-    [void]$sb.AppendLine("      <SpritePath>Textures\Sprites\$name.dds</SpritePath>")
-    [void]$sb.AppendLine('    </LCDTextureDefinition>')
-    [void]$sb.AppendLine('')
+    $commented = $disabledSprites.ContainsKey($name)
+    Add-LcdTextureDefinition -Builder $sb -Name $name -Commented $commented
+    if ($commented) { $disabledCount++ } else { $activeCount++ }
 }
 [void]$sb.AppendLine('  </LCDTextures>')
 [void]$sb.AppendLine('</Definitions>')
@@ -128,7 +177,7 @@ foreach ($name in $ok) {
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($sbcPath, $sb.ToString(), $utf8NoBom)
 Write-Host ""
-Write-Host "Wrote $sbcPath with $($ok.Count) <LCDTextureDefinition> entries"
+Write-Host "Wrote $sbcPath with $activeCount active <LCDTextureDefinition> entries ($disabledCount unused commented)"
 
 if ($fail.Count -gt 0) {
     Write-Host ""

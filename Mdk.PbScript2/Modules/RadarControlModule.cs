@@ -47,15 +47,15 @@ namespace IngameScript
             private class RWRTrackingState
             {
                 public string CurrentEnemyName = "";
+                public long CurrentEnemyEntityId = 0;
                 public double SecondsSinceEnemyChange = 0;
             }
 
             private List<RWRTrackingState> rwrStates = new List<RWRTrackingState>();
             private bool rwrEnabled = true;
             private int configuredRWRCount = 0;
-            private bool anyThreatDetected = false;
-
-            private List<RWRWarning> activeThreats = new List<RWRWarning>();
+            private int activeRwrTrackCount = 0;
+            private int activeRwrThreatCount = 0;
 
             // True when ANY pool radar in LOCKED state matches the selected enemy
             public bool IsTrackLocked { get; private set; }
@@ -102,9 +102,9 @@ namespace IngameScript
 
                 // Load RWR config from CustomData
                 int maxRWR = Mx(0, allRadars.Count - 1);
-                string savedCount = SystemManager.GetCustomDataValue("RWRCount");
+                string savedCount = SystemManager.GetCustomDataValue(CD_RWR_COUNT);
                 int count;
-                if (!string.IsNullOrEmpty(savedCount) && int.TryParse(savedCount, out count))
+                if (!SE(savedCount) && int.TryParse(savedCount, out count))
                 {
                     configuredRWRCount = Mx(0, Mn(count, maxRWR));
                 }
@@ -129,19 +129,23 @@ namespace IngameScript
                 }
 
                 // RWR Controls
-                options.Add(string.Format("RWR [{0}]", rwrEnabled ? "ON" : "OFF"));
+                options.Add($"RWR [{(rwrEnabled ? "ON" : "OFF")}]");
                 int activeRWR = GetActiveRWRCount();
                 int poolSize = GetSweepTrackPoolSize();
-                options.Add(string.Format("RWR+ {0}/{1}", activeRWR, allRadars.Count));
-                options.Add(string.Format("RWR- {0}/{1}", activeRWR, allRadars.Count));
+                options.Add($"RWR+ {activeRWR}/{allRadars.Count}");
+                options.Add($"RWR- {activeRWR}/{allRadars.Count}");
 
                 // RWR Status
                 if (rwrEnabled)
                 {
-                    int threatCount = activeThreats.Count;
+                    int threatCount = activeRwrThreatCount;
                     if (threatCount > 0)
                     {
-                        options.Add(string.Format("{0} THR", threatCount));
+                        options.Add($"{threatCount} THR");
+                    }
+                    else if (activeRwrTrackCount > 0)
+                    {
+                        options.Add($"{activeRwrTrackCount} RWR");
                     }
                     else
                     {
@@ -192,9 +196,11 @@ namespace IngameScript
                             foreach (var state in rwrStates)
                             {
                                 state.CurrentEnemyName = "";
+                                state.CurrentEnemyEntityId = 0;
                                 state.SecondsSinceEnemyChange = 0;
                             }
-                            activeThreats.Clear();
+                            activeRwrTrackCount = 0;
+                            activeRwrThreatCount = 0;
                         }
                         break;
 
@@ -202,7 +208,7 @@ namespace IngameScript
                         if (configuredRWRCount < allRadars.Count - 1)
                         {
                             configuredRWRCount++;
-                            SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            SystemManager.SetCustomDataValue(CD_RWR_COUNT, configuredRWRCount.ToString());
                             ReassignRoles();
                         }
                         break;
@@ -211,7 +217,7 @@ namespace IngameScript
                         if (configuredRWRCount > 0)
                         {
                             configuredRWRCount--;
-                            SystemManager.SetCustomDataValue("RWRCount", configuredRWRCount.ToString());
+                            SystemManager.SetCustomDataValue(CD_RWR_COUNT, configuredRWRCount.ToString());
                             ReassignRoles();
                         }
                         break;
@@ -252,7 +258,7 @@ namespace IngameScript
                         int radarIndex = GetRWRRadarIndex(initRWRIndex);
                         if (radarIndex < allRadars.Count)
                         {
-                            ActivateRadar(radarIndex, "SetTargetPriority_Closest");
+                            ActivateRadar(radarIndex, TargetPriorityActions[0]);
                         }
                         initRWRIndex++;
                         // Don't process pool this tick — let SE digest the RWR activation
@@ -341,7 +347,7 @@ namespace IngameScript
                         if (state.Role != RadarRole.LOCKED) continue;
 
                         if ((selected.Value.EntityId != 0 && selected.Value.EntityId == state.TrackedEntityId) ||
-                            (!string.IsNullOrEmpty(selected.Value.Name) && selected.Value.Name == state.TrackedName))
+                            (!SE(selected.Value.Name) && selected.Value.Name == state.TrackedName))
                         {
                             IsTrackLocked = true;
                             break;
@@ -355,8 +361,8 @@ namespace IngameScript
                 // ============================================================
                 if (rwrEnabled && rwrStates.Count > 0)
                 {
-                    activeThreats.Clear();
-                    anyThreatDetected = false;
+                    activeRwrTrackCount = 0;
+                    activeRwrThreatCount = 0;
 
                     Vector3D playerPos = GP(myJet._cockpit);
                     Vector3D playerVel = LV(myJet._cockpit);
@@ -400,7 +406,7 @@ namespace IngameScript
 
                 // Always feed enemy list — even for already-locked targets,
                 // the SEARCHING radar is a valid data source
-                string feedName = !string.IsNullOrEmpty(targetName) ? targetName : "";
+                string feedName = !SE(targetName) ? targetName : "";
                 myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
 
                 if (!alreadyLocked)
@@ -443,20 +449,20 @@ namespace IngameScript
 
                     long entityId = radar.TrackedEntityId;
                     string targetName = radar.TrackedObjectName;
-                    string feedName = !string.IsNullOrEmpty(targetName) ? targetName : state.TrackedName;
+                    string feedName = !SE(targetName) ? targetName : state.TrackedName;
 
                     if (entityId == state.TrackedEntityId)
                     {
                         // Same target — feed and reset
                         myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
                         state.SecondsSinceLastSeen = 0;
-                        if (!string.IsNullOrEmpty(targetName))
+                        if (!SE(targetName))
                             state.TrackedName = targetName;
                     }
                     else
                     {
                         // SE switched to a different target
-                        string newTargetName = !string.IsNullOrEmpty(targetName) ? targetName : "";
+                        string newTargetName = !SE(targetName) ? targetName : "";
 
                         if (!IsEntityLockedByAnother(entityId, newTargetName, index, poolSize))
                         {
@@ -595,7 +601,7 @@ namespace IngameScript
 
                     if (entityId != 0 && radarStates[i].TrackedEntityId == entityId)
                         return true;
-                    if (!string.IsNullOrEmpty(name) && radarStates[i].TrackedName == name)
+                    if (!SE(name) && radarStates[i].TrackedName == name)
                         return true;
                 }
                 return false;
@@ -681,22 +687,33 @@ namespace IngameScript
                 if (radar.IsTracking && radar.HasReceivedPosition)
                 {
                     string enemyName = radar.TrackedObjectName;
+                    long enemyId = radar.TrackedEntityId;
                     Vector3D enemyPos = radar.TargetPosition;
                     Vector3D enemyVel = radar.TargetVelocity;
 
                     if (enemyPos.LengthSquared() < 1.0)
                     {
-                        if (state.CurrentEnemyName != "")
+                        if (state.CurrentEnemyName != "" || state.CurrentEnemyEntityId != 0)
                         {
                             state.CurrentEnemyName = "";
+                            state.CurrentEnemyEntityId = 0;
                             state.SecondsSinceEnemyChange = 0;
                         }
                         return;
                     }
 
-                    if (enemyName != state.CurrentEnemyName)
+                    string feedName = !SE(enemyName) ? enemyName : "";
+                    myJet.UpdateOrAddEnemy(enemyPos, enemyVel, feedName, radarIndex, enemyId);
+                    activeRwrTrackCount++;
+
+                    bool enemyChanged = enemyId != 0
+                        ? enemyId != state.CurrentEnemyEntityId
+                        : enemyName != state.CurrentEnemyName;
+
+                    if (enemyChanged)
                     {
                         state.CurrentEnemyName = enemyName;
+                        state.CurrentEnemyEntityId = enemyId;
                         state.SecondsSinceEnemyChange = 0;
                     }
                     else
@@ -710,20 +727,16 @@ namespace IngameScript
 
                         if (isThreatening)
                         {
-                            activeThreats.Add(new RWRWarning(enemyPos, enemyVel, enemyName, true, rwrIndex));
-                            anyThreatDetected = true;
-                        }
-                        else
-                        {
-                            activeThreats.Add(new RWRWarning(enemyPos, enemyVel, enemyName, false, rwrIndex));
+                            activeRwrThreatCount++;
                         }
                     }
                 }
                 else
                 {
-                    if (state.CurrentEnemyName != "")
+                    if (state.CurrentEnemyName != "" || state.CurrentEnemyEntityId != 0)
                     {
                         state.CurrentEnemyName = "";
+                        state.CurrentEnemyEntityId = 0;
                         state.SecondsSinceEnemyChange = 0;
                     }
                 }
@@ -770,7 +783,7 @@ namespace IngameScript
 
             private void ManageWarningSounds()
             {
-                if (anyThreatDetected)
+                if (activeRwrThreatCount > 0)
                 {
                     SoundManager.RequestWarning("Alert 2", SoundManager.PRIORITY_RWR, 1.0);
                 }

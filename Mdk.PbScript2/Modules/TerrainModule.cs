@@ -93,6 +93,7 @@ namespace IngameScript
                 DrawHeightMarkers(frame, ml, mt, cel, FD);
                 DrawFlightPath(frame, cx, ccy, ma, ppm, jet.CockpitVelocity, jF, jR);
                 DrawContacts(frame, cx, ccy, ma, ppm, sp, jF, jR, jet);
+                DrawMissiles(frame, cx, ccy, ma, ppm, sp, jF, jR);
                 DrawProfile(frame, ml, mt + ma + 4f, ma, profH - 7f, sp, jet.CockpitVelocity, jF, VN(-jet.CachedGravity), ZS[zoom]);
                 SpriteHelpers.DrawCircleOutline(frame, V2(cx, ccy), ma * 0.25f, Cr(MFDTheme.BORDER, 0.4f), 1f);
                 SpriteHelpers.Sp(frame, TEXTURE_TRIANGLE, cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
@@ -345,12 +346,13 @@ namespace IngameScript
             {
                 float fd = (float)VD(v, jf), rd = (float)VD(v, jr);
                 if (fd * fd + rd * rd < 4f) return;
-                float h = ma / 2f, dx = rd * ppm, dy = -fd * ppm;
-                Vector2 p20 = ClipMap(cx, cy, dx * 20f, dy * 20f, h);
-                AF(f, V2(cx, cy), p20, 1.5f, Cr(MFDTheme.ACCENT, 0.65f));
-                Vector2 p10 = ClipMap(cx, cy, dx * 10f, dy * 10f, h);
-                SpriteHelpers.DrawCircleOutline(f, p10, 3f, Cr(MFDTheme.ACCENT, 0.55f), 1f);
-                SpriteHelpers.DrawCircleOutline(f, p20, 4f, Cr(MFDTheme.ACCENT, 0.55f), 1f);
+                float dx = rd * ppm, dy = -fd * ppm;
+                float l = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (l < 0.1f) return;
+                float tl = Cl(l * 4f, 8f, 24f);
+                Vector2 p = V2(cx, cy);
+                Vector2 q = V2(cx - dx / l * tl, cy - dy / l * tl);
+                AF(f, q, p, 1.2f, Cr(MFDTheme.ACCENT, 0.55f));
             }
 
             static void DrawContacts(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr, Jet j)
@@ -366,15 +368,47 @@ namespace IngameScript
                     Vector2 p = ClipMap(cx, cy, dx, dy, h - 3f);
                     bool s = sel.HasValue && e.Matches(sel.Value);
                     Color c = e.IsStale ? MFDTheme.DIM_TEXT : s ? MFDTheme.BRIGHT_TEXT : j.GetEnemyContactColor(e);
-                    SpriteHelpers.Sp(f, s ? TEX_C_HOSTILE : TEX_C_UNKNOWN, p.X, p.Y, s ? 14f : off ? 9f : 10f, s ? 14f : off ? 9f : 10f, c);
+                    float z = s ? 15f : off ? 10f : 11f;
+                    SpriteHelpers.Sp(f, s ? TEX_C_HOSTILE : TEX_C_UNKNOWN, p.X, p.Y, z, z, c);
                     if (!s) continue;
-                    string n = string.IsNullOrEmpty(e.Name) ? "TGT" : e.Name;
+                    string n = SE(e.Name) ? "TGT" : e.Name;
                     if (n.Length > 9) n = n.Substring(0, 9);
                     bool l = p.X < cx;
                     float tx = p.X + (l ? 8f : -8f);
                     var a = l ? MFDTheme.AL : MFDTheme.AR;
                     MFDFrame.Txt(f, n, tx, p.Y + 7f, 0.3f, c, a);
                     MFDFrame.Txt(f, SpriteHelpers.FormatRange(VDi(sp, e.Position)) + " " + AD(TerrainData.Alt(e.Position) - TerrainData.Alt(sp)), tx, p.Y + 18f, 0.25f, c, a);
+                }
+            }
+
+            static void DrawMissiles(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
+            {
+                var ms = MissileBayHelper.GetActiveMissileStatus();
+                float h = ma / 2f;
+                for (int i = 0; i < ms.Count; i++)
+                {
+                    var m = ms[i];
+                    Vector3D to = m.Position - sp;
+                    float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
+                    Vector2 p = ClipMap(cx, cy, dx, dy, h - 4f);
+                    float vx = (float)VD(m.Velocity, jr) * ppm;
+                    float vy = -(float)VD(m.Velocity, jf) * ppm;
+                    float vl = (float)Math.Sqrt(vx * vx + vy * vy);
+                    if (vl > 0.1f)
+                    {
+                        float tl = Cl(vl * 4f, 6f, 18f);
+                        Vector2 q = V2(p.X - vx / vl * tl, p.Y - vy / vl * tl);
+                        AF(f, q, p, 1.1f, Cr(MFDTheme.DANGER, 0.62f));
+                    }
+                    float a = vl > 0.1f ? (float)At2(vy, vx) + HP : 0f;
+                    Sq(p.X + 1f, p.Y + 1f, 7f, 3f, Cr(0, 0, 0, 180), a);
+                    Sq(p.X, p.Y, 8f, 4f, Cr(MFDTheme.BRIGHT_TEXT, 0.42f), a);
+                    Sq(p.X, p.Y, 6f, 2f, MFDTheme.DANGER, a);
+                    MFDFrame.Txt(f, m.Bay.ToString(), p.X + 6f, p.Y - 6f, 0.32f,
+                        m.ActiveTrackingUnlocked ? MFDTheme.ACCENT :
+                        m.Acquired ? MFDTheme.BRIGHT_TEXT : MFDTheme.WARN);
+                    if (m.ActiveTrackingUnlocked)
+                        MFDFrame.Txt(f, "AI", p.X + 6f, p.Y + 3f, 0.26f, MFDTheme.ACCENT);
                 }
             }
 

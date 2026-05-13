@@ -55,6 +55,19 @@ namespace IngameScript
         static Color Cr(int r, int g, int b) => new Color(r, g, b);
         static Color Cr(int r, int g, int b, int a) => new Color(r, g, b, a);
         static Color Cr(Color c, float a) => new Color(c, a);
+        static bool SE(string s) => string.IsNullOrEmpty(s);
+        static bool SW(string s) => string.IsNullOrWhiteSpace(s);
+        static void PrepSurface(IMyTextSurface s)
+        {
+            if (s == null) return;
+            s.ContentType = ContentType.SCRIPT;
+            s.Script = "";
+            s.BackgroundColor = Color.Transparent;
+            s.FontColor = Color.Black;
+            s.FontSize = 0.1f;
+            s.TextPadding = 0f;
+            s.Alignment = MFDTheme.AC;
+        }
         static double Ab(double v) => Math.Abs(v);
         static float Ab(float v) => Math.Abs(v);
         static int Ab(int v) => Math.Abs(v);
@@ -67,6 +80,33 @@ namespace IngameScript
         static readonly Vector3D VZ = Vector3D.Zero;
         const double PI = Math.PI;
         const string TRIM = "Trim";
+        const string S_TRUE = "true";
+        const string S_FALSE = "false";
+        const string S_HYDROGEN = "Hydrogen";
+        const string CD_TOPDOWN = "Topdown";
+        const string CD_ANTI_AIR = "AntiAir";
+        const string CD_CACHED = "Cached";
+        const string CD_CONFIG = "Config:";
+        const string CD_RWR_COUNT = "RWRCount";
+        const string TERRAIN_API = "TerrainAPI";
+        const string CFG_ALTITUDE_WARNING = "altitude_warning";
+        const string CFG_SPEED_WARNING = "speed_warning";
+        const string CFG_BINGO_FUEL = "bingo_fuel";
+        const string CFG_LOW_FUEL = "low_fuel";
+        const string CFG_GUN_KP = "gun_kp";
+        const string CFG_GUN_MAX_RPM = "gun_max_rpm";
+        const string CFG_GUN_LOCK_THRESHOLD = "gun_lock_threshold";
+        const string CFG_GUN_MAX_RANGE = "gun_max_range";
+        const string CFG_GUN_MUZZLE_VELOCITY = "gun_muzzle_velocity";
+        const string CFG_HUD_RADAR = "hud_radar";
+        const string CFG_HUD_GUN_FUNNEL = "hud_gun_funnel";
+        const string CFG_HUD_TARGET_BRACKETS = "hud_target_brackets";
+        const string CFG_HUD_GFORCE = "hud_gforce";
+        const string CFG_HUD_AOA = "hud_aoa";
+        const string CFG_HUD_FPM = "hud_fpm";
+        const string CFG_HUD_COMPASS = "hud_compass";
+        const string CFG_HUD_BREAKAWAY = "hud_breakaway";
+        const string CFG_HUD_THEME = "hud_theme";
         const string TEXTURE_SQUARE_HOLLOW = "SquareHollow";
         const string TEXTURE_CIRCLE = "CircleHollow";
         const string TEXTURE_TRIANGLE = "Triangle";

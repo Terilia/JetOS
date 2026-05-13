@@ -77,7 +77,7 @@ namespace IngameScript
                 {
                     if (EntityId != 0 && other.EntityId != 0)
                         return EntityId == other.EntityId;
-                    if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(other.Name))
+                    if (!SE(Name) && !SE(other.Name))
                         return Name == other.Name;
                     return VDi(Position, other.Position) < 50.0;
                 }
@@ -232,7 +232,7 @@ namespace IngameScript
                     bool isLeft = rightOffset < -LATERAL_TOLERANCE;
                     bool isRight = rightOffset > LATERAL_TOLERANCE;
                     bool isCenter = !isLeft && !isRight;
-                    bool isHydrogen = t.BlockDefinition.SubtypeId.Contains("Hydrogen");
+                    bool isHydrogen = t.BlockDefinition.SubtypeId.Contains(S_HYDROGEN);
                     if (isHydrogen)
                     {
                         AddEngineToSide(t, isLeft, isRight, leftABAll, centerABAll, rightABAll);
@@ -298,7 +298,7 @@ namespace IngameScript
                 string name = t.CustomName ?? "";
                 if (HasText(subtype, "Industrial") || HasText(name, "Industrial")) return false;
                 return HasText(subtype, "Atmospheric") || HasText(name, "Atmospheric")
-                    || HasText(subtype, "Hydrogen") || HasText(name, "Hydrogen");
+                    || HasText(subtype, S_HYDROGEN) || HasText(name, S_HYDROGEN);
             }
 
             static bool HasText(string text, string value)
@@ -330,7 +330,7 @@ namespace IngameScript
                 }
 
                 // Priority 2: Match by name
-                if (existingIndex < 0 && !string.IsNullOrEmpty(name))
+                if (existingIndex < 0 && !SE(name))
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
@@ -415,7 +415,7 @@ namespace IngameScript
                 {
                     var c = enemyList[i];
                     bool isSelected = (c.EntityId != 0 && c.EntityId == selectedEnemyEntityId)
-                        || (!string.IsNullOrEmpty(c.Name) && c.Name == selectedEnemyName);
+                        || (!SE(c.Name) && c.Name == selectedEnemyName);
                     double timeout = isSelected ? SELECTED_DECAY_SECONDS : CONTACT_DECAY_SECONDS;
                     if (c.AgeSeconds > timeout)
                     {
@@ -487,7 +487,7 @@ namespace IngameScript
                     }
                 }
 
-                if (!string.IsNullOrEmpty(selectedEnemyName))
+                if (!SE(selectedEnemyName))
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
@@ -614,7 +614,7 @@ namespace IngameScript
                 for (int i = 0; i < tanks.Count; i++)
                 {
                     if (tanks[i] == null) continue;
-                    if (!tanks[i].BlockDefinition.SubtypeId.Contains("Hydrogen")) continue;
+                    if (!tanks[i].BlockDefinition.SubtypeId.Contains(S_HYDROGEN)) continue;
                     cap += tanks[i].Capacity;
                     filled += tanks[i].Capacity * tanks[i].FilledRatio;
                 }
