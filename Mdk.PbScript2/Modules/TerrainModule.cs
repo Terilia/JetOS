@@ -403,7 +403,7 @@ namespace IngameScript
 
             static void DrawFriendlyJets(MySpriteDrawFrame f, float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
             {
-                var friends = FriendlyJetTelemetry.GetActiveFriends();
+                var friends = Datalink.GetActiveFriendlies();
                 Color blue = Cr(70, 150, 255);
                 for (int i = 0; i < friends.Count; i++)
                 {
