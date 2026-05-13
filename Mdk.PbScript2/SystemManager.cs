@@ -121,9 +121,9 @@ namespace IngameScript
             }
 
             // Default sidebar renderer — used by main menu and every module menu (fuel/battery/engine/terrain).
-            public static void RenderDefaultSidebar(MySpriteDrawFrame frame, RectangleF area)
+            public static void RenderDefaultSidebar(RectangleF area)
             {
-                StatusPanelRenderer.Render(frame, area, _myJet, hudProgram);
+                StatusPanelRenderer.Render(area, _myJet, hudProgram);
             }
 
             // CustomData Cache - delegates to CustomDataManager
@@ -232,30 +232,11 @@ namespace IngameScript
                     currentModule.Tick();
                 }
 
-                if (hudProgram != null && currentModule != hudProgram)
-                {
-                    hudProgram.Tick();
-                }
-
-                if (radarControlModule != null && currentModule != radarControlModule)
-                {
-                    radarControlModule.Tick();
-                }
-
-                if (airtoAirModule != null && currentModule != airtoAirModule)
-                {
-                    airtoAirModule.Tick();
-                }
-
-                if (gunControlModule != null && currentModule != gunControlModule)
-                {
-                    gunControlModule.Tick();
-                }
-
-                if (canardModule != null && currentModule != canardModule)
-                {
-                    canardModule.Tick();
-                }
+                TickBackground(hudProgram);
+                TickBackground(radarControlModule);
+                TickBackground(airtoAirModule);
+                TickBackground(gunControlModule);
+                TickBackground(canardModule);
 
                 HandleSpecialFunctionInputs(argument);
 
@@ -267,6 +248,12 @@ namespace IngameScript
                 Jet.IC = parentProgram.Runtime.CurrentInstructionCount;
                 if (Jet.IC > Jet.IP) Jet.IP = Jet.IC;
                 Jet.IA = (Jet.IA * 59 + Jet.IC) / 60;
+            }
+
+            static void TickBackground(ProgramModule module)
+            {
+                if (module != null && currentModule != module)
+                    module.Tick();
             }
 
             private static void HandleSpecialFunctionInputs(string argument)
@@ -297,8 +284,8 @@ namespace IngameScript
                 if (currentModule == null)
                 {
                     mainPage = new MenuMfdPage("SYS", mainMenuOptions, showSidebar: true,
-                        sidebarRenderer: (frame, panelArea) =>
-                            StatusPanelRenderer.Render(frame, panelArea, _myJet, hudProgram));
+                        sidebarRenderer: panelArea =>
+                            StatusPanelRenderer.Render(panelArea, _myJet, hudProgram));
                 }
                 else
                 {

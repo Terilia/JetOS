@@ -78,7 +78,7 @@ namespace IngameScript
                     float sh = SY(surface);
 
                     float chromeTop = MFDFrame.DrawChrome(
-                        frame, sw, sh,
+                        sw, sh,
                         headerRight: page.HeaderRight,
                         drawFooterNav: page.ShowFooterNav,
                         footerRight: page.FooterRight,
@@ -95,7 +95,7 @@ namespace IngameScript
 
                     float menuTop = chromeTop;
                     if (page.ShowBreadcrumb)
-                        menuTop = DrawBreadcrumb(frame, sh, chromeTop, page.BreadcrumbPath, bcWidth);
+                        menuTop = DrawBreadcrumb(sh, chromeTop, page.BreadcrumbPath, bcWidth);
 
                     float titleScale = sh * 0.00069f * 1.05f;
                     // Only pad the body when there's a title to breathe around. Custom-content
@@ -104,7 +104,7 @@ namespace IngameScript
                     if (!SE(page.Title))
                     {
                         bodyTop += sh * 0.020f;
-                        DrawSectionTitle(frame, sw, sh, bodyTop, menuLeft, menuWidth, page.Title, titleScale);
+                        DrawSectionTitle(sw, sh, bodyTop, menuLeft, menuWidth, page.Title, titleScale);
                         bodyTop += sh * 0.045f;
                     }
 
@@ -114,26 +114,25 @@ namespace IngameScript
                     {
                         bool inTransition = transitionStart >= 0
                             && (SystemManager.ElapsedSeconds - transitionStart) < PAGE_FADE_DURATION;
-                        DrawMenuList(frame, sh, page.CompactRows, page.MenuItems, selectedIndex,
+                        DrawMenuList(sh, page.CompactRows, page.MenuItems, selectedIndex,
                             menuLeft, bodyTop, menuWidth, contentBot, inTransition);
-                        page.RenderMenuSupplement(frame,
-                            new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop),
+                        page.RenderMenuSupplement(new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop),
                             SS(surface), selectedIndex);
                     }
                     else
-                        page.RenderContent(frame, contentArea, SS(surface));
+                        page.RenderContent(contentArea, SS(surface));
 
                     if (page.HasSidebar)
                     {
                         // Sidebar anchors to chromeTop so it never shifts when a breadcrumb appears.
-                        Rect(frame, sideX - 1f, chromeTop, 1f, contentBot - chromeTop - sh * 0.020f, MFDTheme.BORDER_LIGHT);
+                        Rect(sideX - 1f, chromeTop, 1f, contentBot - chromeTop - sh * 0.020f, MFDTheme.BORDER_LIGHT);
                         var sideArea = new RectangleF(
                             V2(sideX + 4f, chromeTop),
                             V2(sidebarW - 4f, contentBot - chromeTop - sh * 0.020f));
-                        page.RenderSidebar(frame, sideArea);
+                        page.RenderSidebar(sideArea);
                     }
 
-                    DrawScreenBorder(frame, sw, sh);
+                    MFDFrame.DrawScreenBorder(sw, sh);
 
                     // Shader-style transition replay — re-emit the previous page's sprites with
                     // per-sprite radial dispersion + desaturate + alpha decay. Stops capturing
@@ -185,24 +184,24 @@ namespace IngameScript
             // ── Breadcrumb (returns new content top Y) ──
             // bcWidth lets the breadcrumb stop short of the sidebar column so the sidebar
             // can anchor to chromeTop without being pushed down when a module is entered.
-            private static float DrawBreadcrumb(MySpriteDrawFrame frame, float sh, float y, string path, float bcWidth)
+            private static float DrawBreadcrumb(float sh, float y, string path, float bcWidth)
             {
                 float bcH = sh * 0.044f;
-                Rect(frame, bcWidth / 2f, y + bcH / 2f, bcWidth, bcH, MFDTheme.BC_BG);
-                Rect(frame, bcWidth / 2f, y + bcH, bcWidth, 1f, MFDTheme.BC_BORDER);
+                Rect(bcWidth / 2f, y + bcH / 2f, bcWidth, bcH, MFDTheme.BC_BG);
+                Rect(bcWidth / 2f, y + bcH, bcWidth, 1f, MFDTheme.BC_BORDER);
 
                 float padX = bcWidth * 0.019f;
                 float scale = sh * 0.00055f * 1.1f;
                 float ty = y + bcH * 0.15f;
-                Txt(frame, "SYS", padX, ty, scale, MFDTheme.DIM_TEXT);
-                Txt(frame, ">", padX + bcWidth * 0.20f, ty, scale, MFDTheme.BORDER);
-                Txt(frame, (path ?? "").ToUpper(), padX + bcWidth * 0.23f, ty, scale, MFDTheme.NORMAL_TEXT);
+                Txt("SYS", padX, ty, scale, MFDTheme.DIM_TEXT);
+                Txt(">", padX + bcWidth * 0.20f, ty, scale, MFDTheme.BORDER);
+                Txt((path ?? "").ToUpper(), padX + bcWidth * 0.23f, ty, scale, MFDTheme.NORMAL_TEXT);
 
                 return y + bcH + 2f;
             }
 
             // ── Section title with flanking lines ──
-            private static void DrawSectionTitle(MySpriteDrawFrame frame, float sw, float sh,
+            private static void DrawSectionTitle(float sw, float sh,
                 float y, float left, float width, string text, float scale)
             {
                 float lineY = y + sh * 0.012f;
@@ -212,18 +211,18 @@ namespace IngameScript
 
                 float leftLineW = centerX - halfGap - left;
                 if (leftLineW > 2f)
-                    Rect(frame, left + leftLineW / 2f, lineY, leftLineW, 1f, MFDTheme.BORDER);
+                    Rect(left + leftLineW / 2f, lineY, leftLineW, 1f, MFDTheme.BORDER);
 
                 float rightStart = centerX + halfGap;
                 float rightLineW = (left + width) - rightStart;
                 if (rightLineW > 2f)
-                    Rect(frame, rightStart + rightLineW / 2f, lineY, rightLineW, 1f, MFDTheme.BORDER);
+                    Rect(rightStart + rightLineW / 2f, lineY, rightLineW, 1f, MFDTheme.BORDER);
 
-                Txt(frame, text, centerX, y, scale, MFDTheme.MID_TEXT, MFDTheme.AC);
+                Txt(text, centerX, y, scale, MFDTheme.MID_TEXT, MFDTheme.AC);
             }
 
             // ── Menu list ──
-            private void DrawMenuList(MySpriteDrawFrame frame, float sh, bool compactRows,
+            private void DrawMenuList(float sh, bool compactRows,
                 string[] items, int selectedIndex, float left, float top, float width, float contentBot,
                 bool snapSelection)
             {
@@ -259,18 +258,18 @@ namespace IngameScript
                 else animY = targetY;
 
                 // Selection chrome (animated position).
-                Rect(frame, left + width / 2f, animY + rowH / 2f, width, rowH, MFDTheme.SEL_FILL);
-                Rect(frame, left + 1f, animY + rowH / 2f, 2f, rowH, MFDTheme.ACCENT);
-                Rect(frame, left + width / 2f, animY, width, 1f, MFDTheme.SEL_BORDER);
-                Rect(frame, left + width / 2f, animY + rowH, width, 1f, MFDTheme.SEL_BORDER);
+                Rect(left + width / 2f, animY + rowH / 2f, width, rowH, MFDTheme.SEL_FILL);
+                Rect(left + 1f, animY + rowH / 2f, 2f, rowH, MFDTheme.ACCENT);
+                Rect(left + width / 2f, animY, width, 1f, MFDTheme.SEL_BORDER);
+                Rect(left + width / 2f, animY + rowH, width, 1f, MFDTheme.SEL_BORDER);
 
                 // Row text + dividers (deterministic positions — only the highlight moves).
                 float rowY = top;
                 for (int i = 0; i < items.Length; i++)
                 {
                     Color tc = (i == selectedIndex) ? MFDTheme.BRIGHT_TEXT : MFDTheme.NORMAL_TEXT;
-                    Txt(frame, items[i], left + 10f, rowY + rowH * 0.2f, txtScale, tc);
-                    Rect(frame, left + width / 2f, rowY + rowH, width, 1f, MFDTheme.ROW_DIVIDER);
+                    Txt(items[i], left + 10f, rowY + rowH * 0.2f, txtScale, tc);
+                    Rect(left + width / 2f, rowY + rowH, width, 1f, MFDTheme.ROW_DIVIDER);
                     rowY += rowH;
                 }
             }
@@ -285,17 +284,9 @@ namespace IngameScript
                 return (float)Anim.Lerp(_selAnimFromY, prevTarget, Anim.EaseOut(t));
             }
 
-            private static void DrawScreenBorder(MySpriteDrawFrame frame, float sw, float sh)
-            {
-                Rect(frame, sw / 2f, 1f, sw, 2f, MFDTheme.BORDER);
-                Rect(frame, sw / 2f, sh - 1f, sw, 2f, MFDTheme.BORDER);
-                Rect(frame, 1f, sh / 2f, 2f, sh, MFDTheme.BORDER);
-                Rect(frame, sw - 1f, sh / 2f, 2f, sh, MFDTheme.BORDER);
-            }
-
             // ── Sprite primitives (delegate to Shortcuts so the verbose initializer lives in one place) ──
-            private static void Rect(MySpriteDrawFrame f, float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
-            private static void Txt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
+            private static void Rect(float cx, float cy, float w, float h, Color c) => Sq(cx, cy, w, h, c);
+            private static void Txt(string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AL) => Tx(d, x, y, s, c, a, null);
         }
     }
 }

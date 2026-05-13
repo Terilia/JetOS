@@ -160,17 +160,8 @@ namespace IngameScript
 
             static bool TryGetTargetPosition(Jet jet, out Vector3D pos)
             {
-                pos = default(Vector3D);
-                if (jet != null)
-                {
-                    var selected = jet.GetSelectedEnemy();
-                    if (selected.HasValue)
-                    {
-                        pos = selected.Value.Position;
-                        return true;
-                    }
-                }
-                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue(CD_CACHED), out pos);
+                Vector3D vel;
+                return TryGetTargetData(jet, out pos, out vel);
             }
 
             static bool TryGetTargetData(Jet jet, out Vector3D pos, out Vector3D vel)

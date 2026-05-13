@@ -96,17 +96,17 @@ namespace IngameScript
             // Single sprite from the JetOS-Sprites mod. Visible content spans canvas
             // x=40..216 (176/256 = 68.75%) and y=128..156 (28/256 = 11%). Sized so the
             // visible width matches the original 70px wingspan.
-            private void DrawAircraftSymbol(MySpriteDrawFrame frame, float centerX, float centerY)
+            private void DrawAircraftSymbol(float centerX, float centerY)
             {
                 const float SPRITE_W = 102f;   // → visible 70px wide (matches old 2*wingSpan)
                 const float SPRITE_H = 102f;   // square sprite, visible content is short+wide
                 // Source canvas places the W's horizontal at y=128 (center) and the V tip
                 // at y=156 (offset +28). The visible center sits ~14px below sprite center;
                 // shift anchor up so the wing line lands on (centerX, centerY).
-                SpriteHelpers.Sp(frame, TEX_AIRCRAFT_SYM, centerX, centerY - SPRITE_H * 14f / 256f, SPRITE_W, SPRITE_H, HUD_EMPHASIS);
+                SpriteHelpers.Sp(TEX_AIRCRAFT_SYM, centerX, centerY - SPRITE_H * 14f / 256f, SPRITE_W, SPRITE_H, HUD_EMPHASIS);
             }
 
-            private void DrawBankAngleMarkers(MySpriteDrawFrame frame, float centerX, float centerY, float roll, float pixelsPerDegree)
+            private void DrawBankAngleMarkers(float centerX, float centerY, float roll, float pixelsPerDegree)
             {
                 float horizonRadius = pixelsPerDegree * 20f;
                 float rollRad = ToRad(-roll);
@@ -114,16 +114,15 @@ namespace IngameScript
                 // Bank arc + ticks baked into one sprite. Source arc radius = 100/256 of canvas;
                 // render size = horizonRadius / 0.39 so the arc lands at horizonRadius from center.
                 float arcSize = horizonRadius / 0.39f;
-                SpriteHelpers.Sp(frame, TEX_BANK_ARC, centerX, centerY, arcSize, arcSize, HUD_EMPHASIS, rollRad);
+                SpriteHelpers.Sp(TEX_BANK_ARC, centerX, centerY, arcSize, arcSize, HUD_EMPHASIS, rollRad);
 
                 // Fixed roll-pointer triangle at 12 o'clock — doesn't rotate; arc sweeps past it.
-                SpriteHelpers.Sp(frame, TEX_ROLL_POINTER, centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY);
+                SpriteHelpers.Sp(TEX_ROLL_POINTER, centerX, centerY - horizonRadius - 6f, 10f, 8f, HUD_PRIMARY);
             }
 
             // F-18 Flight Path Marker. Single sprite from the JetOS-Sprites mod,
             // counter-rotated by roll so the wings stay parallel to the true horizon.
             private void DrawFlightPathMarker(
-                MySpriteDrawFrame frame,
                 Vector3D currentVelocity,
                 MatrixD worldToCockpitMatrix,
                 double roll,
@@ -153,11 +152,11 @@ namespace IngameScript
                 if (!fpmOnScreen)
                 {
                     Vector2 boresight = V2(centerX, centerY);
-                    SpriteHelpers.AddLineSprite(frame, boresight, markerPosition, 1f, Cr(fpmColor, 0.35f));
+                    SpriteHelpers.AddLineSprite(boresight, markerPosition, 1f, Cr(fpmColor, 0.35f));
                 }
 
                 float rollRad = ToRad((float)roll);
-                SpriteHelpers.Sp(frame, TEXTURE_FPM, markerPosition.X, markerPosition.Y,
+                SpriteHelpers.Sp(TEXTURE_FPM, markerPosition.X, markerPosition.Y,
                     FpmDrawSize, FpmDrawSize, fpmColor, -rollRad);
             }
         }

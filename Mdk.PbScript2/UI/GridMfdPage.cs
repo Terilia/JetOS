@@ -1,4 +1,3 @@
-using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript
@@ -20,9 +19,9 @@ namespace IngameScript
             public override string HeaderRight => "STAT";
             public override bool CompactChrome => true;
 
-            public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
+            public override void RenderContent(RectangleF area, Vector2 surfaceSize)
             {
-                GridVisualization.Render(frame, surfaceSize, area, _program, _jet, _hud);
+                GridVisualization.Render(surfaceSize, area, _program, _jet, _hud);
             }
         }
     }

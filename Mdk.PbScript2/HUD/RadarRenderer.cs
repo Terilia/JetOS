@@ -29,7 +29,7 @@ namespace IngameScript
             }
             private RadarContact[] _radarBuf = new RadarContact[16];
 
-            private void DrawRadarMinimap(MySpriteDrawFrame frame, IMyCockpit cockpit, IMyTextSurface hud)
+            private void DrawRadarMinimap(IMyCockpit cockpit, IMyTextSurface hud)
             {
                 if (cockpit == null || hud == null) return;
 
@@ -115,8 +115,7 @@ namespace IngameScript
                 float pixelsPerMeter = radarRadius / radarRange;
 
                 // --- Draw radar frame ---
-                SpriteHelpers.DrawRectangleOutline(frame,
-                    radarOrigin.X - 5f, radarOrigin.Y - 5f,
+                SpriteHelpers.DrawRectangleOutline(radarOrigin.X - 5f, radarOrigin.Y - 5f,
                     radarSize.X + 10f, radarSize.Y + 10f, 1f, HUD_PRIMARY);
 
                 // Range ring at ~50% radius with label
@@ -124,14 +123,14 @@ namespace IngameScript
                 float ringPx = ringRange * pixelsPerMeter;
                 if (ringPx > 5f && ringPx < radarRadius)
                 {
-                    SpriteHelpers.Sp(frame, TEX_RANGE_RING, radarCenter.X, radarCenter.Y, ringPx * 2.13f, ringPx * 2.13f, Cr(HUD_SECONDARY, 0.35f));
+                    SpriteHelpers.Sp(TEX_RANGE_RING, radarCenter.X, radarCenter.Y, ringPx * 2.13f, ringPx * 2.13f, Cr(HUD_SECONDARY, 0.35f));
                     string ringLabel = SpriteHelpers.FormatRange(ringRange);
-                    SpriteHelpers.Tt(frame, ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, Cr(HUD_SECONDARY, 0.5f));
+                    SpriteHelpers.Tt(ringLabel, radarCenter.X, radarCenter.Y - ringPx - 5f, 0.3f, Cr(HUD_SECONDARY, 0.5f));
                 }
 
                 // Outer range label
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
-                SpriteHelpers.Tt(frame, outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, Cr(HUD_SECONDARY, 0.5f));
+                SpriteHelpers.Tt(outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, Cr(HUD_SECONDARY, 0.5f));
 
                 // Lock cone — drawn pointing forward (up in radar view) when STT lock active.
                 // Visible content spans upper half of canvas (~39% of height); size
@@ -139,11 +138,11 @@ namespace IngameScript
                 if (radarControl != null && radarControl.IsTrackLocked)
                 {
                     float coneSize = radarRadius * 2.56f;
-                    SpriteHelpers.Sp(frame, TEX_LOCK_CONE, radarCenter.X, radarCenter.Y, coneSize, coneSize, Cr(HUD_WARNING, 0.7f));
+                    SpriteHelpers.Sp(TEX_LOCK_CONE, radarCenter.X, radarCenter.Y, coneSize, coneSize, Cr(HUD_WARNING, 0.7f));
                 }
 
                 // Own ship at radar center (top-down jet silhouette).
-                SpriteHelpers.Sp(frame, TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
+                SpriteHelpers.Sp(TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
 
                 // --- Draw contacts (reuses Pass 1 cache) ---
                 var selectedEnemy = myjet.GetSelectedEnemy();
@@ -194,26 +193,26 @@ namespace IngameScript
                     // Visible content fills ~70% of canvas, so sprite size is ~1.5× iconSize.
                     string contactTex = isSelected ? TEX_C_HOSTILE : TEX_C_UNKNOWN;
                     float iconSize = clamped ? 9f : 12f;
-                    SpriteHelpers.Sp(frame, contactTex, pos.X, pos.Y, iconSize, iconSize, contactColor);
+                    SpriteHelpers.Sp(contactTex, pos.X, pos.Y, iconSize, iconSize, contactColor);
 
                     // Bearing line for dangerous/imminent threats
                     if (timeToClosest < 15 && closingSpeed > 0)
                     {
-                        SpriteHelpers.AddLineSprite(frame, radarCenter, pos, 1f, Cr(contactColor, 0.35f));
+                        SpriteHelpers.AddLineSprite(radarCenter, pos, 1f, Cr(contactColor, 0.35f));
                     }
 
                     // Range label for close contacts that fit on radar
                     if (dist < radarRange * 0.8f && !clamped)
                     {
                         string rangeText = dist >= 1000 ? $"{dist / 1000:F1}" : $"{dist:F0}";
-                        SpriteHelpers.Tt(frame, rangeText, pos.X + 7f, pos.Y - 4f, 0.28f, contactColor, MFDTheme.AL);
+                        SpriteHelpers.Tt(rangeText, pos.X + 7f, pos.Y - 4f, 0.28f, contactColor, MFDTheme.AL);
                     }
                 }
 
                 // Threat count below radar
                 if (n > 0)
                 {
-                    SpriteHelpers.Tt(frame, $"TGT: {n}", radarCenter.X, radarOrigin.Y + radarSize.Y + 5f, 0.4f, HUD_PRIMARY);
+                    SpriteHelpers.Tt($"TGT: {n}", radarCenter.X, radarOrigin.Y + radarSize.Y + 5f, 0.4f, HUD_PRIMARY);
                 }
             }
 
@@ -225,7 +224,7 @@ namespace IngameScript
                 return (float)Rd(range / 100) * 100;
             }
 
-            private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
+            private void DrawFormationGhosts(IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
                 var friends = Datalink.GetActiveFriendlies();
                 if (friends.Count == 0) return;
@@ -245,7 +244,7 @@ namespace IngameScript
                         localDirection.Z = -MIN_Z_FOR_PROJECTION;
 
                     Vector2 ghostPos = SpriteHelpers.ProjectToScreen(localDirection, center, surfaceSize);
-                    SpriteHelpers.Sp(frame, TEX_C_FRIENDLY, ghostPos.X, ghostPos.Y, 18f, 18f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
+                    SpriteHelpers.Sp(TEX_C_FRIENDLY, ghostPos.X, ghostPos.Y, 18f, 18f, Cr(HUD_RADAR_FRIENDLY, 0.7f));
                 }
             }
         }

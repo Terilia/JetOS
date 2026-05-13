@@ -1,4 +1,3 @@
-using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript
@@ -14,9 +13,9 @@ namespace IngameScript
 
             public override string HeaderRight => "WPN";
 
-            public override void RenderContent(MySpriteDrawFrame frame, RectangleF area, Vector2 surfaceSize)
+            public override void RenderContent(RectangleF area, Vector2 surfaceSize)
             {
-                _hud.RenderWeaponContent(frame, area, surfaceSize);
+                _hud.RenderWeaponContent(area, surfaceSize);
             }
         }
     }

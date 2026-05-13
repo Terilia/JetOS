@@ -1,5 +1,4 @@
 using System;
-using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript
@@ -28,7 +27,7 @@ namespace IngameScript
 
             // Main menu page: explicit items and title, sidebar enabled with a renderer callback.
             public MenuMfdPage(string title, string[] items, bool showSidebar,
-                Action<MySpriteDrawFrame, RectangleF> sidebarRenderer = null)
+                Action<RectangleF> sidebarRenderer = null)
             {
                 _module = null;
                 _title = title;
@@ -37,12 +36,12 @@ namespace IngameScript
                 _sidebarRenderer = sidebarRenderer;
             }
 
-            private readonly Action<MySpriteDrawFrame, RectangleF> _sidebarRenderer;
+            private readonly Action<RectangleF> _sidebarRenderer;
 
-            public override void RenderSidebar(MySpriteDrawFrame frame, RectangleF area)
+            public override void RenderSidebar(RectangleF area)
             {
-                if (_sidebarRenderer != null) _sidebarRenderer(frame, area);
-                else SystemManager.RenderDefaultSidebar(frame, area);
+                if (_sidebarRenderer != null) _sidebarRenderer(area);
+                else SystemManager.RenderDefaultSidebar(area);
             }
 
             public override string Title => _title;

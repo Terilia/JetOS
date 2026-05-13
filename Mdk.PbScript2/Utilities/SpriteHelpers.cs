@@ -9,22 +9,22 @@ namespace IngameScript
     {
         static class SpriteHelpers
         {
-            public static void Bx(MySpriteDrawFrame f, float x, float y, float w, float h, Color c)
+            public static void Bx(float x, float y, float w, float h, Color c)
             {
                 Sq(x, y, w, h, c);
             }
 
-            public static void Bx(MySpriteDrawFrame f, float x, float y, float w, float h, Color c, float r)
+            public static void Bx(float x, float y, float w, float h, Color c, float r)
             {
                 Sq(x, y, w, h, c, r);
             }
 
-            public static void Sp(MySpriteDrawFrame f, string d, float x, float y, float w, float h, Color c, float r = 0f)
+            public static void Sp(string d, float x, float y, float w, float h, Color c, float r = 0f)
             {
                 SqT(d, x, y, w, h, c, r);
             }
 
-            public static void Tt(MySpriteDrawFrame f, string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC, string fn = null)
+            public static void Tt(string d, float x, float y, float s, Color c, TextAlignment a = MFDTheme.AC, string fn = null)
             {
                 Tx(d, x, y, s, c, a, fn);
             }
@@ -39,17 +39,17 @@ namespace IngameScript
                 return new MySprite { Type = MFDTheme.TT, Data = d, Position = V2(x, y), RotationOrScale = s, Color = c, Alignment = a, FontId = fn };
             }
 
-            public static void AddLineSprite(MySpriteDrawFrame frame, Vector2 start, Vector2 end, float thickness, Color color)
+            public static void AddLineSprite(Vector2 start, Vector2 end, float thickness, Color color)
             {
                 Vector2 delta = end - start;
                 float length = delta.Length();
                 if (length < 0.1f) return;
                 Vector2 position = start + delta / 2f;
                 float rotation = (float)At2(delta.Y, delta.X) - (float)PI / 2f;
-                Bx(frame, position.X, position.Y, thickness, length, color, rotation);
+                Bx(position.X, position.Y, thickness, length, color, rotation);
             }
 
-            public static void DrawRectangleOutline(MySpriteDrawFrame frame, float x, float y, float width, float height, float lineWidth, Color color)
+            public static void DrawRectangleOutline(float x, float y, float width, float height, float lineWidth, Color color)
             {
                 // Square-ish outlines collapse to a single SquareHollow sprite (1 sprite instead of 4).
                 // Stretched rects fall back to four 1-px filled rects so the border stays uniform —
@@ -61,13 +61,13 @@ namespace IngameScript
                     SqT(TEXTURE_SQUARE_HOLLOW, x + width / 2f, y + height / 2f, width, height, color);
                     return;
                 }
-                Bx(frame, x + width / 2f, y, width, lineWidth, color);
-                Bx(frame, x + width / 2f, y + height, width, lineWidth, color);
-                Bx(frame, x, y + height / 2f, lineWidth, height, color);
-                Bx(frame, x + width, y + height / 2f, lineWidth, height, color);
+                Bx(x + width / 2f, y, width, lineWidth, color);
+                Bx(x + width / 2f, y + height, width, lineWidth, color);
+                Bx(x, y + height / 2f, lineWidth, height, color);
+                Bx(x + width, y + height / 2f, lineWidth, height, color);
             }
 
-            public static void DrawCircleOutline(MySpriteDrawFrame frame, Vector2 center, float radius, Color color, float thickness)
+            public static void DrawCircleOutline(Vector2 center, float radius, Color color, float thickness)
             {
                 // Single CircleHollow sprite — was 24 line segments. The border thickness now
                 // scales with sprite size rather than being fixed pixels, but for the few callers

@@ -13,7 +13,7 @@ IMyTextSurface _lcd;
 StringBuilder _req = new StringBuilder(512);
 int[] _heights = new int[GRID_W * GRID_H];
 bool _apiAvailable = true;
-string _status = "Waiting for first scan...";
+string _status = "Wait first scan...";
 
 public Program()
 {
@@ -40,7 +40,7 @@ public void Main(string argument, UpdateType updateSource)
     if (_apiAvailable && Me.GetProperty("TerrainAPI_Scan") == null)
     {
         _apiAvailable = false;
-        _status = "TerrainAPI_Scan property NOT found — plugin not loaded?";
+        _status = "TerrainAPI plugin loaded?";
         Echo(_status);
         DrawStatus();
         return;
@@ -92,7 +92,7 @@ public void Main(string argument, UpdateType updateSource)
 
         if (resp == null || resp.Length == 0)
         {
-            _status = "Response is null/empty";
+            _status = "Resp is null";
             Echo(_status);
             DrawStatus();
             return;

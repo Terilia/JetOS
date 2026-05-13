@@ -10,7 +10,6 @@ namespace IngameScript
         partial class HUDModule
         {
             private void DrawLeadingPip(
-        MySpriteDrawFrame frame,
         IMyTextSurface hud,
         MatrixD worldToCockpitMatrix,
         Vector3D shooterPosition,
@@ -54,11 +53,11 @@ namespace IngameScript
 
                 if (localDirectionToIntercept.Z > MIN_Z_FOR_PROJECTION)
                 {
-                    SpriteHelpers.Sp(frame, TEX_BORESIGHT, center.X, center.Y, boresightSize, boresightSize, behindColor);
+                    SpriteHelpers.Sp(TEX_BORESIGHT, center.X, center.Y, boresightSize, boresightSize, behindColor);
                     return;
                 }
 
-                SpriteHelpers.Sp(frame, TEX_BORESIGHT, center.X, center.Y, boresightSize, boresightSize, reticleColor);
+                SpriteHelpers.Sp(TEX_BORESIGHT, center.X, center.Y, boresightSize, boresightSize, reticleColor);
 
 
                 if (Ab(localDirectionToIntercept.Z) < MIN_Z_FOR_PROJECTION)
@@ -73,7 +72,7 @@ namespace IngameScript
                                   pipScreenPos.Y >= 0 && pipScreenPos.Y <= surfaceSize.Y;
                 if (isOnScreen)
                 {
-                    SpriteHelpers.Sp(frame, TEX_LEAD_PIP, pipScreenPos.X, pipScreenPos.Y, dynamicPipSize, dynamicPipSize, pipColor);
+                    SpriteHelpers.Sp(TEX_LEAD_PIP, pipScreenPos.X, pipScreenPos.Y, dynamicPipSize, dynamicPipSize, pipColor);
 
                     // Draw time-to-intercept (TTI) near the lead pip
                     if (timeToIntercept > 0 && timeToIntercept < 30)
@@ -81,11 +80,11 @@ namespace IngameScript
                         string ttiText = $"{timeToIntercept:F1}s";
                         Color ttiColor = timeToIntercept < 2 ? HUD_WARNING : (timeToIntercept < 5 ? HUD_EMPHASIS : HUD_PRIMARY);
 
-                        SpriteHelpers.Tt(frame, ttiText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y - 8f, 0.5f, ttiColor, MFDTheme.AL);
+                        SpriteHelpers.Tt(ttiText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y - 8f, 0.5f, ttiColor, MFDTheme.AL);
 
                         // Draw range to intercept point
                         string rangeText = SpriteHelpers.FormatRange(distanceToIntercept);
-                        SpriteHelpers.Tt(frame, rangeText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y + 4f, 0.45f, ttiColor, MFDTheme.AL);
+                        SpriteHelpers.Tt(rangeText, pipScreenPos.X + dynamicPipSize / 2 + 8f, pipScreenPos.Y + 4f, 0.45f, ttiColor, MFDTheme.AL);
                     }
 
                     Vector3D directionToTarget = targetPosition - shooterPosition;
@@ -95,9 +94,9 @@ namespace IngameScript
                     {
                         Vector2 currentTargetScreenPos = SpriteHelpers.ProjectToScreen(localDirectionToTarget, center, surfaceSize);
                         float halfMark = targetMarkerSize / 2f;
-                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - V2(halfMark, halfMark), currentTargetScreenPos + V2(halfMark, halfMark), lineThickness, Color.Yellow);
-                        SpriteHelpers.AddLineSprite(frame, currentTargetScreenPos - V2(halfMark, -halfMark), currentTargetScreenPos + V2(halfMark, -halfMark), lineThickness, Color.Yellow);
-                        SpriteHelpers.AddLineSprite(frame, pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(currentTargetScreenPos - V2(halfMark, halfMark), currentTargetScreenPos + V2(halfMark, halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(currentTargetScreenPos - V2(halfMark, -halfMark), currentTargetScreenPos + V2(halfMark, -halfMark), lineThickness, Color.Yellow);
+                        SpriteHelpers.AddLineSprite(pipScreenPos, currentTargetScreenPos, lineThickness, Color.Yellow);
                     }
                 }
                 else
@@ -135,19 +134,18 @@ namespace IngameScript
 
 
                     float arrowRotation = (float)At2(direction.Y, direction.X);
-                    SpriteHelpers.Sp(frame, TEX_NAV_ARROW, edgePoint.X, edgePoint.Y, arrowHeadSize, arrowHeadSize, offScreenColor, arrowRotation + (float)PI / 2f);
+                    SpriteHelpers.Sp(TEX_NAV_ARROW, edgePoint.X, edgePoint.Y, arrowHeadSize, arrowHeadSize, offScreenColor, arrowRotation + (float)PI / 2f);
 
                     // Range label next to off-screen arrow
                     double offscreenRange = VDi(shooterPosition, targetPosition);
                     string offscreenRangeText = SpriteHelpers.FormatRange(offscreenRange);
                     Vector2 perpDir = V2(-direction.Y, direction.X);
                     Vector2 labelPos = edgePoint + perpDir * 14f - direction * 10f;
-                    SpriteHelpers.Tt(frame, offscreenRangeText, labelPos.X, labelPos.Y, 0.45f, offScreenColor);
+                    SpriteHelpers.Tt(offscreenRangeText, labelPos.X, labelPos.Y, 0.45f, offScreenColor);
                 }
             }
 
             private void DrawTargetBrackets(
-                MySpriteDrawFrame frame,
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,
                 Vector3D targetPosition,
@@ -193,13 +191,13 @@ namespace IngameScript
                                    closureRate < -10 ? HUD_EMPHASIS : HUD_PRIMARY;
 
                 // Single sprite — visible bracket spans 160/256 of canvas, so render size = bracketSize * 1.6.
-                SpriteHelpers.Sp(frame, TEX_TGT_BRACKET, targetScreenPos.X, targetScreenPos.Y,
+                SpriteHelpers.Sp(TEX_TGT_BRACKET, targetScreenPos.X, targetScreenPos.Y,
                     bracketSize * 1.6f, bracketSize * 1.6f, bracketColor);
 
                 // STT lock indicator — flashing diamond inside the bracket when track-locked.
                 if (radarControl != null && radarControl.IsTrackLocked && Anim.Blink(0.27))
                 {
-                    SpriteHelpers.Sp(frame, TEX_LOCK_DIAMOND, targetScreenPos.X, targetScreenPos.Y,
+                    SpriteHelpers.Sp(TEX_LOCK_DIAMOND, targetScreenPos.X, targetScreenPos.Y,
                         bracketSize * 1.0f, bracketSize * 1.0f, HUD_WARNING);
                 }
 
@@ -207,18 +205,17 @@ namespace IngameScript
                 float textScale = 0.5f;
 
                 string rangeText = SpriteHelpers.FormatRange(range);
-                SpriteHelpers.Tt(frame, rangeText, targetScreenPos.X, textY, textScale, bracketColor);
+                SpriteHelpers.Tt(rangeText, targetScreenPos.X, textY, textScale, bracketColor);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
                 string closureText = $"Vc:{Ab(closureRate):F0} {closureLabel}";
-                SpriteHelpers.Tt(frame, closureText, targetScreenPos.X, textY + 12f, textScale, bracketColor);
+                SpriteHelpers.Tt(closureText, targetScreenPos.X, textY + 12f, textScale, bracketColor);
 
                 string aspectText = $"AA:{aspectAngle:F0}\u00B0";
-                SpriteHelpers.Tt(frame, aspectText, targetScreenPos.X, textY + 24f, textScale, bracketColor);
+                SpriteHelpers.Tt(aspectText, targetScreenPos.X, textY + 24f, textScale, bracketColor);
             }
 
             private void DrawGunFunnel(
-                MySpriteDrawFrame frame,
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,
                 Vector3D interceptPoint,
@@ -249,20 +246,20 @@ namespace IngameScript
                 float lineThickness = 1f;
 
                 float halfFunnel = funnelBaseWidth / 2f;
-                SpriteHelpers.AddLineSprite(frame, V2(center.X - halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
-                SpriteHelpers.AddLineSprite(frame, V2(center.X + halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
-                SpriteHelpers.AddLineSprite(frame, V2(center.X + halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
-                SpriteHelpers.AddLineSprite(frame, V2(center.X - halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(V2(center.X - halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(V2(center.X + halfFunnel, 0), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(V2(center.X + halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
+                SpriteHelpers.AddLineSprite(V2(center.X - halfFunnel, surfaceSize.Y), pipScreenPos, lineThickness, funnelColor);
 
                 if (isAimingAtPip && range < 2500)
                 {
                     string cueText = range < 1500 ? "SHOOT" : "IN RANGE";
                     Color cueColor = range < 1500 ? HUD_WARNING : HUD_EMPHASIS;
-                    SpriteHelpers.Tt(frame, cueText, center.X, center.Y - 60f, 1.0f, cueColor, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(cueText, center.X, center.Y - 60f, 1.0f, cueColor, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 
-            private void DrawBreakawayWarning(MySpriteDrawFrame frame, double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
+            private void DrawBreakawayWarning(double altitude, Vector3D velocity, Vector3D targetPosition, Vector3D shooterPosition, Vector3D targetVelocity)
             {
                 bool lowAltitudeWarning = altitude < 100 && verticalVelocityMps < -5;
                 bool collisionWarning = false;
@@ -286,10 +283,10 @@ namespace IngameScript
 
                 if (Anim.Blink(0.33))
                 {
-                    SpriteHelpers.Sp(frame, TEX_GLYPH_CROSS, center.X, center.Y, xSize, xSize, warningColor);
+                    SpriteHelpers.Sp(TEX_GLYPH_CROSS, center.X, center.Y, xSize, xSize, warningColor);
 
                     string warningText = lowAltitudeWarning ? "PULL UP" : "BREAK AWAY";
-                    SpriteHelpers.Tt(frame, warningText, center.X, center.Y + xSize / 2f + 12f, 1.2f, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(warningText, center.X, center.Y + xSize / 2f + 12f, 1.2f, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 

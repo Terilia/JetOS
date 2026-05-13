@@ -1,6 +1,5 @@
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
-using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript
@@ -200,7 +199,7 @@ namespace IngameScript
                 _module = module;
             }
 
-            public override void RenderMenuSupplement(MySpriteDrawFrame frame, RectangleF menuArea,
+            public override void RenderMenuSupplement(RectangleF menuArea,
                 Vector2 surfaceSize, int selectedIndex)
             {
                 float rowH = surfaceSize.Y * 0.079f * 0.5f;
@@ -210,16 +209,16 @@ namespace IngameScript
 
                 float x = menuArea.Position.X;
                 float w = menuArea.Width;
-                DrawCanardOverlay(frame, x, top, w, h);
+                DrawCanardOverlay(x, top, w, h);
             }
 
-            void DrawCanardOverlay(MySpriteDrawFrame f, float x, float y, float w, float h)
+            void DrawCanardOverlay(float x, float y, float w, float h)
             {
-                SpriteHelpers.Bx(f, x + w / 2f, y + h / 2f, w, h, Cr(4, 8, 4));
-                SpriteHelpers.DrawRectangleOutline(f, x, y, w, h, 1f, MFDTheme.BORDER);
-                SpriteHelpers.Bx(f, x + w / 2f, y, w, 1f, MFDTheme.GOLD_LINE);
+                SpriteHelpers.Bx(x + w / 2f, y + h / 2f, w, h, Cr(4, 8, 4));
+                SpriteHelpers.DrawRectangleOutline(x, y, w, h, 1f, MFDTheme.BORDER);
+                SpriteHelpers.Bx(x + w / 2f, y, w, 1f, MFDTheme.GOLD_LINE);
 
-                SpriteHelpers.Tt(f, "TILT", x + 8f, y + 8f, 0.46f, MFDTheme.CORP_GOLD, MFDTheme.AL);
+                SpriteHelpers.Tt("TILT", x + 8f, y + 8f, 0.46f, MFDTheme.CORP_GOLD, MFDTheme.AL);
 
                 float cx = x + w * 0.42f;
                 float cy = y + h * 0.49f;
@@ -227,61 +226,61 @@ namespace IngameScript
                 float bladeLen = len * 0.84f;
                 float bladeH = Mx(8f, Mn(16f, h * 0.070f));
 
-                DrawAngleGuide(f, cx, cy, len, -45f, Cr(MFDTheme.BORDER_LIGHT, 0.75f));
-                DrawAngleGuide(f, cx, cy, len, 45f, Cr(MFDTheme.BORDER_LIGHT, 0.75f));
-                SpriteHelpers.Bx(f, cx, cy, len, 1f, Cr(MFDTheme.DIM_TEXT, 0.85f));
-                SpriteHelpers.Bx(f, cx, cy, 1f, h * 0.52f, Cr(MFDTheme.GOLD_LINE, 0.65f));
+                DrawAngleGuide(cx, cy, len, -45f, Cr(MFDTheme.BORDER_LIGHT, 0.75f));
+                DrawAngleGuide(cx, cy, len, 45f, Cr(MFDTheme.BORDER_LIGHT, 0.75f));
+                SpriteHelpers.Bx(cx, cy, len, 1f, Cr(MFDTheme.DIM_TEXT, 0.85f));
+                SpriteHelpers.Bx(cx, cy, 1f, h * 0.52f, Cr(MFDTheme.GOLD_LINE, 0.65f));
 
-                DrawCenteredBlade(f, cx, cy, bladeLen, bladeH * 0.55f, 0f, Cr(MFDTheme.DIM_TEXT, 0.42f));
-                DrawCenteredBlade(f, cx, cy, bladeLen, bladeH, _module.DisplayCmdL, Cr(110, 205, 110, 178));
-                DrawCenteredBlade(f, cx, cy, bladeLen, bladeH, _module.DisplayCmdR, Cr(190, 164, 82, 166));
-                DrawBladeLabel(f, cx, cy, bladeLen, _module.DisplayCmdL, "L", Cr(110, 205, 110), -1f);
-                DrawBladeLabel(f, cx, cy, bladeLen, _module.DisplayCmdR, "R", Cr(190, 164, 82), 1f);
-                SpriteHelpers.Sp(f, TEXTURE_CIRCLE, cx, cy, 18f, 18f, MFDTheme.CORP_GOLD);
-                SpriteHelpers.Sp(f, TEXTURE_CIRCLE_SOLID, cx, cy, 6f, 6f, MFDTheme.BRIGHT_TEXT);
+                DrawCenteredBlade(cx, cy, bladeLen, bladeH * 0.55f, 0f, Cr(MFDTheme.DIM_TEXT, 0.42f));
+                DrawCenteredBlade(cx, cy, bladeLen, bladeH, _module.DisplayCmdL, Cr(110, 205, 110, 178));
+                DrawCenteredBlade(cx, cy, bladeLen, bladeH, _module.DisplayCmdR, Cr(190, 164, 82, 166));
+                DrawBladeLabel(cx, cy, bladeLen, _module.DisplayCmdL, "L", Cr(110, 205, 110), -1f);
+                DrawBladeLabel(cx, cy, bladeLen, _module.DisplayCmdR, "R", Cr(190, 164, 82), 1f);
+                SpriteHelpers.Sp(TEXTURE_CIRCLE, cx, cy, 18f, 18f, MFDTheme.CORP_GOLD);
+                SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, cx, cy, 6f, 6f, MFDTheme.BRIGHT_TEXT);
 
-                SpriteHelpers.Tt(f, "+45", x + 8f, y + h * 0.20f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, "0", x + 8f, cy + 2f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, "-45", x + 8f, y + h * 0.76f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt("+45", x + 8f, y + h * 0.20f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt("0", x + 8f, cy + 2f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt("-45", x + 8f, y + h * 0.76f, 0.34f, MFDTheme.DIM_TEXT, MFDTheme.AL);
 
                 float rx = x + w - 8f;
                 float my = y + 38f;
                 string fmt = "+0.0;-0.0;0.0";
-                DrawMetric(f, rx, my, "L", _module.DisplayCmdL.ToString(fmt), Cr(110, 205, 110));
-                DrawMetric(f, rx, my + 28f, "R", _module.DisplayCmdR.ToString(fmt), Cr(190, 164, 82));
-                DrawMetric(f, rx, my + 56f, "B", _module.DisplayBeta.ToString(fmt), MFDTheme.STATUS_VAL);
+                DrawMetric(rx, my, "L", _module.DisplayCmdL.ToString(fmt), Cr(110, 205, 110));
+                DrawMetric(rx, my + 28f, "R", _module.DisplayCmdR.ToString(fmt), Cr(190, 164, 82));
+                DrawMetric(rx, my + 56f, "B", _module.DisplayBeta.ToString(fmt), MFDTheme.STATUS_VAL);
 
                 string spill = _module.SpillActive ? "S " + _module.StabCmd.ToString(fmt) : "S no";
-                SpriteHelpers.Tt(f, spill, x + 8f, y + h - 20f, 0.34f,
+                SpriteHelpers.Tt(spill, x + 8f, y + h - 20f, 0.34f,
                     _module.SpillActive ? MFDTheme.WARN : MFDTheme.DIM_TEXT, MFDTheme.AL);
             }
 
-            static void DrawMetric(MySpriteDrawFrame f, float right, float y, string label, string value, Color c)
+            static void DrawMetric(float right, float y, string label, string value, Color c)
             {
-                SpriteHelpers.Tt(f, label, right - 72f, y, 0.30f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, value, right, y + 1f, 0.38f, c, MFDTheme.AR);
+                SpriteHelpers.Tt(label, right - 72f, y, 0.30f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(value, right, y + 1f, 0.38f, c, MFDTheme.AR);
             }
 
-            static void DrawAngleGuide(MySpriteDrawFrame f, float cx, float cy, float len, float deg, Color c)
+            static void DrawAngleGuide(float cx, float cy, float len, float deg, Color c)
             {
                 float r = ToRad(deg);
                 Vector2 d = V2((float)Cs(r), (float)Sn(r));
-                SpriteHelpers.AddLineSprite(f, V2(cx, cy) - d * (len * 0.5f), V2(cx, cy) + d * (len * 0.5f), 1f, c);
+                SpriteHelpers.AddLineSprite(V2(cx, cy) - d * (len * 0.5f), V2(cx, cy) + d * (len * 0.5f), 1f, c);
             }
 
-            static void DrawCenteredBlade(MySpriteDrawFrame f, float cx, float cy, float len, float h, float deg, Color c)
+            static void DrawCenteredBlade(float cx, float cy, float len, float h, float deg, Color c)
             {
                 float rot = -ToRad(Cl(deg, -45f, 45f));
-                SpriteHelpers.Bx(f, cx, cy, len, h, c, rot);
-                SpriteHelpers.Bx(f, cx, cy, 7f, h + 7f, Cr(c, 0.55f), rot);
+                SpriteHelpers.Bx(cx, cy, len, h, c, rot);
+                SpriteHelpers.Bx(cx, cy, 7f, h + 7f, Cr(c, 0.55f), rot);
             }
 
-            static void DrawBladeLabel(MySpriteDrawFrame f, float cx, float cy, float len, float deg, string label, Color c, float yOffsetSign)
+            static void DrawBladeLabel(float cx, float cy, float len, float deg, string label, Color c, float yOffsetSign)
             {
                 float rot = -ToRad(Cl(deg, -45f, 45f));
                 float px = cx + (float)Cs(rot) * (len * 0.52f);
                 float py = cy + (float)Sn(rot) * (len * 0.52f) + yOffsetSign * 8f;
-                SpriteHelpers.Tt(f, label, px, py - 8f, 0.38f, c, MFDTheme.AC);
+                SpriteHelpers.Tt(label, px, py - 8f, 0.38f, c, MFDTheme.AC);
             }
         }
     }

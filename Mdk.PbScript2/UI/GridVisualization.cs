@@ -34,7 +34,7 @@ namespace IngameScript
             static float cachedContentY, cachedContentBot;
             static RectangleF cachedArea;
 
-            public static void Render(MySpriteDrawFrame frame, Vector2 surfaceSize, RectangleF contentArea,
+            public static void Render(Vector2 surfaceSize, RectangleF contentArea,
                 Program program, Jet jet, HUDModule hud = null)
             {
                 // surfaceSize covers the full text surface (used for centering / right-edge anchoring).
@@ -82,14 +82,14 @@ namespace IngameScript
                     }
                 }
 
-                DrawAirframeBand(frame, innerLeft, airTop, innerW, airBot - airTop);
+                DrawAirframeBand(innerLeft, airTop, innerW, airBot - airTop);
 
                 // Always draw cached sprites
                 for (int i = 0; i < cachedSprites.Count; i++)
-                    frame.Add(cachedSprites[i]);
+                    SpriteBus.AddRaw(cachedSprites[i]);
 
-                DrawAirframeSummary(frame, innerLeft, airBot - 34f, innerW, jet);
-                DrawStatusSynoptic(frame, innerLeft, synTop, innerW, contentBot - synTop - 2f, jet, hud);
+                DrawAirframeSummary(innerLeft, airBot - 34f, innerW, jet);
+                DrawStatusSynoptic(innerLeft, synTop, innerW, contentBot - synTop - 2f, jet, hud);
             }
 
             static void RunRebuildPhase(Program program, RectangleF area, float contentY, float contentBot)
@@ -215,10 +215,10 @@ namespace IngameScript
                 }
             }
 
-            static void DrawAirframeBand(MySpriteDrawFrame f, float x, float y, float w, float h)
+            static void DrawAirframeBand(float x, float y, float w, float h)
             {
-                SpriteHelpers.Bx(f, x + w / 2f, y + h / 2f, w, h, Cr(4, 7, 4));
-                SpriteHelpers.Bx(f, x + w / 2f, y + h - 22f, w, 1f, MFDTheme.BORDER);
+                SpriteHelpers.Bx(x + w / 2f, y + h / 2f, w, h, Cr(4, 7, 4));
+                SpriteHelpers.Bx(x + w / 2f, y + h - 22f, w, 1f, MFDTheme.BORDER);
 
                 float gx = x + w / 2f;
                 float gt = y + 4f;
@@ -226,12 +226,12 @@ namespace IngameScript
                 float gh = gb - gt;
                 if (gh > 20f)
                 {
-                    SpriteHelpers.Bx(f, gx, gt + gh / 2f, 1f, gh, Cr(MFDTheme.GOLD_LINE, 0.35f));
-                    SpriteHelpers.Bx(f, x + w / 2f, gt + gh * 0.50f, w - 16f, 1f, Cr(MFDTheme.GOLD_LINE, 0.22f));
+                    SpriteHelpers.Bx(gx, gt + gh / 2f, 1f, gh, Cr(MFDTheme.GOLD_LINE, 0.35f));
+                    SpriteHelpers.Bx(x + w / 2f, gt + gh * 0.50f, w - 16f, 1f, Cr(MFDTheme.GOLD_LINE, 0.22f));
                 }
             }
 
-            static void DrawAirframeSummary(MySpriteDrawFrame f, float x, float y, float w, Jet jet)
+            static void DrawAirframeSummary(float x, float y, float w, Jet jet)
             {
                 int cur = gridBlocks.Count;
                 int orig = originalBlockCount > 0 ? originalBlockCount : cur;
@@ -244,65 +244,65 @@ namespace IngameScript
                 int allTot = jet.LeftAllTot + jet.RightAllTot;
 
                 float col = w / 4f;
-                DrawSummaryCell(f, x, y, col, "BLOCKS", $"{cur}/{orig}", airC);
-                DrawSummaryCell(f, x + col, y, col, "AIRFRAME", $"{air * 100,3:F0}%", airC);
-                DrawSummaryCell(f, x + col * 2f, y, col, "THR USE", $"{useFn}/{useTot}", useFn < useTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
-                DrawSummaryCell(f, x + col * 3f, y, col, "THR ALL", $"{allFn}/{allTot}", allFn < allTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
+                DrawSummaryCell(x, y, col, "BLOCKS", $"{cur}/{orig}", airC);
+                DrawSummaryCell(x + col, y, col, "AIRFRAME", $"{air * 100,3:F0}%", airC);
+                DrawSummaryCell(x + col * 2f, y, col, "THR USE", $"{useFn}/{useTot}", useFn < useTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
+                DrawSummaryCell(x + col * 3f, y, col, "THR ALL", $"{allFn}/{allTot}", allFn < allTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
             }
 
-            static void DrawSummaryCell(MySpriteDrawFrame f, float x, float y, float w, string label, string value, Color valueColor)
+            static void DrawSummaryCell(float x, float y, float w, string label, string value, Color valueColor)
             {
-                SpriteHelpers.Tt(f, label, x + 1f, y, 0.48f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, value, x + 1f, y + 16f, 0.70f, valueColor, MFDTheme.AL);
+                SpriteHelpers.Tt(label, x + 1f, y, 0.48f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(value, x + 1f, y + 16f, 0.70f, valueColor, MFDTheme.AL);
             }
 
-            static void DrawStatusSynoptic(MySpriteDrawFrame f, float x, float y, float w, float h, Jet jet, HUDModule hud)
+            static void DrawStatusSynoptic(float x, float y, float w, float h, Jet jet, HUDModule hud)
             {
                 if (h < 114f) return;
-                SpriteHelpers.Bx(f, x + w / 2f, y, w, 1f, MFDTheme.GOLD_LINE);
+                SpriteHelpers.Bx(x + w / 2f, y, w, 1f, MFDTheme.GOLD_LINE);
                 float gap = 4f;
                 float colW = (w - gap * 2f) / 3f;
-                DrawPropulsionSection(f, x, y + 4f, colW, h - 4f, jet);
-                SpriteHelpers.Bx(f, x + colW + gap / 2f, y + h / 2f + 3f, 1f, h - 8f, MFDTheme.BORDER);
-                DrawLoadGSection(f, x + colW + gap, y + 4f, colW, h - 4f, hud);
-                SpriteHelpers.Bx(f, x + colW * 2f + gap * 1.5f, y + h / 2f + 3f, 1f, h - 8f, MFDTheme.BORDER);
-                DrawLoadVSection(f, x + colW * 2f + gap * 2f, y + 4f, colW, h - 4f, jet, hud);
+                DrawPropulsionSection(x, y + 4f, colW, h - 4f, jet);
+                SpriteHelpers.Bx(x + colW + gap / 2f, y + h / 2f + 3f, 1f, h - 8f, MFDTheme.BORDER);
+                DrawLoadGSection(x + colW + gap, y + 4f, colW, h - 4f, hud);
+                SpriteHelpers.Bx(x + colW * 2f + gap * 1.5f, y + h / 2f + 3f, 1f, h - 8f, MFDTheme.BORDER);
+                DrawLoadVSection(x + colW * 2f + gap * 2f, y + 4f, colW, h - 4f, jet, hud);
             }
 
-            static void DrawPropulsionSection(MySpriteDrawFrame f, float x, float y, float w, float h, Jet jet)
+            static void DrawPropulsionSection(float x, float y, float w, float h, Jet jet)
             {
-                DrawSysHeader(f, x, y, w, "ENG", "THR");
+                DrawSysHeader(x, y, w, "ENG", "THR");
                 float s = Mn(w * 0.43f, h - 64f);
                 float cy = y + 20f + s * 0.5f;
-                DrawDial(f, x + w * 0.28f, cy, s, "L", Pct(jet.LeftUseCurKN, jet.LeftUseMaxKN),
+                DrawDial(x + w * 0.28f, cy, s, "L", Pct(jet.LeftUseCurKN, jet.LeftUseMaxKN),
                     $"{jet.LeftAllFn}/{jet.LeftAllTot}", jet.LeftAllFn < jet.LeftAllTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
-                DrawDial(f, x + w * 0.72f, cy, s, "R", Pct(jet.RightUseCurKN, jet.RightUseMaxKN),
+                DrawDial(x + w * 0.72f, cy, s, "R", Pct(jet.RightUseCurKN, jet.RightUseMaxKN),
                     $"{jet.RightAllFn}/{jet.RightAllTot}", jet.RightAllFn < jet.RightAllTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
                 int lFn = jet.LeftAbFn, lTot = jet.LeftAbTot, rFn = jet.RightAbFn, rTot = jet.RightAbTot;
                 float diff = jet.LeftUseCurKN - jet.RightUseCurKN;
-                DrawTinyLabelValue(f, x, y + h - 52f, w, "AB", $"{lFn + rFn}/{lTot + rTot}", lFn + rFn < lTot + rTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
-                DrawTinyLabelValue(f, x, y + h - 25f, w, "BAL", SignedKn(diff), Ab(diff) > 30f ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                DrawTinyLabelValue(x, y + h - 52f, w, "AB", $"{lFn + rFn}/{lTot + rTot}", lFn + rFn < lTot + rTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                DrawTinyLabelValue(x, y + h - 25f, w, "BAL", SignedKn(diff), Ab(diff) > 30f ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
             }
 
-            static void DrawLoadGSection(MySpriteDrawFrame f, float x, float y, float w, float h, HUDModule hud)
+            static void DrawLoadGSection(float x, float y, float w, float h, HUDModule hud)
             {
                 double g = hud != null ? hud.smoothedGForces : 0;
                 double aoa = hud != null ? hud.smoothedAoA : 0;
-                DrawSysHeader(f, x, y, w, "LOAD", "G/AOA");
+                DrawSysHeader(x, y, w, "LOAD", "G/AOA");
                 float s = Mn(w * 0.72f, h - 48f);
                 Color c = g > 7 || g < -1 ? MFDTheme.WARN : MFDTheme.STATUS_VAL;
-                DrawDial(f, x + w / 2f, y + 22f + s / 2f, s, "G", (float)((g + 3) / 12.0), $"{g:F1}", c);
-                DrawTinyLabelValue(f, x, y + h - 25f, w, "AOA", $"{aoa,4:F1}", Ab(aoa) > 18 ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                DrawDial(x + w / 2f, y + 22f + s / 2f, s, "G", (float)((g + 3) / 12.0), $"{g:F1}", c);
+                DrawTinyLabelValue(x, y + h - 25f, w, "AOA", $"{aoa,4:F1}", Ab(aoa) > 18 ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
             }
 
-            static void DrawLoadVSection(MySpriteDrawFrame f, float x, float y, float w, float h, Jet jet, HUDModule hud)
+            static void DrawLoadVSection(float x, float y, float w, float h, Jet jet, HUDModule hud)
             {
                 double vvi = hud != null ? hud.verticalVelocityMps : 0;
-                DrawSysHeader(f, x, y, w, "LOAD", "VVI");
+                DrawSysHeader(x, y, w, "LOAD", "VVI");
                 float s = Mn(w * 0.72f, h - 48f);
                 Color c = Ab(vvi) > 30 ? MFDTheme.WARN : MFDTheme.STATUS_VAL;
-                DrawDial(f, x + w / 2f, y + 22f + s / 2f, s, "VVI", (float)((vvi + 60) / 120.0), $"{vvi:F0}", c);
-                DrawTinyLabelValue(f, x, y + h - 25f, w, "AGL", $"{jet.SurfaceAltitude,4:F0}", jet.SurfaceAltitude < 100 ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                DrawDial(x + w / 2f, y + 22f + s / 2f, s, "VVI", (float)((vvi + 60) / 120.0), $"{vvi:F0}", c);
+                DrawTinyLabelValue(x, y + h - 25f, w, "AGL", $"{jet.SurfaceAltitude,4:F0}", jet.SurfaceAltitude < 100 ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
             }
 
             static float Pct(float cur, float max)
@@ -310,25 +310,25 @@ namespace IngameScript
                 return max > 0 ? Cl(cur / max, 0f, 1f) : 0f;
             }
 
-            static void DrawDial(MySpriteDrawFrame f, float cx, float cy, float s, string label, float pct, string val, Color c)
+            static void DrawDial(float cx, float cy, float s, string label, float pct, string val, Color c)
             {
                 pct = Cl(pct, 0f, 1f);
-                SpriteHelpers.Sp(f, TEX_GMETER_FACE, cx, cy, s, s, Cr(MFDTheme.DIM_TEXT_MID, 0.55f));
-                SpriteHelpers.Sp(f, TEX_GAUGE_NEEDLE, cx, cy, s * 0.72f, s * 0.72f, c, -2.25f + pct * 4.5f);
-                SpriteHelpers.Tt(f, label, cx, cy - s * 0.25f, 0.42f, MFDTheme.DIM_TEXT, MFDTheme.AC);
-                SpriteHelpers.Tt(f, val, cx, cy + s * 0.25f, 0.56f, c, MFDTheme.AC);
+                SpriteHelpers.Sp(TEX_GMETER_FACE, cx, cy, s, s, Cr(MFDTheme.DIM_TEXT_MID, 0.55f));
+                SpriteHelpers.Sp(TEX_GAUGE_NEEDLE, cx, cy, s * 0.72f, s * 0.72f, c, -2.25f + pct * 4.5f);
+                SpriteHelpers.Tt(label, cx, cy - s * 0.25f, 0.42f, MFDTheme.DIM_TEXT, MFDTheme.AC);
+                SpriteHelpers.Tt(val, cx, cy + s * 0.25f, 0.56f, c, MFDTheme.AC);
             }
 
-            static void DrawSysHeader(MySpriteDrawFrame f, float x, float y, float w, string left, string right)
+            static void DrawSysHeader(float x, float y, float w, string left, string right)
             {
-                SpriteHelpers.Tt(f, left, x, y, 0.62f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, right, x + w, y, 0.62f, MFDTheme.CORP_GOLD, MFDTheme.AR);
+                SpriteHelpers.Tt(left, x, y, 0.62f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(right, x + w, y, 0.62f, MFDTheme.CORP_GOLD, MFDTheme.AR);
             }
 
-            static void DrawTinyLabelValue(MySpriteDrawFrame f, float x, float y, float w, string label, string value, Color valueColor)
+            static void DrawTinyLabelValue(float x, float y, float w, string label, string value, Color valueColor)
             {
-                SpriteHelpers.Tt(f, label, x, y, 0.54f, MFDTheme.DIM_TEXT, MFDTheme.AL);
-                SpriteHelpers.Tt(f, value, x + w, y, 0.62f, valueColor, MFDTheme.AR);
+                SpriteHelpers.Tt(label, x, y, 0.54f, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(value, x + w, y, 0.62f, valueColor, MFDTheme.AR);
             }
 
             static string SignedKn(float v)

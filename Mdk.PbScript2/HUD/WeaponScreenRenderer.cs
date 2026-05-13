@@ -24,7 +24,7 @@ namespace IngameScript
 
             // Renders weapon-screen content into the supplied frame/area. Chrome is drawn
             // by the host MfdPage; this method only fills the inner content rect.
-            internal void RenderWeaponContent(MySpriteDrawFrame frame, RectangleF contentArea, Vector2 surfaceSize)
+            internal void RenderWeaponContent(RectangleF contentArea, Vector2 surfaceSize)
             {
                 if (cockpit == null) return;
                 Vector3D shooterPosition = GP(cockpit);
@@ -46,7 +46,7 @@ namespace IngameScript
 
                     // ── Section: TARGET LIST ──
                     float secY = contentY + 6f;
-                    MFDFrame.Txt(frame, "TGT", sw / 2f, secY, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
+                    MFDFrame.Txt("TGT", sw / 2f, secY, 0.45f, MFDTheme.MID_TEXT, MFDTheme.AC);
                     secY += 16f;
 
                     // ── Selected target detail box ──
@@ -64,37 +64,37 @@ namespace IngameScript
                             MFDTheme.BORDER_LIGHT, Anim.EaseOut(selectedT))
                         : MFDTheme.BORDER_LIGHT;
 
-                    MFDFrame.Rect(frame, sw / 2f, secY + detailH / 2f, sw - margin * 2, detailH, MFDTheme.PANEL_BG);
-                    SpriteHelpers.DrawRectangleOutline(frame, margin, secY, sw - margin * 2, detailH, 1f, detailBorder);
+                    MFDFrame.Rect(sw / 2f, secY + detailH / 2f, sw - margin * 2, detailH, MFDTheme.PANEL_BG);
+                    SpriteHelpers.DrawRectangleOutline(margin, secY, sw - margin * 2, detailH, 1f, detailBorder);
 
                     if (selected.HasValue)
                     {
-                        DrawSelectedTargetDetail(frame, selected.Value, shooterPosition, currentVelocity, margin, secY, sw);
+                        DrawSelectedTargetDetail(selected.Value, shooterPosition, currentVelocity, margin, secY, sw);
                     }
                     else
                     {
                         Color noTargetColor = selectedT < 1
                             ? Anim.LerpColor(MFDTheme.DIM_TEXT_MID, MFDTheme.DIM_TEXT, Anim.EaseOut(selectedT))
                             : MFDTheme.DIM_TEXT;
-                        MFDFrame.Txt(frame, "NO TGT", sw / 2f, secY + detailH / 2f - 12f, 1.0f,
+                        MFDFrame.Txt("NO TGT", sw / 2f, secY + detailH / 2f - 12f, 1.0f,
                             noTargetColor, MFDTheme.AC);
                     }
 
                     secY += detailH + 8f;
 
                     // ── Separator ──
-                    MFDFrame.Rect(frame, sw / 2f, secY, sw - margin * 4, 1f, MFDTheme.BORDER);
+                    MFDFrame.Rect(sw / 2f, secY, sw - margin * 4, 1f, MFDTheme.BORDER);
                     secY += 8f;
 
                     // ── Enemy list ──
                     var enemies = myjet.GetEnemiesSortedByDistance();
                     if (enemies.Count > 0)
                     {
-                        DrawEnemyList(frame, enemies, selected, shooterPosition, margin, secY, sw, contentBot);
+                        DrawEnemyList(enemies, selected, shooterPosition, margin, secY, sw, contentBot);
                     }
                     else
                     {
-                        MFDFrame.Txt(frame, "NO TGT", sw / 2f, secY + 10f, 0.6f,
+                        MFDFrame.Txt("NO TGT", sw / 2f, secY + 10f, 0.6f,
                             MFDTheme.DIM_TEXT, MFDTheme.AC);
                     }
 
@@ -105,12 +105,12 @@ namespace IngameScript
 
                     if (bayCount > 0)
                     {
-                        DrawBayStrip(frame, sw / 2f, bottomY + bayH / 2f, myjet._bays);
+                        DrawBayStrip(sw / 2f, bottomY + bayH / 2f, myjet._bays);
                     }
                 }
             }
 
-            private void DrawSelectedTargetDetail(MySpriteDrawFrame frame, Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
+            private void DrawSelectedTargetDetail(Jet.EnemyContact contact, Vector3D shooterPosition, Vector3D currentVelocity, float margin, float panelY, float screenWidth)
             {
                 float textX = margin + 8f;
                 float textY = panelY + 6f;
@@ -129,7 +129,7 @@ namespace IngameScript
                     double t = (SystemManager.ElapsedSeconds - _lockAcquiredAt) / LOCK_FLASH_DURATION;
                     if (t < 1) nameColor = Anim.LerpColor(MFDTheme.ACCENT, nameColor, Anim.EaseOut(t));
                 }
-                MFDFrame.Txt(frame, name, textX, textY, 0.7f, nameColor);
+                MFDFrame.Txt(name, textX, textY, 0.7f, nameColor);
 
                 bool isSTT = radarControl != null && radarControl.IsTrackLocked;
                 string badgeText = stale ? "STALE" : isSTT ? "STT" : "TWS";
@@ -139,12 +139,12 @@ namespace IngameScript
                 float badgeHeight = 14f;
                 float badgeX = rightX - badgeWidth / 2f;
                 float badgeY = textY + 4f;
-                SpriteHelpers.DrawRectangleOutline(frame, badgeX - badgeWidth / 2f, badgeY - badgeHeight / 2f, badgeWidth, badgeHeight, 1f, badgeColor);
-                MFDFrame.Txt(frame, badgeText, badgeX, badgeY - 7f, 0.45f, badgeColor, MFDTheme.AC);
+                SpriteHelpers.DrawRectangleOutline(badgeX - badgeWidth / 2f, badgeY - badgeHeight / 2f, badgeWidth, badgeHeight, 1f, badgeColor);
+                MFDFrame.Txt(badgeText, badgeX, badgeY - 7f, 0.45f, badgeColor, MFDTheme.AC);
 
                 // Divider under name
                 textY += 20f;
-                MFDFrame.Rect(frame, screenWidth / 2f, textY, screenWidth - margin * 2 - 12f, 1f, MFDTheme.BORDER);
+                MFDFrame.Rect(screenWidth / 2f, textY, screenWidth - margin * 2 - 12f, 1f, MFDTheme.BORDER);
                 textY += 5f;
 
                 // Row 2: Range + closure
@@ -158,12 +158,12 @@ namespace IngameScript
                 if (dist > 0.1)
                     closureRate = VD(relVel, toTarget / dist);
 
-                MFDFrame.Txt(frame, rangeText, textX, textY, 0.8f, MFDTheme.ACCENT);
+                MFDFrame.Txt(rangeText, textX, textY, 0.8f, MFDTheme.ACCENT);
 
                 string closureLabel = closureRate > 10 ? "HOT" : closureRate < -10 ? "COLD" : "---";
                 string closureText = $"{Ab(closureRate):F0} {closureLabel}";
                 Color closureColor = closureRate > 10 ? MFDTheme.WARN : closureRate < -10 ? Cr(80, 110, 200) : MFDTheme.DIM_TEXT_MID;
-                MFDFrame.Txt(frame, closureText, rightX, textY, 0.65f, closureColor, MFDTheme.AR);
+                MFDFrame.Txt(closureText, rightX, textY, 0.65f, closureColor, MFDTheme.AR);
 
                 textY += 20f;
 
@@ -171,30 +171,30 @@ namespace IngameScript
                 double bearing = CalculateBearingToTarget(contact.Position, shooterPosition);
                 double tgtSpeed = contact.Velocity.Length();
 
-                MFDFrame.Txt(frame, "BRG", textX, textY, 0.5f, MFDTheme.DIM_TEXT);
-                MFDFrame.Txt(frame, $"{bearing:F0}\u00B0", screenWidth / 2f - 8f, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
-                MFDFrame.Txt(frame, "SPD", screenWidth / 2f + 8f, textY, 0.5f, MFDTheme.DIM_TEXT);
-                MFDFrame.Txt(frame, $"{tgtSpeed:F0} m/s", rightX, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                MFDFrame.Txt("BRG", textX, textY, 0.5f, MFDTheme.DIM_TEXT);
+                MFDFrame.Txt($"{bearing:F0}\u00B0", screenWidth / 2f - 8f, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
+                MFDFrame.Txt("SPD", screenWidth / 2f + 8f, textY, 0.5f, MFDTheme.DIM_TEXT);
+                MFDFrame.Txt($"{tgtSpeed:F0} m/s", rightX, textY, 0.5f, MFDTheme.STATUS_VAL, MFDTheme.AR);
 
                 textY += 16f;
 
                 // Row 4: Source + tracking timeline
                 string sourceText = contact.SourceIndex < 0 ? "DL" : contact.SourceIndex == 0 ? "RDR" : $"RWR{contact.SourceIndex}";
-                MFDFrame.Txt(frame, sourceText, textX, textY, 0.45f, MFDTheme.DIM_TEXT);
+                MFDFrame.Txt(sourceText, textX, textY, 0.45f, MFDTheme.DIM_TEXT);
 
                 float timelineX = screenWidth / 2f - 10f;
                 float timelineY = textY + 4f;
                 float timelineWidth = rightX - timelineX;
-                DrawTrackingTimeline(frame, contact, timelineX, timelineY, timelineWidth, 8f, 30);
+                DrawTrackingTimeline(contact, timelineX, timelineY, timelineWidth, 8f, 30);
             }
 
-            private void DrawTrackingTimeline(MySpriteDrawFrame frame, Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
+            private void DrawTrackingTimeline(Jet.EnemyContact contact, float x, float y, float width, float height, int columns)
             {
                 uint history = contact.GetDisplayHistory();
                 float colWidth = width / columns;
 
                 // Background
-                MFDFrame.Rect(frame, x + width / 2f, y + height / 2f, width, height, MFDTheme.BAR_TRACK);
+                MFDFrame.Rect(x + width / 2f, y + height / 2f, width, height, MFDTheme.BAR_TRACK);
 
                 // Batch consecutive same-state columns
                 int runStart = 0;
@@ -217,7 +217,7 @@ namespace IngameScript
                         float segY = runIsOk ? y + 1f + segH / 2f : y + height - 1f - segH / 2f;
                         Color segC = runIsOk ? MFDTheme.ACCENT : MFDTheme.DANGER;
 
-                        MFDFrame.Rect(frame, segX + segW / 2f, segY, segW, segH, segC);
+                        MFDFrame.Rect(segX + segW / 2f, segY, segW, segH, segC);
 
                         runStart = i;
                         if (i < columns)
@@ -226,7 +226,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawEnemyList(MySpriteDrawFrame frame, List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
+            private void DrawEnemyList(List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
             {
                 const float LINE_HEIGHT = 20f;
                 const float TEXT_SCALE = 0.55f;
@@ -243,10 +243,10 @@ namespace IngameScript
 
                     if (isSelected)
                     {
-                        MFDFrame.Rect(frame, screenWidth / 2f, textY + LINE_HEIGHT / 2f - 1f,
+                        MFDFrame.Rect(screenWidth / 2f, textY + LINE_HEIGHT / 2f - 1f,
                             screenWidth - margin * 2, LINE_HEIGHT, MFDTheme.SEL_FILL);
                         // Left accent
-                        MFDFrame.Rect(frame, margin + 1f, textY + LINE_HEIGHT / 2f - 1f,
+                        MFDFrame.Rect(margin + 1f, textY + LINE_HEIGHT / 2f - 1f,
                             2f, LINE_HEIGHT, MFDTheme.ACCENT);
                     }
 
@@ -255,28 +255,28 @@ namespace IngameScript
                         : (isSelected ? MFDTheme.BRIGHT_TEXT : myjet.GetEnemyContactColor(contact));
 
                     string marker = isSelected ? "\u25C9" : "\u25CB";
-                    MFDFrame.Txt(frame, marker, textX, textY, TEXT_SCALE, contactColor);
+                    MFDFrame.Txt(marker, textX, textY, TEXT_SCALE, contactColor);
 
                     string cName = contact.Name;
                     if (SE(cName)) cName = "UNK";
                     if (cName.Length > 12) cName = cName.Substring(0, 12);
-                    MFDFrame.Txt(frame, cName, textX + 14f, textY, TEXT_SCALE, contactColor);
+                    MFDFrame.Txt(cName, textX + 14f, textY, TEXT_SCALE, contactColor);
 
                     double range = VDi(shooterPosition, contact.Position);
                     string rangeText = SpriteHelpers.FormatRange(range);
-                    MFDFrame.Txt(frame, rangeText, screenWidth - margin - 50f, textY, TEXT_SCALE,
+                    MFDFrame.Txt(rangeText, screenWidth - margin - 50f, textY, TEXT_SCALE,
                         contactColor, MFDTheme.AR);
 
                     float timelineX = screenWidth - margin - 45f;
                     float timelineW = 40f;
-                    DrawTrackingTimeline(frame, contact, timelineX, textY + LINE_HEIGHT / 2f - 3f, timelineW, 6f, 15);
+                    DrawTrackingTimeline(contact, timelineX, textY + LINE_HEIGHT / 2f - 3f, timelineW, 6f, 15);
 
                     textY += LINE_HEIGHT;
                 }
 
                 if (enemies.Count > maxRows)
                 {
-                        MFDFrame.Txt(frame, $"+{enemies.Count - maxRows}", screenWidth / 2f, textY, 0.45f,
+                        MFDFrame.Txt($"+{enemies.Count - maxRows}", screenWidth / 2f, textY, 0.45f,
                         MFDTheme.DIM_TEXT, MFDTheme.AC);
                 }
             }
@@ -335,7 +335,7 @@ namespace IngameScript
             }
 
             // Bay status strip \u2014 5:4-ish bay icons, filled when missile attached.
-            private void DrawBayStrip(MySpriteDrawFrame frame, float centerX, float y, List<IMyShipMergeBlock> bays)
+            private void DrawBayStrip(float centerX, float y, List<IMyShipMergeBlock> bays)
             {
                 int n = Mn(bays.Count, 12);
                 if (n == 0) return;
@@ -365,7 +365,7 @@ namespace IngameScript
                     }
                     float x = startX + (i % cols) * (W + SP);
                     float by = twoRows ? topY + (i / cols) * (H + RG) : y;
-                    SpriteHelpers.Sp(frame, tex, x, by, W, H, c);
+                    SpriteHelpers.Sp(tex, x, by, W, H, c);
                     int bayNum = MissileBayHelper.GetBayNumber(bays[i], i + 1);
                     MissileBayHelper.MissileStatus ms;
                     if (!loaded && MissileBayHelper.TryGetMissileStatus(bayNum, out ms))
@@ -376,13 +376,13 @@ namespace IngameScript
                             ms.Acquired ? MFDTheme.ACCENT : MFDTheme.WARN;
                         float ts = twoRows ? 0.72f : 1.0f;
                         float ty = by - (twoRows ? 10f : 14f);
-                        MFDFrame.Txt(frame, eta, x + 1f, ty + 1f, ts, Cr(0, 0, 0, 210), MFDTheme.AC);
-                        MFDFrame.Txt(frame, eta, x, ty, ts, tc, MFDTheme.AC);
+                        MFDFrame.Txt(eta, x + 1f, ty + 1f, ts, Cr(0, 0, 0, 210), MFDTheme.AC);
+                        MFDFrame.Txt(eta, x, ty, ts, tc, MFDTheme.AC);
                         if (ms.ActiveTrackingUnlocked)
                         {
                             float labelY = by + (twoRows ? 8f : 12f);
-                            MFDFrame.Txt(frame, "AI", x + 1f, labelY + 1f, 0.34f, Cr(0, 0, 0, 220), MFDTheme.AC);
-                            MFDFrame.Txt(frame, "AI", x, labelY, 0.34f, MFDTheme.ACCENT, MFDTheme.AC);
+                            MFDFrame.Txt("AI", x + 1f, labelY + 1f, 0.34f, Cr(0, 0, 0, 220), MFDTheme.AC);
+                            MFDFrame.Txt("AI", x, labelY, 0.34f, MFDTheme.ACCENT, MFDTheme.AC);
                         }
                     }
                 }
@@ -404,7 +404,7 @@ namespace IngameScript
             }
 
             // Gun Control Overlay (rendered on HUD surface, not weapon screen — kept as-is)
-            private void DrawGunControlOverlay(MySpriteDrawFrame frame)
+            private void DrawGunControlOverlay()
             {
                 var gunControl = SystemManager.GetGunControl();
                 if (gunControl == null || !gunControl.IsControlEnabled)
@@ -416,36 +416,36 @@ namespace IngameScript
 
                 float coneRadius = viewportMin * 0.25f;
 
-                SpriteHelpers.DrawCircleOutline(frame, center, coneRadius, Cr(100, 100, 100, 150), 2f);
+                SpriteHelpers.DrawCircleOutline(center, coneRadius, Cr(100, 100, 100, 150), 2f);
 
-                SpriteHelpers.Tt(frame, "GUN AUTO", center.X, center.Y - coneRadius - 30f, 0.6f, HUD_PRIMARY, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt("GUN AUTO", center.X, center.Y - coneRadius - 30f, 0.6f, HUD_PRIMARY, MFDTheme.AC, MFDTheme.FONT_W);
 
                 Vector2 leftIndicatorPos = V2(center.X - coneRadius - 40f, center.Y);
-                DrawTurretIndicator(frame, leftIndicatorPos, "L", gunControl.IsLeftTracking);
+                DrawTurretIndicator(leftIndicatorPos, "L", gunControl.IsLeftTracking);
 
                 Vector2 rightIndicatorPos = V2(center.X + coneRadius + 40f, center.Y);
-                DrawTurretIndicator(frame, rightIndicatorPos, "R", gunControl.IsRightTracking);
+                DrawTurretIndicator(rightIndicatorPos, "R", gunControl.IsRightTracking);
 
                 if (gunControl.IsLeftTracking && gunControl.IsRightTracking)
                 {
-                    SpriteHelpers.Tt(frame, "FIRE", center.X, center.Y + coneRadius + 20f, 1.0f, HUD_WARNING, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt("FIRE", center.X, center.Y + coneRadius + 20f, 1.0f, HUD_WARNING, MFDTheme.AC, MFDTheme.FONT_W);
 
                     if (Anim.Blink(0.17))
                     {
-                        SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, center.X, center.Y, 20f, 20f, HUD_WARNING);
+                        SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, center.X, center.Y, 20f, 20f, HUD_WARNING);
                     }
                 }
                 else if (gunControl.IsLeftTracking || gunControl.IsRightTracking)
                 {
-                    SpriteHelpers.Tt(frame, "TRACK", center.X, center.Y + coneRadius + 20f, 0.7f, HUD_EMPHASIS, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt("TRACK", center.X, center.Y + coneRadius + 20f, 0.7f, HUD_EMPHASIS, MFDTheme.AC, MFDTheme.FONT_W);
                 }
                 else
                 {
-                    SpriteHelpers.Tt(frame, "SRCH", center.X, center.Y + coneRadius + 20f, 0.6f, HUD_SECONDARY, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt("SRCH", center.X, center.Y + coneRadius + 20f, 0.6f, HUD_SECONDARY, MFDTheme.AC, MFDTheme.FONT_W);
                 }
             }
 
-            private void DrawTurretIndicator(MySpriteDrawFrame frame, Vector2 position, string label, bool isLocked)
+            private void DrawTurretIndicator(Vector2 position, string label, bool isLocked)
             {
                 Color bgColor;
                 Color textColor;
@@ -464,9 +464,9 @@ namespace IngameScript
                     statusChar = "O";
                 }
 
-                SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, position.X, position.Y, 35f, 35f, bgColor);
-                SpriteHelpers.Tt(frame, label, position.X, position.Y - 18f, 0.5f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
-                SpriteHelpers.Tt(frame, statusChar, position.X, position.Y - 5f, 0.8f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, position.X, position.Y, 35f, 35f, bgColor);
+                SpriteHelpers.Tt(label, position.X, position.Y - 18f, 0.5f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(statusChar, position.X, position.Y - 5f, 0.8f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
             }
         }
     }

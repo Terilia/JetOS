@@ -149,6 +149,17 @@ namespace IngameScript
                 return angle;
             }
 
+            private static float RotationFeedforward(Vector3D curFwd, Vector3D lastFwd, Vector3D axis, double dt, double scale)
+            {
+                Vector3D flat = curFwd - VD(curFwd, axis) * axis;
+                if (flat.LengthSquared() <= 1e-10) return 0f;
+                flat = VN(flat);
+                Vector3D cross = VX(flat, lastFwd);
+                double angle = At2(cross.Length(), VD(flat, lastFwd));
+                angle *= Sg(VD(cross, axis));
+                return (float)(angle / dt * scale);
+            }
+
             public override string[] GetOptions()
             {
                 string controlStatus = controlEnabled ? "ON" : "OFF";
@@ -310,27 +321,8 @@ namespace IngameScript
                     Vector3D lastLeft = turret.LastShipMatrix.Left;
                     Vector3D curFwd = currentShipMatrix.Forward;
 
-                    // Yaw drift: project current forward onto last frame's horizontal plane
-                    Vector3D flatCurFwd = curFwd - VD(curFwd, lastUp) * lastUp;
-                    if (flatCurFwd.LengthSquared() > 1e-10)
-                    {
-                        flatCurFwd = VN(flatCurFwd);
-                        Vector3D driftCross = VX(flatCurFwd, lastFwd);
-                        double driftAngle = At2(driftCross.Length(), VD(flatCurFwd, lastFwd));
-                        driftAngle *= Sg(VD(driftCross, lastUp));
-                        yawFeedforward = (float)(driftAngle / dt * radPerSecToRpm);
-                    }
-
-                    // Pitch drift: similar for elevation axis
-                    Vector3D flatCurFwdElev = curFwd - VD(curFwd, lastLeft) * lastLeft;
-                    if (flatCurFwdElev.LengthSquared() > 1e-10)
-                    {
-                        flatCurFwdElev = VN(flatCurFwdElev);
-                        Vector3D elevCross = VX(flatCurFwdElev, lastFwd);
-                        double elevAngle = At2(elevCross.Length(), VD(flatCurFwdElev, lastFwd));
-                        elevAngle *= Sg(VD(elevCross, lastLeft));
-                        pitchFeedforward = (float)(elevAngle / dt * turret.ElevationSign * radPerSecToRpm);
-                    }
+                    yawFeedforward = RotationFeedforward(curFwd, lastFwd, lastUp, dt, radPerSecToRpm);
+                    pitchFeedforward = RotationFeedforward(curFwd, lastFwd, lastLeft, dt, turret.ElevationSign * radPerSecToRpm);
                 }
                 turret.LastShipMatrix = currentShipMatrix;
                 turret.HasPreviousMatrix = true;

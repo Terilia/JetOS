@@ -1,4 +1,3 @@
-using VRage.Game.GUI.TextPanel;
 using VRageMath;
 
 namespace IngameScript
@@ -41,7 +40,7 @@ namespace IngameScript
 
             // Optional module-owned drawing that sits inside the normal menu column after
             // the shared menu renderer has drawn the selectable rows.
-            public virtual void RenderMenuSupplement(MySpriteDrawFrame frame, RectangleF menuArea,
+            public virtual void RenderMenuSupplement(RectangleF menuArea,
                 Vector2 surfaceSize, int selectedIndex) { }
 
             // Reserve a sidebar column on the right (currently only the main menu).
@@ -54,10 +53,10 @@ namespace IngameScript
             // Free-form content rendering (called when HasMenu is false, or alongside the menu).
             // contentArea is the inner rect after chrome/breadcrumb/title; surfaceSize is the
             // full surface dimensions (renderers using absolute coords need this for centering).
-            public virtual void RenderContent(MySpriteDrawFrame frame, RectangleF contentArea, Vector2 surfaceSize) { }
+            public virtual void RenderContent(RectangleF contentArea, Vector2 surfaceSize) { }
 
             // Sidebar rendering (called when HasSidebar is true). Receives the sidebar rect.
-            public virtual void RenderSidebar(MySpriteDrawFrame frame, RectangleF area) { }
+            public virtual void RenderSidebar(RectangleF area) { }
         }
     }
 }

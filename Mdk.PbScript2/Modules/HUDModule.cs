@@ -268,39 +268,39 @@ namespace IngameScript
                     try
                     {
                     // Master Caution / Warning chiclets (top-of-HUD annunciators)
-                    DrawMasterAnnunciators(frame);
+                    DrawMasterAnnunciators();
 
                     // Horizon & attitude
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
-                    DrawAircraftSymbol(frame, centerX, centerY);
-                    DrawBankAngleMarkers(frame, centerX, centerY, (float)roll, pixelsPerDegree);
+                    DrawAircraftSymbol(centerX, centerY);
+                    DrawBankAngleMarkers(centerX, centerY, (float)roll, pixelsPerDegree);
                     if (SystemManager.GetConfigValue(CFG_HUD_FPM) > 0.5f)
-                        DrawFlightPathMarker(frame, currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
+                        DrawFlightPathMarker(currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
-                    DrawLeftInfoBox(frame, centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, new LabelValue("T", myjet.offset));
+                    DrawLeftInfoBox(centerX + 30f, centerY + centerY * INFO_BOX_Y_OFFSET_FACTOR, new LabelValue("T", myjet.offset));
                     _displaySpeedKph.SetTarget(smoothedVelocity);
                     _displayAltitude.SetTarget(smoothedAltitude);
                     _displayThrottle.SetTarget(throttlePercent);
                     _displayVvi.SetTarget(verticalVelocityMps);
 
-                    DrawFlightInfo(frame, _displayThrottle.Value);
-                    DrawSpeedIndicatorF18StyleKph(frame, _displaySpeedKph.Value);
+                    DrawFlightInfo(_displayThrottle.Value);
+                    DrawSpeedIndicatorF18StyleKph(_displaySpeedKph.Value);
                     if (SystemManager.GetConfigValue(CFG_HUD_COMPASS) > 0.5f)
-                        DrawCompass(frame, heading);
-                    DrawAltitudeIndicatorF18Style(frame, _displayAltitude.Value, _displayVvi.Value);
+                        DrawCompass(heading);
+                    DrawAltitudeIndicatorF18Style(_displayAltitude.Value, _displayVvi.Value);
                     if (SystemManager.GetConfigValue(CFG_HUD_GFORCE) > 0.5f)
-                        DrawGForceIndicator(frame, smoothedGForces, peakGForce);
+                        DrawGForceIndicator(smoothedGForces, peakGForce);
 
                     if (velocity > 1.0 && SystemManager.GetConfigValue(CFG_HUD_AOA) > 0.5f)
                     {
                         Vector3D acceleration = (currentVelocity - previousVelocity) / SystemManager.DeltaSeconds;
-                        DrawAOAIndexer(frame, smoothedAoA, acceleration, velocity);
+                        DrawAOAIndexer(smoothedAoA, acceleration, velocity);
                     }
 
                     // Radar minimap
                     if (SystemManager.GetConfigValue(CFG_HUD_RADAR) > 0.5f)
-                        DrawRadarMinimap(frame, cockpit, hud);
+                        DrawRadarMinimap(cockpit, hud);
 
                     Vector2 surfaceSize = SS(hud);
                     var selectedEnemy = myjet.GetSelectedEnemy();
@@ -341,19 +341,19 @@ namespace IngameScript
                             }
 
                             if (SystemManager.GetConfigValue(CFG_HUD_GUN_FUNNEL) > 0.5f)
-                                DrawGunFunnel(frame, hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
-                            DrawLeadingPip(frame, hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
+                                DrawGunFunnel(hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
+                            DrawLeadingPip(hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
                             if (SystemManager.GetConfigValue(CFG_HUD_TARGET_BRACKETS) > 0.5f)
-                                DrawTargetBrackets(frame, hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
+                                DrawTargetBrackets(hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
 
                         if (SystemManager.GetConfigValue(CFG_HUD_BREAKAWAY) > 0.5f)
-                            DrawBreakawayWarning(frame, altitude, currentVelocity, activeTargetPos, shooterPosition, activeTargetVel);
+                            DrawBreakawayWarning(altitude, currentVelocity, activeTargetPos, shooterPosition, activeTargetVel);
                     }
                     if (!myjet.manualfire)
                         SetGatlingsEnabled(isAimingAtPip);
-                    DrawFormationGhosts(frame, hud, worldToCockpitMatrix);
-                    DrawGunControlOverlay(frame);
+                    DrawFormationGhosts(hud, worldToCockpitMatrix);
+                    DrawGunControlOverlay();
                     }
                     finally { SpriteBus.End(); }
                 }
@@ -367,7 +367,7 @@ namespace IngameScript
             // Master Caution (amber) and Master Warning (red) chiclets at the top edge of the HUD.
             // Caution: low fuel, low battery (<20%), low altitude near ground.
             // Warning: altitude warning latched (terrain proximity at speed) or stall.
-            private void DrawMasterAnnunciators(MySpriteDrawFrame frame)
+            private void DrawMasterAnnunciators()
             {
                 if (myjet == null) return;
 
@@ -400,12 +400,12 @@ namespace IngameScript
                 {
                     // Right side of pair (or solo on the right when only warning)
                     float wx = caution ? cx + chW / 2f + gap / 2f : cx;
-                    SpriteHelpers.Sp(frame, TEX_MASTER_WARNING, wx, topY + chH / 2f, chW, chH, HUD_WARNING);
+                    SpriteHelpers.Sp(TEX_MASTER_WARNING, wx, topY + chH / 2f, chW, chH, HUD_WARNING);
                 }
                 if (caution && Anim.Blink(0.40))
                 {
                     float cxLeft = warning ? cx - chW / 2f - gap / 2f : cx;
-                    SpriteHelpers.Sp(frame, TEX_MASTER_CAUTION, cxLeft, topY + chH / 2f, chW, chH, HUD_EMPHASIS);
+                    SpriteHelpers.Sp(TEX_MASTER_CAUTION, cxLeft, topY + chH / 2f, chW, chH, HUD_EMPHASIS);
                 }
             }
 
@@ -643,39 +643,21 @@ namespace IngameScript
 
             private void UpdateSmoothedValues(double velocityKPH, double altitude, double gForces, double aoa, double throttle)
             {
-                if (velocityHistory.Count >= SMOOTHING_WINDOW_SIZE)
-                {
-                    velocitySum -= velocityHistory.Dequeue();
-                }
-                velocityHistory.Enqueue(velocityKPH);
-                velocitySum += velocityKPH;
-                smoothedVelocity = velocitySum / velocityHistory.Count;
-
-                if (altitudeHistory.Count >= SMOOTHING_WINDOW_SIZE)
-                {
-                    altitudeSum -= altitudeHistory.Dequeue();
-                }
-                altitudeHistory.Enqueue(altitude);
-                altitudeSum += altitude;
-                smoothedAltitude = altitudeSum / altitudeHistory.Count;
-
-                if (gForcesHistory.Count >= SMOOTHING_WINDOW_SIZE)
-                {
-                    gForcesSum -= gForcesHistory.Dequeue();
-                }
-                gForcesHistory.Enqueue(gForces);
-                gForcesSum += gForces;
-                smoothedGForces = gForcesSum / gForcesHistory.Count;
-
-                if (aoaHistory.Count >= SMOOTHING_WINDOW_SIZE)
-                {
-                    aoaSum -= aoaHistory.Dequeue();
-                }
-                aoaHistory.Enqueue(aoa);
-                aoaSum += aoa;
-                smoothedAoA = aoaSum / aoaHistory.Count;
+                smoothedVelocity = Smooth(velocityHistory, ref velocitySum, velocityKPH);
+                smoothedAltitude = Smooth(altitudeHistory, ref altitudeSum, altitude);
+                smoothedGForces = Smooth(gForcesHistory, ref gForcesSum, gForces);
+                smoothedAoA = Smooth(aoaHistory, ref aoaSum, aoa);
 
                 throttlePercent = throttle * 100;
+            }
+
+            private double Smooth(CircularBuffer<double> history, ref double sum, double value)
+            {
+                if (history.Count >= SMOOTHING_WINDOW_SIZE)
+                    sum -= history.Dequeue();
+                history.Enqueue(value);
+                sum += value;
+                return sum / history.Count;
             }
 
             static float _lastTrimOffset = float.NaN;

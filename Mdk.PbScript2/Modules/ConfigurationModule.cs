@@ -38,7 +38,7 @@ namespace IngameScript
 
             public ConfigurationModule(Program program) : base(program)
             {
-                name = "Configuration";
+                name = "Config";
                 InitializeConfigs();
                 LoadFromCustomData();
             }
@@ -98,14 +98,14 @@ namespace IngameScript
                 AddConfig(C_GC, CFG_GUN_MUZZLE_VELOCITY, "Muzzle", 1100f, 200f, 2000f, 50f, "m/s");
 
                 // HUD TOGGLES (1=on, 0=off)
-                AddToggle(C_HT, CFG_HUD_RADAR, "Radar");
-                AddToggle(C_HT, CFG_HUD_GUN_FUNNEL, "Funnel");
-                AddToggle(C_HT, CFG_HUD_TARGET_BRACKETS, "Tgt Brkt");
-                AddToggle(C_HT, CFG_HUD_GFORCE, "G");
-                AddToggle(C_HT, CFG_HUD_AOA, "AOA Indexer");
-                AddToggle(C_HT, CFG_HUD_FPM, "FPM");
-                AddToggle(C_HT, CFG_HUD_COMPASS, "Compass");
-                AddToggle(C_HT, CFG_HUD_BREAKAWAY, "Break");
+                AddHudToggle(CFG_HUD_RADAR, "Radar");
+                AddHudToggle(CFG_HUD_GUN_FUNNEL, "Funnel");
+                AddHudToggle(CFG_HUD_TARGET_BRACKETS, "Tgt Brkt");
+                AddHudToggle(CFG_HUD_GFORCE, "G");
+                AddHudToggle(CFG_HUD_AOA, "AOA Indexer");
+                AddHudToggle(CFG_HUD_FPM, "FPM");
+                AddHudToggle(CFG_HUD_COMPASS, "Compass");
+                AddHudToggle(CFG_HUD_BREAKAWAY, "Break");
 
                 // HUD THEME (0=Green, 1=Blue, 2=Amber, 3=White)
                 AddConfig(C_TH, CFG_HUD_THEME, "Color", 0f, 0f, 3f, 1f);
@@ -122,6 +122,11 @@ namespace IngameScript
             private void AddToggle(string category, string name, string displayName)
             {
                 AddConfig(category, name, displayName, 1f, 0f, 1f, 1f);
+            }
+
+            private void AddHudToggle(string name, string displayName)
+            {
+                AddToggle(C_HT, name, displayName);
             }
 
             private string FormatValue(ConfigParam p)
@@ -232,26 +237,23 @@ namespace IngameScript
                             string adjustLabel = $"ADJ {param.DisplayName}";
                             if (param.Name == CFG_HUD_THEME)
                             {
-                                int idx = (int)param.Value;
-                                string themeName = idx >= 0 && idx < themeNames.Length ? themeNames[idx] : "?";
                                 return new string[]
                                 {
                                     adjustLabel,
                                     "1/2 THEME",
-                                    $"NOW {themeName}",
+                                    "NOW " + FormatValue(param),
                                     "0G 1B 2A 3W",
                                     S_SEL,
                                     S_BCK
                                 };
                             }
-                            if (param.MaxValue == 1f && param.MinValue == 0f && param.StepSize == 1f)
+                            if (param.IsToggle)
                             {
-                                string toggle = param.Value > 0.5f ? "ON" : "OFF";
                                 return new string[]
                                 {
                                     adjustLabel,
                                     "1/2 TOG",
-                                    $"NOW {toggle}",
+                                    "NOW " + FormatValue(param),
                                     S_SEL,
                                     S_BCK
                                 };

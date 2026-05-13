@@ -11,10 +11,9 @@ namespace IngameScript
     {
         partial class HUDModule
         {
-            private void DrawSpeedIndicatorF18StyleKph(MySpriteDrawFrame frame, double currentSpeedKph)
+            private void DrawSpeedIndicatorF18StyleKph(double currentSpeedKph)
             {
                 currentSpeedKph = Mx(0, currentSpeedKph);
-                const float PIXELS_PER_SPEED_UNIT = 800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT;
 
                 float screenWidth = SX(hud);
                 float screenHeight = SY(hud);
@@ -22,71 +21,34 @@ namespace IngameScript
 
                 float tapeLeftMargin = 10f;
                 float tapeNumberMargin = 10f;
-                float tapeWidth = 2f;
-                float tickLength = 10f;
-                float majorTickLength = 15f;
 
                 float tapeLineX = tapeLeftMargin;
                 float digitalSpeedBoxWidth = 80f;
                 float digitalSpeedBoxHeight = 30f;
                 float digitalSpeedBoxX = tapeLineX + tapeNumberMargin;
 
-                SpriteHelpers.Bx(frame, tapeLineX, centerY, tapeWidth, TAPE_HEIGHT_PIXELS, HUD_PRIMARY);
-
-                float tapeTopSpeed = (float)currentSpeedKph + (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
-                float tapeBottomSpeed = (float)currentSpeedKph - (SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f);
-                tapeBottomSpeed = Mx(0, tapeBottomSpeed);
-
-                float startTickSpeed = (float)(Math.Floor(tapeBottomSpeed / SPEED_TICK_INTERVAL) * SPEED_TICK_INTERVAL);
-                if (startTickSpeed < tapeBottomSpeed)
-                    startTickSpeed += SPEED_TICK_INTERVAL;
-                startTickSpeed = Mx(0, startTickSpeed);
-
-                for (float speedMark = startTickSpeed; speedMark <= tapeTopSpeed + (SPEED_TICK_INTERVAL * 0.5f); speedMark += SPEED_TICK_INTERVAL)
-                {
-                    if (speedMark < 0) continue;
-
-                    float yOffset = (float)(currentSpeedKph - speedMark) * PIXELS_PER_SPEED_UNIT;
-                    float yPos = centerY + yOffset;
-
-                    float tapeTopY = centerY - TAPE_HEIGHT_PIXELS / 2f;
-                    float tapeBottomY = centerY + TAPE_HEIGHT_PIXELS / 2f;
-
-                    if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
-                    {
-                        bool isMajorTick = Ab(speedMark % SPEED_MAJOR_TICK_INTERVAL) < (SPEED_TICK_INTERVAL * 0.1f);
-                        if (Ab(speedMark) < (SPEED_TICK_INTERVAL * 0.1f)) isMajorTick = true;
-
-                        float currentTickLength = isMajorTick ? majorTickLength : tickLength;
-
-                        SpriteHelpers.Bx(frame, tapeLineX + currentTickLength / 2f, yPos, currentTickLength, tapeWidth, HUD_PRIMARY);
-
-                        if (isMajorTick)
-                        {
-                            string speedText = speedMark.ToString("F0");
-                            SpriteHelpers.Tt(frame, speedText, tapeLineX + currentTickLength + tapeNumberMargin, yPos - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AL);
-                        }
-                    }
-                }
+                DrawVerticalTape(currentSpeedKph, tapeLineX, centerY,
+                    800 / SPEED_KPH_UNITS_PER_TAPE_HEIGHT, SPEED_KPH_UNITS_PER_TAPE_HEIGHT / 2f,
+                    SPEED_TICK_INTERVAL, SPEED_MAJOR_TICK_INTERVAL, 1f, true, false);
 
                 // Semi-transparent background behind speed box
-                SpriteHelpers.Bx(frame, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, Cr(0, 0, 0, 128));
+                SpriteHelpers.Bx(digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, Cr(0, 0, 0, 128));
 
-                SpriteHelpers.DrawRectangleOutline(frame, digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
+                SpriteHelpers.DrawRectangleOutline(digitalSpeedBoxX, centerY - digitalSpeedBoxHeight / 2f - 130, digitalSpeedBoxWidth, digitalSpeedBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentSpeedText = currentSpeedKph.ToString("000");
-                SpriteHelpers.Tt(frame, currentSpeedText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f, 0.8f, HUD_PRIMARY);
+                SpriteHelpers.Tt(currentSpeedText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 - digitalSpeedBoxHeight / 2f, 0.8f, HUD_PRIMARY);
 
                 // Mach number below speed box
                 string machText = $"M {mach:F2}";
-                SpriteHelpers.Tt(frame, machText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f, 0.5f, HUD_SECONDARY);
+                SpriteHelpers.Tt(machText, digitalSpeedBoxX + digitalSpeedBoxWidth / 2f, centerY - 130 + digitalSpeedBoxHeight / 2f + 3f, 0.5f, HUD_SECONDARY);
 
                 // Tape index sprite — points right toward the speed tape selected-value line.
                 // Sprite default points left; rotate 180° to point right. Apex offset = +size/4.
-                SpriteHelpers.Sp(frame, TEX_TAPE_INDEX, 7f, centerY, 14f, 14f, HUD_PRIMARY, (float)PI);
+                SpriteHelpers.Sp(TEX_TAPE_INDEX, 7f, centerY, 14f, 14f, HUD_PRIMARY, (float)PI);
             }
 
-            private void DrawCompass(MySpriteDrawFrame frame, double heading)
+            private void DrawCompass(double heading)
             {
                 float centerX = SX(hud) / 2f;
                 float compassY = 40f;
@@ -111,26 +73,26 @@ namespace IngameScript
                         float markerLineHeight = isMajorTick ? compassHeight * 0.7f : compassHeight * 0.4f;
                         Color markerColor = isMajorTick ? HUD_SECONDARY : HUD_PRIMARY;
 
-                        SpriteHelpers.Bx(frame, markerX, compassY, 2f, markerLineHeight, markerColor);
+                        SpriteHelpers.Bx(markerX, compassY, 2f, markerLineHeight, markerColor);
 
                         string label = isMajorTick ? GetCompassDirection(markerHeading) : markerHeading.ToString();
-                        SpriteHelpers.Tt(frame, label, markerX, compassY + compassHeight / 2f + 5f, 0.7f, markerColor, MFDTheme.AC, MFDTheme.FONT_W);
+                        SpriteHelpers.Tt(label, markerX, compassY + compassHeight / 2f + 5f, 0.7f, markerColor, MFDTheme.AC, MFDTheme.FONT_W);
                     }
                 }
 
-                SpriteHelpers.Sp(frame, TEX_HDG_CHEVRON, centerX, compassY - compassHeight / 2f - 6f, 22f, 22f, HUD_EMPHASIS);
+                SpriteHelpers.Sp(TEX_HDG_CHEVRON, centerX, compassY - compassHeight / 2f - 6f, 22f, 22f, HUD_EMPHASIS);
 
                 // Digital heading readout box
                 float headingBoxWidth = 50f;
                 float headingBoxHeight = 22f;
                 float headingBoxY = compassY + compassHeight / 2f + 20f;
 
-                SpriteHelpers.Bx(frame, centerX, headingBoxY + headingBoxHeight / 2f, headingBoxWidth, headingBoxHeight, Cr(0, 0, 0, 128));
-                SpriteHelpers.DrawRectangleOutline(frame, centerX - headingBoxWidth / 2f, headingBoxY,
+                SpriteHelpers.Bx(centerX, headingBoxY + headingBoxHeight / 2f, headingBoxWidth, headingBoxHeight, Cr(0, 0, 0, 128));
+                SpriteHelpers.DrawRectangleOutline(centerX - headingBoxWidth / 2f, headingBoxY,
                     headingBoxWidth, headingBoxHeight, 1f, HUD_PRIMARY);
 
                 string headingText = ((int)((heading % 360 + 360) % 360)).ToString("D3");
-                SpriteHelpers.Tt(frame, headingText, centerX, headingBoxY + 1f, 0.65f, HUD_PRIMARY);
+                SpriteHelpers.Tt(headingText, centerX, headingBoxY + 1f, 0.65f, HUD_PRIMARY);
             }
 
             private string GetCompassDirection(double heading)
@@ -145,7 +107,7 @@ namespace IngameScript
                 else return "NW";
             }
 
-            private void DrawAltitudeIndicatorF18Style(MySpriteDrawFrame frame, double currentAltitude, double displayVerticalVelocity)
+            private void DrawAltitudeIndicatorF18Style(double currentAltitude, double displayVerticalVelocity)
             {
                 // VVI from gravity-projected velocity (computed in UpdateFlightData)
                 double verticalVelocity = displayVerticalVelocity;
@@ -156,83 +118,80 @@ namespace IngameScript
 
                 float tapeRightMargin = 10f;
                 float tapeNumberMargin = 10f;
-                float tapeWidth = 2f;
-                float tickLength = 10f;
-                float majorTickLength = 15f;
 
                 float tapeLineX = screenWidth - tapeRightMargin;
                 float digitalAltBoxWidth = 80f;
                 float digitalAltBoxHeight = 30f;
                 float digitalAltBoxX = tapeLineX - tapeNumberMargin - digitalAltBoxWidth;
 
-                SpriteHelpers.Bx(frame, tapeLineX, centerY, tapeWidth, TAPE_HEIGHT_PIXELS, HUD_PRIMARY);
-
-                float tapeTopAlt = (float)currentAltitude + (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
-                float tapeBottomAlt = (float)currentAltitude - (ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f);
-
-                float startTickAlt = (float)(Math.Floor(tapeBottomAlt / TICK_INTERVAL) * TICK_INTERVAL);
-                if (startTickAlt < tapeBottomAlt)
-                    startTickAlt += TICK_INTERVAL;
-
-                for (float altMark = startTickAlt; altMark <= tapeTopAlt + (TICK_INTERVAL * 0.5f); altMark += TICK_INTERVAL)
-                {
-                    float yOffset = (float)(currentAltitude - altMark) * PIXELS_PER_ALTITUDE_UNIT;
-                    float yPos = centerY + yOffset;
-
-                    float tapeTopY = centerY - TAPE_HEIGHT_PIXELS / 2f;
-                    float tapeBottomY = centerY + TAPE_HEIGHT_PIXELS / 2f;
-
-                    if (yPos >= tapeTopY - 1f && yPos <= tapeBottomY + 1f)
-                    {
-                        bool isMajorTick = Ab(altMark % MAJOR_TICK_INTERVAL) < (TICK_INTERVAL * 0.1f);
-                        float currentTickLength = isMajorTick ? majorTickLength : tickLength;
-                        if (altMark >= 0)
-                        {
-                            SpriteHelpers.Bx(frame, tapeLineX - currentTickLength / 2f, yPos, currentTickLength, tapeWidth, HUD_PRIMARY);
-                        }
-
-                        if (isMajorTick)
-                        {
-                            string altText = altMark.ToString("F0");
-                            SpriteHelpers.Tt(frame, altText, tapeLineX - currentTickLength - tapeNumberMargin, yPos - 7.5f, 0.5f, HUD_PRIMARY, MFDTheme.AR);
-                        }
-                    }
-                }
+                DrawVerticalTape(currentAltitude, tapeLineX, centerY,
+                    PIXELS_PER_ALTITUDE_UNIT, ALTITUDE_UNITS_PER_TAPE_HEIGHT / 2f,
+                    TICK_INTERVAL, MAJOR_TICK_INTERVAL, -1f, false, true);
 
                 // Semi-transparent background behind altitude box
                 float altBoxTopLeftX = digitalAltBoxX - 20;
                 float altBoxTopLeftY = centerY - digitalAltBoxHeight - 225 / 2f;
-                SpriteHelpers.Bx(frame, altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, Cr(0, 0, 0, 128));
+                SpriteHelpers.Bx(altBoxTopLeftX + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight / 2f, digitalAltBoxWidth, digitalAltBoxHeight, Cr(0, 0, 0, 128));
 
-                SpriteHelpers.DrawRectangleOutline(frame, altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
+                SpriteHelpers.DrawRectangleOutline(altBoxTopLeftX, altBoxTopLeftY, digitalAltBoxWidth, digitalAltBoxHeight, 1f, HUD_PRIMARY);
 
                 string currentAltitudeText = currentAltitude.ToString("0000");
-                SpriteHelpers.Tt(frame, currentAltitudeText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140, 0.8f, HUD_PRIMARY);
+                SpriteHelpers.Tt(currentAltitudeText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, centerY - 140, 0.8f, HUD_PRIMARY);
 
                 // Tape index sprite (left-pointing by default) — points left toward the altitude tape.
-                SpriteHelpers.Sp(frame, TEX_TAPE_INDEX, screenWidth - 7f, centerY, 14f, 14f, HUD_PRIMARY);
+                SpriteHelpers.Sp(TEX_TAPE_INDEX, screenWidth - 7f, centerY, 14f, 14f, HUD_PRIMARY);
 
                 // VVI (Vertical Velocity Indicator) below altitude box
                 Color vviColor = Ab(verticalVelocity) > 30 ? HUD_EMPHASIS : HUD_PRIMARY;
                 string vviArrow = verticalVelocity > 1 ? "\u25B2" : verticalVelocity < -1 ? "\u25BC" : "\u25C6";
                 string vviText = $"{vviArrow} {verticalVelocity,4:F0}";
-                SpriteHelpers.Tt(frame, vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
+                SpriteHelpers.Tt(vviText, digitalAltBoxX - 20 + digitalAltBoxWidth / 2f, altBoxTopLeftY + digitalAltBoxHeight + 5f, 0.5f, vviColor);
             }
 
-            private void DrawGForceIndicator(MySpriteDrawFrame frame, double gForces, double peakGForce)
+            private void DrawVerticalTape(double value, float lineX, float centerY,
+                float pixelsPerUnit, float halfSpan, float tickInterval, float majorInterval,
+                float side, bool clampBottom, bool hideNegativeTicks)
+            {
+                SpriteHelpers.Bx(lineX, centerY, 2f, TAPE_HEIGHT_PIXELS, HUD_PRIMARY);
+                float top = (float)value + halfSpan;
+                float bottom = (float)value - halfSpan;
+                if (clampBottom) bottom = Mx(0, bottom);
+                float start = (float)(Math.Floor(bottom / tickInterval) * tickInterval);
+                if (start < bottom) start += tickInterval;
+                if (clampBottom) start = Mx(0, start);
+                float tapeTopY = centerY - TAPE_HEIGHT_PIXELS / 2f;
+                float tapeBottomY = centerY + TAPE_HEIGHT_PIXELS / 2f;
+
+                for (float mark = start; mark <= top + tickInterval * 0.5f; mark += tickInterval)
+                {
+                    if (clampBottom && mark < 0) continue;
+                    float yPos = centerY + (float)(value - mark) * pixelsPerUnit;
+                    if (yPos < tapeTopY - 1f || yPos > tapeBottomY + 1f) continue;
+                    bool isMajorTick = Ab(mark % majorInterval) < tickInterval * 0.1f;
+                    if (clampBottom && Ab(mark) < tickInterval * 0.1f) isMajorTick = true;
+                    float tickLength = isMajorTick ? 15f : 10f;
+                    if (!hideNegativeTicks || mark >= 0)
+                        SpriteHelpers.Bx(lineX + side * tickLength / 2f, yPos, tickLength, 2f, HUD_PRIMARY);
+                    if (isMajorTick)
+                        SpriteHelpers.Tt(mark.ToString("F0"), lineX + side * (tickLength + 10f),
+                            yPos - 7.5f, 0.5f, HUD_PRIMARY, side > 0 ? MFDTheme.AL : MFDTheme.AR);
+                }
+            }
+
+            private void DrawGForceIndicator(double gForces, double peakGForce)
             {
                 const float PADDING = 10f;
                 const float TEXT_SCALE = 0.8f;
                 const float LINE_HEIGHT = 20f;
 
                 string gForceText = $"G: {gForces:F1}";
-                SpriteHelpers.Tt(frame, gForceText, PADDING, SY(hud) - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(gForceText, PADDING, SY(hud) - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
 
                 string peakGText = $"Max G: {peakGForce:F1}";
-                SpriteHelpers.Tt(frame, peakGText, PADDING, SY(hud) - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(peakGText, PADDING, SY(hud) - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
             }
 
-            private void DrawAOAIndexer(MySpriteDrawFrame frame, double aoa, Vector3D acceleration, double velocity)
+            private void DrawAOAIndexer(double aoa, Vector3D acceleration, double velocity)
             {
                 const float INDEXER_X = 100f;
                 float indexerY = SY(hud) / 2f;
@@ -278,7 +237,7 @@ namespace IngameScript
                 {
                     indexerColor = HUD_PRIMARY;
                     spriteType = TEXTURE_TRIANGLE;
-                    SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor);
+                    SpriteHelpers.Sp(spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor);
                 }
                 else if (aoa > OPTIMAL_AOA_MAX)
                 {
@@ -293,28 +252,28 @@ namespace IngameScript
                         indexerColor = HUD_WARNING;
 
                     spriteType = TEXTURE_TRIANGLE;
-                    SpriteHelpers.Sp(frame, spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor, MathHelper.Pi);
+                    SpriteHelpers.Sp(spriteType, INDEXER_X, indexerY, SYMBOL_SIZE, SYMBOL_SIZE, indexerColor, MathHelper.Pi);
                 }
                 else
                 {
                     indexerColor = HUD_EMPHASIS;
-                    SpriteHelpers.Sp(frame, TEXTURE_CIRCLE_SOLID, INDEXER_X, indexerY, SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f, indexerColor);
+                    SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, INDEXER_X, indexerY, SYMBOL_SIZE * 0.8f, SYMBOL_SIZE * 0.8f, indexerColor);
                 }
 
                 // Draw stall warning indicators
                 if (currentStallLevel != STALL_LEVEL_NORMAL)
                 {
-                    DrawStallWarning(frame, currentStallLevel, absAoA);
+                    DrawStallWarning(currentStallLevel, absAoA);
                 }
 
                 double energyRate = acceleration.Length();
                 string energySymbol = energyRate > 5 ? "+" : energyRate < -5 ? "-" : "=";
                 Color energyColor = energyRate > 5 ? HUD_PRIMARY : energyRate < -5 ? HUD_WARNING : HUD_EMPHASIS;
 
-                SpriteHelpers.Tt(frame, $"E{energySymbol}", INDEXER_X, indexerY + 25f, 0.5f, energyColor);
+                SpriteHelpers.Tt($"E{energySymbol}", INDEXER_X, indexerY + 25f, 0.5f, energyColor);
             }
 
-            private void DrawStallWarning(MySpriteDrawFrame frame, int level, double currentAoA)
+            private void DrawStallWarning(int level, double currentAoA)
             {
 
                 Vector2 center = SS(hud) / 2f;
@@ -351,11 +310,11 @@ namespace IngameScript
                 if (level < 3 || flash) // Always show for caution/warning, flash for stall
                 {
                     // Warning text
-                    SpriteHelpers.Tt(frame, warningText, center.X, textY, textScale, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(warningText, center.X, textY, textScale, warningColor, MFDTheme.AC, MFDTheme.FONT_W);
 
                     // AoA value
                     string aoaText = $"{currentAoA:F1}\u00B0";
-                    SpriteHelpers.Tt(frame, aoaText, center.X, textY + 25f, 0.7f, warningColor);
+                    SpriteHelpers.Tt(aoaText, center.X, textY + 25f, 0.7f, warningColor);
                 }
 
                 // AoA bracket sprite (E-shape — spine + 3 arms). Visible content
@@ -363,12 +322,11 @@ namespace IngameScript
                 // sitting just left of the AoA indexer at INDEXER_X=100.
                 if (level >= 2 && (flash || level < 3))
                 {
-                    SpriteHelpers.Sp(frame, TEX_AOA_BRACKET, 75f, SY(hud) / 2f, 80f, 80f, warningColor);
+                    SpriteHelpers.Sp(TEX_AOA_BRACKET, 75f, SY(hud) / 2f, 80f, 80f, warningColor);
                 }
             }
 
             private void DrawLeftInfoBox(
-                MySpriteDrawFrame frame,
                 float centerX,
                 float centerY,
                 params LabelValue[] extraValues
@@ -391,13 +349,12 @@ namespace IngameScript
                     string labelText = extraValues[i].Label;
                     double numericValue = extraValues[i].Value;
 
-                    SpriteHelpers.Tt(frame, labelText, labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
-                    SpriteHelpers.Tt(frame, numericValue.ToString("F1"), numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AR, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(labelText, labelColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
+                    SpriteHelpers.Tt(numericValue.ToString("F1"), numberColumnX, yoffset + i * Y_OFFSET_PER_VALUE, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AR, MFDTheme.FONT_W);
                 }
             }
 
             private void DrawFlightInfo(
-                MySpriteDrawFrame frame,
                 double throttle
             )
             {
@@ -412,19 +369,19 @@ namespace IngameScript
                 float cx = barX + BAR_W / 2f;
 
                 // Track outline
-                SpriteHelpers.DrawRectangleOutline(frame, barX, barY, BAR_W, BAR_H, BORDER, HUD_PRIMARY);
+                SpriteHelpers.DrawRectangleOutline(barX, barY, BAR_W, BAR_H, BORDER, HUD_PRIMARY);
 
                 // Fill from bottom
                 float fillH = BAR_H * t;
                 if (fillH > 1f)
                 {
                     Color fillColor = hydrogenswitch ? HUD_EMPHASIS : HUD_PRIMARY;
-                    SpriteHelpers.Bx(frame, cx, barY + BAR_H - fillH / 2f, BAR_W - 2f, fillH, fillColor);
+                    SpriteHelpers.Bx(cx, barY + BAR_H - fillH / 2f, BAR_W - 2f, fillH, fillColor);
                 }
 
                 // MIL gate marker at 80%
                 float milY = barY + BAR_H * (1f - THROTTLE_HYDROGEN_THRESHOLD);
-                SpriteHelpers.Bx(frame, cx, milY, BAR_W + 4f, 1.5f, HUD_EMPHASIS);
+                SpriteHelpers.Bx(cx, milY, BAR_W + 4f, 1.5f, HUD_EMPHASIS);
             }
 
         }

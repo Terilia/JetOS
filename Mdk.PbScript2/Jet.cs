@@ -585,7 +585,8 @@ namespace IngameScript
                 functional = 0;
                 for (int i = 0; i < engines.Count; i++)
                 {
-                    if (engines[i] != null && engines[i].IsFunctional)
+                    var e = engines[i];
+                    if (e != null && e.IsFunctional)
                         functional++;
                 }
             }
@@ -598,9 +599,10 @@ namespace IngameScript
                 current = 0f; max = 0f;
                 for (int i = 0; i < engines.Count; i++)
                 {
-                    if (engines[i] == null || !engines[i].IsFunctional) continue;
-                    current += engines[i].CurrentThrust;
-                    max += engines[i].MaxEffectiveThrust;
+                    var e = engines[i];
+                    if (e == null || !e.IsFunctional) continue;
+                    current += e.CurrentThrust;
+                    max += e.MaxEffectiveThrust;
                 }
                 current /= 1000f; // Convert N to kN
                 max /= 1000f;
@@ -611,10 +613,11 @@ namespace IngameScript
                 currentMWh = 0f; maxMWh = 0f; netDrainMW = 0f;
                 for (int i = 0; i < batteries.Count; i++)
                 {
-                    if (batteries[i] == null || !batteries[i].IsFunctional) continue;
-                    currentMWh += batteries[i].CurrentStoredPower;
-                    maxMWh += batteries[i].MaxStoredPower;
-                    netDrainMW += batteries[i].CurrentOutput - batteries[i].CurrentInput;
+                    var b = batteries[i];
+                    if (b == null || !b.IsFunctional) continue;
+                    currentMWh += b.CurrentStoredPower;
+                    maxMWh += b.MaxStoredPower;
+                    netDrainMW += b.CurrentOutput - b.CurrentInput;
                 }
             }
 
@@ -623,10 +626,11 @@ namespace IngameScript
                 double cap = 0, filled = 0;
                 for (int i = 0; i < tanks.Count; i++)
                 {
-                    if (tanks[i] == null) continue;
-                    if (!tanks[i].BlockDefinition.SubtypeId.Contains(S_HYDROGEN)) continue;
-                    cap += tanks[i].Capacity;
-                    filled += tanks[i].Capacity * tanks[i].FilledRatio;
+                    var t = tanks[i];
+                    if (t == null) continue;
+                    if (!t.BlockDefinition.SubtypeId.Contains(S_HYDROGEN)) continue;
+                    cap += t.Capacity;
+                    filled += t.Capacity * t.FilledRatio;
                 }
                 fillRatio = cap > 0 ? filled / cap : 0;
                 remainSeconds = fillRatio * 600; // same 10min assumption as GridVisualization
