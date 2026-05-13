@@ -358,6 +358,9 @@ namespace IngameScript
                 Vector3D accel = VZ;
                 if (existingIndex >= 0)
                 {
+                    if (SE(name))
+                        name = enemyList[existingIndex].Name;
+
                     double dt = GameSeconds - enemyList[existingIndex].LastSeen;
                     if (dt > 0 && dt < 5.0) // <5s old
                     {

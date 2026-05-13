@@ -197,7 +197,7 @@ namespace IngameScript
                 get
                 {
                     long currentId = TrackedEntityId;
-                    if (currentId == _cachedNameEntityId)
+                    if (currentId == _cachedNameEntityId && !SE(_cachedName))
                         return _cachedName;
 
                     _cachedNameEntityId = currentId;
@@ -209,21 +209,14 @@ namespace IngameScript
                         return _cachedName;
                     }
 
-                    // Scan each line for the attacking prefix
-                    int start = 0;
-                    while (start < detailedInfo.Length)
+                    int start = detailedInfo.IndexOf(ATK_PREFIX);
+                    if (start >= 0)
                     {
+                        start += ATK_PREFIX.Length;
                         int nl = detailedInfo.IndexOf('\n', start);
                         int end = nl >= 0 ? nl : detailedInfo.Length;
-                        int len = end - start;
-
-                        if (len > ATK_PREFIX.Length &&
-                            detailedInfo.IndexOf(ATK_PREFIX, start, len) == start)
-                        {
-                            _cachedName = detailedInfo.Substring(start + ATK_PREFIX.Length, len - ATK_PREFIX.Length).Trim();
-                            return _cachedName;
-                        }
-                        start = end + 1;
+                        _cachedName = detailedInfo.Substring(start, end - start).Trim();
+                        return _cachedName;
                     }
 
                     _cachedName = "";

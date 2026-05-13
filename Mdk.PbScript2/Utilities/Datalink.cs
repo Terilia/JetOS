@@ -42,14 +42,14 @@ namespace IngameScript
                 _broadcastAccum = 0;
 
                 program.IGC.SendBroadcastMessage(IGC_CHANNEL,
-                    MyTuple.Create(KIND_FRIEND, program.Me.EntityId, 0L, jet.CockpitPosition, jet.CockpitVelocity));
+                    MyTuple.Create(KIND_FRIEND, program.Me.EntityId, 0L, jet.CockpitPosition, jet.CockpitVelocity, ""));
 
                 for (int i = 0; i < jet.enemyList.Count; i++)
                 {
                     var c = jet.enemyList[i];
                     if (c.SourceIndex < 0 || c.AgeSeconds > MAX_TARGET_AGE) continue;
                     program.IGC.SendBroadcastMessage(IGC_CHANNEL,
-                        MyTuple.Create(KIND_TARGET, program.Me.EntityId, c.EntityId, c.Position, c.Velocity));
+                        MyTuple.Create(KIND_TARGET, program.Me.EntityId, c.EntityId, c.Position, c.Velocity, c.Name));
                 }
             }
 
@@ -61,13 +61,13 @@ namespace IngameScript
                 while (_listener.HasPendingMessage)
                 {
                     MyIGCMessage msg = _listener.AcceptMessage();
-                    if (!(msg.Data is MyTuple<int, long, long, Vector3D, Vector3D>)) continue;
-                    var t = (MyTuple<int, long, long, Vector3D, Vector3D>)msg.Data;
+                    if (!(msg.Data is MyTuple<int, long, long, Vector3D, Vector3D, string>)) continue;
+                    var t = (MyTuple<int, long, long, Vector3D, Vector3D, string>)msg.Data;
                     if (t.Item2 == program.Me.EntityId) continue;
                     if (t.Item1 == KIND_FRIEND)
                         UpsertFriend(new FriendlyStatus { Id = t.Item2, Position = t.Item4, SeenAt = SystemManager.ElapsedSeconds });
                     else if (t.Item1 == KIND_TARGET && t.Item4.LengthSquared() >= 1.0)
-                        jet.UpdateOrAddEnemy(t.Item4, t.Item5, "", SOURCE_INDEX, t.Item3);
+                        jet.UpdateOrAddEnemy(t.Item4, t.Item5, t.Item6, SOURCE_INDEX, t.Item3);
                 }
             }
 
