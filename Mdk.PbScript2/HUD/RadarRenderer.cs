@@ -225,37 +225,18 @@ namespace IngameScript
                 return (float)Rd(range / 100) * 100;
             }
 
-            // Pre-allocated list for wingman positions to avoid per-frame allocation
-            private List<Vector3D> _wingmanPositionBuffer = new List<Vector3D>();
-
             private void DrawFormationGhosts(MySpriteDrawFrame frame, IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
-                _wingmanPositionBuffer.Clear();
+                var friends = Datalink.GetActiveFriendlies();
+                if (friends.Count == 0) return;
 
-                // Use CustomDataManager cache instead of parsing raw CustomData every frame
-                for (int w = 1; w <= 4; w++)
-                {
-                    string wingmanKey = "Wingman" + w;
-                    string value;
-                    if (SystemManager.TryGetCustomDataValue(wingmanKey, out value) && !SE(value))
-                    {
-                        Vector3D pos;
-                        if (NavigationHelper.TryParseGps(value, out pos))
-                        {
-                            _wingmanPositionBuffer.Add(pos);
-                        }
-                    }
-                }
-
-                if (_wingmanPositionBuffer.Count == 0) return;
-
-                Vector3D shooterPosition = GP(cockpit);
+                Vector3D shooterPosition = myjet.CockpitPosition;
                 Vector2 surfaceSize = SS(hud);
                 Vector2 center = surfaceSize / 2f;
 
-                foreach (var wingmanPos in _wingmanPositionBuffer)
+                for (int i = 0; i < friends.Count; i++)
                 {
-                    Vector3D directionToWingman = wingmanPos - shooterPosition;
+                    Vector3D directionToWingman = friends[i].Position - shooterPosition;
                     Vector3D localDirection = VTN(directionToWingman, worldToCockpitMatrix);
 
                     if (localDirection.Z >= 0) continue;
