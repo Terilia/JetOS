@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">JetOS</title>
+  <desc id="desc">JetOS wordmark with the subtitle Tactical Avionics PB System.</desc>
+  <defs>
+    <style>
+      .bg{fill:#050805}
+      .word{fill:#90d090;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:90px;font-weight:750}
+      .sub{fill:#8a7a50;font-family:Consolas,'SFMono-Regular','Liberation Mono','Courier New',monospace;font-size:18px;font-weight:700;letter-spacing:.08em}
+    </style>
+  </defs>
+  <rect class="bg" width="960" height="240"/>
+  <g text-anchor="middle">
+    <text class="word" x="480" y="132">JetOS</text>
+    <text class="sub" x="480" y="166">TACTICAL AVIONICS PB SYSTEM</text>
+  </g>
+</svg>

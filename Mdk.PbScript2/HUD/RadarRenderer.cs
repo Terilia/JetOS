@@ -132,15 +132,6 @@ namespace IngameScript
                 string outerLabel = SpriteHelpers.FormatRange(radarRange);
                 SpriteHelpers.Tt(outerLabel, radarCenter.X, radarOrigin.Y - 8f, 0.28f, Cr(HUD_SECONDARY, 0.5f));
 
-                // Lock cone — drawn pointing forward (up in radar view) when STT lock active.
-                // Visible content spans upper half of canvas (~39% of height); size
-                // 2.56*radarRadius makes the cone reach from center to top of radar box.
-                if (radarControl != null && radarControl.IsTrackLocked)
-                {
-                    float coneSize = radarRadius * 2.56f;
-                    SpriteHelpers.Sp(TEX_LOCK_CONE, radarCenter.X, radarCenter.Y, coneSize, coneSize, Cr(HUD_WARNING, 0.7f));
-                }
-
                 // Own ship at radar center (top-down jet silhouette).
                 SpriteHelpers.Sp(TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
 

@@ -1,28 +1,70 @@
-# JetOS
+<p align="center">
+  <img src="docs/assets/jetos-logo.svg" alt="JetOS - Tactical Avionics PB System" width="720">
+</p>
 
-JetOS is a cockpit operating system for Space Engineers fighter craft. It runs as an
-MDK2 programmable block script and brings the aircraft's flight display, tactical
-picture, weapon management, radar control, terrain page, canard damping, and
-multi-function displays into one integrated system.
+<p align="center">
+  <strong>A Space Engineers fighter cockpit operating system built as an MDK2 programmable block script.</strong>
+</p>
 
-The project is built for aircraft that use Space Engineers AI blocks, custom LCD
-sprites, missile bays, rotor/hinge gun mounts, and a three-screen cockpit layout.
+JetOS turns a custom fighter craft into an integrated tactical cockpit. It drives
+the HUD, MFD pages, radar/RWR, datalink target picture, weapon handoff, gun
+tracking, terrain awareness, canard damping, warnings, and cockpit UI from one
+programmable block.
 
-## Capabilities
+The project is designed for aircraft that use Space Engineers AI blocks, custom
+LCD sprites, missile bays, rotor/hinge gun mounts, and a three-screen cockpit
+layout. It is also written under programmable-block size pressure, so the code
+leans toward compact shared helpers and careful runtime budgeting.
 
-- **Flight HUD** - artificial horizon, pitch ladder, flight path marker, heading,
-  speed and altitude tapes, AoA, G-load, throttle state, lead pip, radar overlay.
-- **Radar and RWR** - coordinated AI Flight/Combat block pairs, radar search and
-  lock states, threat contacts, selected target tracking, and warning tones.
-- **Weapons** - air-to-air bay selection, target data transfer, missile launch
-  setup, weapon screen timelines, and rotor/hinge gun tracking with ballistic lead.
-- **Aircraft control** - MIL/afterburner throttle gate, thrust handling, stabilizer
-  trim, and optional canard AoA damping.
-- **MFD system** - three coordinated text surfaces using the NYINAH CORP dark
-  green phosphor theme, shared chrome, page transitions, grid/status view, weapon
-  page, terrain page, and menu navigation.
-- **Sprite mod support** - custom `JetOS_*` LCD sprites for HUD glyphs, radar
-  contacts, bay icons, MFD corners, warning markers, and aircraft symbology.
+## Quick Links
+
+[Build](#build-and-deploy) · [Setup](#in-game-setup) · [Controls](#cockpit-controls) · [Documentation](#documentation) · [Sprite Mod](#sprite-mod)
+
+## What JetOS Can Do Now
+
+- **Flight HUD:** artificial horizon, pitch ladder, flight path marker, aircraft
+  symbol, heading, speed and altitude tapes, AoA, G-load, throttle state, lead
+  pip, target brackets, off-screen arrows, gun funnel, breakaway cues, and radar
+  overlay.
+- **Tactical picture:** AI Flight/Combat block radar pairs feed one shared target
+  table with identity matching, track history, selection, decay, and threat
+  coloring.
+- **Datalink:** nearby JetOS craft broadcast friendly ownship status and locally
+  observed hostile targets over IGC channel `JETOS_DL`. Remote hostile reports
+  become selectable targets and are marked as `DL` until local radar authority
+  refreshes them.
+- **Radar/RWR:** configurable sweep/track radar pool plus RWR radars,
+  selected-target lock detection, RWR threat assessment, target cycling, and
+  warning/lock/search tones.
+- **Weapons:** missile bay selection, per-bay target handoff, missile status
+  intake, weapon timeline display, seeker tones, and selected-target GPS/velocity
+  sync through CustomData.
+- **Gun control:** rotor/hinge gun mounts can auto-track targets with ballistic
+  lead, closure/aspect display, configurable gains, and range limits.
+- **Aircraft control:** MIL/afterburner throttle gate, hydrogen afterburner
+  handling, thrust/fuel/battery status, stabilizer trim, and optional canard AoA
+  damping.
+- **MFD system:** three coordinated text surfaces with dark green NYINAH CORP
+  styling, shared chrome, menu navigation, grid/status page, weapon page, terrain
+  page, configuration page, and module-specific screens.
+- **Terrain awareness:** optional TerrainAPI integration downloads a planet
+  heightmap, renders contour maps, shows AGL-relative danger bands, and displays
+  friendly/target markers on the terrain page.
+- **Sprite mod:** custom `JetOS_*` LCD sprites provide HUD glyphs, radar contacts,
+  MFD corners, warning markers, bay icons, missiles, gauges, and aircraft
+  symbology.
+
+## Cockpit Experience
+
+JetOS is meant to feel like an avionics suite rather than a pile of independent
+scripts. The HUD and MFDs share the same tactical picture, selected target, sound
+state, and configuration values. A target detected by radar, received through
+datalink, selected by the pilot, shown on the weapon page, and handed to a missile
+all flows through the same target model.
+
+The default visual style is a restrained dark-green cockpit theme: phosphor text,
+compact data panels, muted gold labels, and white-on-transparent sprites tinted
+at runtime by the script.
 
 ## Requirements
 
@@ -34,11 +76,10 @@ sprites, missile bays, rotor/hinge gun mounts, and a three-screen cockpit layout
 - Optional: a TerrainAPI world mod that exposes the `TerrainAPI` programmable
   block property used by the terrain page
 
-## Build
+## Build And Deploy
 
 ```powershell
-dotnet build Mdk.PbScript2.sln --configuration Release
-dotnet build Mdk.PbScript2.sln --configuration Debug
+dotnet build Mdk.PbScript2.sln --configuration Release /p:OS=Windows_NT
 ```
 
 The Release build is packaged by MDK2 and deploys to:
@@ -47,9 +88,15 @@ The Release build is packaged by MDK2 and deploys to:
 %APPDATA%\SpaceEngineers\IngameScripts\local\Mdk.PbScript2
 ```
 
-There are no automated tests in this repository. Verification is done by building
-successfully, loading the programmable block script in-game, and checking the
-cockpit displays and block interactions on the grid.
+For local verification, build successfully, load the programmable block script
+in-game, and check the cockpit displays and block interactions on the grid. This
+repository does not currently include automated tests.
+
+To inspect the packed script size:
+
+```powershell
+(Get-Content -Path "$env:APPDATA\SpaceEngineers\IngameScripts\local\Mdk.PbScript2\script.cs" -Raw).Length
+```
 
 ## In-Game Setup
 
@@ -65,34 +112,35 @@ cockpit displays and block interactions on the grid.
 
 | Block type | Naming convention | Used by |
 | --- | --- | --- |
-| AI Flight + AI Combat | `AI Flight`, `AI Combat`, `AI Flight N`, `AI Combat N` | Radar and RWR |
+| AI Flight + AI Combat | `AI Flight`, `AI Combat`, `AI Flight N`, `AI Combat N` | Radar, RWR, and target acquisition |
 | Merge blocks | `Bay 1`, `Bay 2`, ... | Missile bay selection and launch |
 | Rotor + hinge | `Gun Rotor Left/Right`, `Gun Hinge Left/Right` | Auto-tracking gun mounts |
 | Canards | `Canard L [Ani]`, `Canard R [Ani]` | AoA damping |
-| Sound block | `Sound Block Warning` | Altitude, threat, and system warnings |
+| Sound block | `Sound Block Warning` | Altitude, RWR, and system warnings |
 | Sound block | `Canopy Side Plate Sound Block` | Weapon search and lock tones |
 | Stabilizer groups | names containing `normalstab` or `invertedstab` | Trim and stabilization |
 | Hydrogen tanks | names containing `Jet` | Fuel display |
 
-Thrusters with `Industrial` in the name are ignored. Hydrogen thrusters are treated
-as afterburners; atmospheric thrusters provide the normal and MIL thrust stages.
+Thrusters with `Industrial` in the name are ignored. Hydrogen thrusters are
+treated as afterburners; atmospheric thrusters provide the normal and MIL thrust
+stages.
 
 ### TerrainAPI Mod
 
-The terrain page depends on a separate TerrainAPI mod. That mod is not included in
-this repository and may not be publicly available; JetOS only contains the client
-side that talks to it.
+The terrain page depends on a separate TerrainAPI mod. That mod is not included
+in this repository; JetOS only contains the programmable-block client that talks
+to it.
 
-When the mod is loaded in the world, it exposes a `TerrainAPI` terminal property on
-the programmable block. JetOS uses that property to download the planet heightmap
-in chunks, then performs terrain lookups locally for the MFD map. If the property
-is missing, JetOS disables terrain features silently and the rest of the system can
-continue running.
+When the mod is loaded in the world, it exposes a `TerrainAPI` terminal property
+on the programmable block. JetOS downloads the planet heightmap in chunks, builds
+a tile index, then performs terrain lookups locally for the MFD map. If the
+property is missing, JetOS disables terrain features and the rest of the system
+continues running.
 
-## Controls
+## Cockpit Controls
 
-JetOS is controlled through programmable block toolbar arguments, usually mapped to
-numpad-style cockpit buttons.
+JetOS is controlled through programmable block toolbar arguments, usually mapped
+to numpad-style cockpit buttons.
 
 | Argument | Action |
 | --- | --- |
@@ -107,22 +155,23 @@ numpad-style cockpit buttons.
 Modules can override navigation and special-function handling when they own the
 current MFD page.
 
-## Repository Layout
+## Repository Map
 
 ```text
 Mdk.PbScript2/
   Program.cs                  Entry point and MDK-compatible shell
   SystemManager.cs            Initialization, tick loop, input routing
-  Jet.cs                      Grid hardware model and target database
+  Jet.cs                      Grid hardware model and shared target table
   Modules/                    HUD, radar, weapons, guns, canards, terrain, config
   HUD/                        Flight, targeting, radar, and weapon renderers
   UI/                         MFD pages, chrome, transitions, grid/status panels
-  Utilities/                  Ballistics, sound, terrain data, sprites, CustomData
+  Utilities/                  Ballistics, datalink, sound, terrain, sprites, CustomData
   Diagnostics/                Standalone in-game debug scripts, excluded from build
 
 Mod/testmod/                  JetOS LCD sprite mod sources and textures
 Tools/                        Sprite and workshop helper tooling
 docs/                         Architecture notes, demos, and subsystem references
+docs/assets/                  GitHub/README visual assets
 ```
 
 Every compiled `.cs` file follows the MDK programmable block pattern:
@@ -139,16 +188,16 @@ namespace IngameScript
 
 ## Documentation
 
-The core references are:
-
 | Document | Contents |
 | --- | --- |
 | [Architecture](docs/architecture.md) | Initialization order, tick loop, module system |
-| [HUD Rendering](docs/hud-rendering.md) | HUD pipeline, renderers, symbology |
+| [HUD Rendering](docs/hud-rendering.md) | HUD pipeline, renderers, symbology, themes |
 | [Target Tracking](docs/target-tracking.md) | Contact acquisition, decay, target selection |
 | [Weapons](docs/weapons.md) | Radar, RWR, missile bays, gun control |
+| [Configuration](docs/configuration.md) | Runtime parameters, persistence, HUD toggles |
 | [Sound System](docs/sound-system.md) | Dual-channel warning and weapon audio |
 | [Terrain System](docs/terrain-system.md) | TerrainAPI heightmap loading and MFD page |
+| [Canard System](docs/canard-system.md) | Canard control surfaces and stabilizer spillover |
 | [SE API Reference](docs/se-api-reference.md) | Verified Space Engineers API usage |
 | [SE Scripting Oddities](docs/se-scripting-oddities.md) | Documented engine and PB quirks |
 
@@ -161,10 +210,10 @@ The script references sprites by subtype id, for example `JetOS_FPM`,
 assets live under `Mod/testmod`.
 
 The sprites are white on transparent and tinted by the script at runtime, so the
-same asset can be used for normal, warning, lock, dim, and emphasis states.
+same asset can serve normal, warning, lock, dim, and emphasis states.
 
-For local testing, junction the mod folder into the Space Engineers mods directory
-and enable it in the world:
+For local testing, junction the mod folder into the Space Engineers mods
+directory and enable it in the world:
 
 ```powershell
 New-Item -ItemType Junction `
@@ -177,21 +226,16 @@ New-Item -ItemType Junction `
 - Target framework: `.NET Framework 4.8`
 - Language version: `C# 6.0`
 - Runtime cadence: `UpdateFrequency.Update1`
-- Instruction budget: Space Engineers programmable blocks are tight, so rendering,
-  radar updates, terrain loading, and CustomData access are written with allocation
-  and instruction count in mind.
-- Minification is configured in `Mdk.PbScript2/Mdk.PbScript2.mdk.ini`.
-- `Diagnostics/` scripts are intentionally excluded from the packaged PB script.
+- MDK2 minification is configured in `Mdk.PbScript2/Mdk.PbScript2.mdk.ini`
+- `Diagnostics/` scripts are intentionally excluded from the packaged PB script
+- Programmable-block size is a hard constraint; prefer behavior-preserving
+  deduplication and shared helpers over feature cuts
 
-## Visual Direction
+## Project Status
 
-JetOS uses a restrained tactical MFD style: dark green background, phosphor text,
-gold corporate accents, compact data panels, and sprite-based HUD symbols. A good
-wordmark direction would be **Rajdhani SemiBold** or **IBM Plex Sans Condensed**.
-Both fit the cockpit-instrument tone without turning the project into a generic
-sci-fi logo.
-
-## License
+JetOS is source-available cockpit software for a specific Space Engineers fighter
+workflow. It is actively evolving and currently optimized for local/in-game
+verification rather than a public package workflow.
 
 No public license has been added. Treat the repository as source-available unless
 a license file is provided.

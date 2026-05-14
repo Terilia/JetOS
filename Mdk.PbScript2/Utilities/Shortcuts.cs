@@ -144,7 +144,6 @@ namespace IngameScript
         // Radar minimap
         const string TEX_RANGE_RING     = "JetOS_RangeRing";
         const string TEX_OWN_SHIP       = "JetOS_OwnShip";
-        const string TEX_LOCK_CONE      = "JetOS_LockCone";
 
         // Weapons & bays
         const string TEX_BAY_EMPTY      = "JetOS_Bay_Empty";
