@@ -24,5 +24,7 @@ The active launch command uses `%APPDATA%\Pulsar\Interim.exe`, and the current g
 `ExternalMods/Built/Torch` is for Torch dedicated server deployment:
 
 - `JetOSRadarFeedTorch.dll`
+- `JetOSRadarFeedTorch.zip` contains the Torch plugin package with `manifest.xml`, the DLL, and PDB. This is the package shape Torch uses for proper plugin registration.
+- `LcdBooster.zip` is kept as the reference package for the existing Torch LCD Booster server plugin.
 
 Refresh these links after rebuilding or redeploying a plugin if the build tool replaces the target file instead of updating it in place.

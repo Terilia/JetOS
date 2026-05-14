@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="..\JetOSRadarFeed\RadarFeedEngine.cs" Link="RadarFeedEngine.cs" />
+    <Content Include="manifest.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
