@@ -46,7 +46,7 @@ JetOS has two radar providers:
 
 2. Patched provider
 
-   A server-side Pulsar/plugin/mod component discovers `[JO]` AI Combat blocks and publishes a multi-contact radar feed for JetOS. JetOS ingests each new feed sequence. If the feed stops changing, plugin contacts are no longer refreshed and the normal JetOS target decay returns the jet to vanilla radar behavior without pilot action.
+   A server-side plugin component discovers `[JO]` AI Combat blocks and publishes a multi-contact radar feed for JetOS. The same scanner ships with a Pulsar/Interim wrapper for local or client-hosted runs and a Torch wrapper for dedicated servers. JetOS ingests each new feed sequence. If the feed stops changing, plugin contacts are no longer refreshed and the normal JetOS target decay returns the jet to vanilla radar behavior without pilot action.
 
 ## Patched Provider Behavior
 
@@ -110,7 +110,9 @@ JetOS changes:
 
 Plugin changes:
 
-- Create a JetOS radar feed plugin using the existing local Pulsar plugin style.
+- Create a shared JetOS radar feed scanner.
+- Create a Pulsar/Interim `IPlugin` wrapper for local plugin deployment.
+- Create a Torch `TorchPluginBase` wrapper for dedicated server deployment.
 - Discover tagged AI Combat blocks.
 - Build one contact feed per eligible radar block.
 - Publish feed data through a bridge JetOS can read from programmable-block code.

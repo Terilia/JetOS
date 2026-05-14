@@ -13,10 +13,16 @@ The active launch command uses `%APPDATA%\Pulsar\Interim.exe`, and the current g
 
 ## Built
 
-`ExternalMods/Built/Pulsar` is tracked on purpose. The DLLs there are hard links to the current built/deployed DLLs so git sees shareable binary contents:
+`ExternalMods/Built` is tracked on purpose. The DLLs there are hard links to the current built/deployed DLLs so git sees shareable binary contents.
+
+`ExternalMods/Built/Pulsar` is for `%APPDATA%\Pulsar\Interim.exe` / Pulsar local plugin deployment:
 
 - `LcdBoosterClient.dll`
 - `CameraLCD-CAMOV.dll`
 - `JetOSRadarFeed.dll`
+
+`ExternalMods/Built/Torch` is for Torch dedicated server deployment:
+
+- `JetOSRadarFeedTorch.dll`
 
 Refresh these links after rebuilding or redeploying a plugin if the build tool replaces the target file instead of updating it in place.

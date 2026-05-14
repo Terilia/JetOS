@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>JetOSRadarFeedTorch</AssemblyName>
+    <RootNamespace>JetOSRadarFeedTorch</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <SeRoot Condition="'$(SeRoot)' == ''">G:\SteamLibrary\steamapps\common\SpaceEngineers</SeRoot>
+    <Bin64>$(SeRoot)\Bin64</Bin64>
+    <TorchBin>$(SeRoot)</TorchBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\JetOSRadarFeed\RadarFeedEngine.cs" Link="RadarFeedEngine.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Torch" HintPath="$(TorchBin)\Torch.dll" Private="False" />
+    <Reference Include="Torch.API" HintPath="$(TorchBin)\Torch.API.dll" Private="False" />
+    <Reference Include="NLog" HintPath="$(TorchBin)\NLog.dll" Private="False" />
+    <Reference Include="Sandbox.Common" HintPath="$(Bin64)\Sandbox.Common.dll" Private="False" />
+    <Reference Include="Sandbox.Game" HintPath="$(Bin64)\Sandbox.Game.dll" Private="False" />
+    <Reference Include="VRage" HintPath="$(Bin64)\VRage.dll" Private="False" />
+    <Reference Include="VRage.Game" HintPath="$(Bin64)\VRage.Game.dll" Private="False" />
+    <Reference Include="VRage.Library" HintPath="$(Bin64)\VRage.Library.dll" Private="False" />
+    <Reference Include="VRage.Math" HintPath="$(Bin64)\VRage.Math.dll" Private="False" />
+    <Reference Include="SpaceEngineers.Game" HintPath="$(Bin64)\SpaceEngineers.Game.dll" Private="False" />
+  </ItemGroup>
+</Project>
