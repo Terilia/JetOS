@@ -34,8 +34,8 @@
 const string CHANNEL_A_FILTER = "Sound Block Warning";
 const string CHANNEL_B_FILTER = "Canopy Side Plate Sound Block";
 
-const string SOUND_1 = "Tief";
-const string SOUND_2 = "AIM9Lock";
+const string SOUND_1 = "F-18PullUp";
+const string SOUND_2 = "CAP_F-16_RWR_Lock_Short";
 
 const float VOLUME_A = 1.0f;
 const float VOLUME_B = 0.5f;

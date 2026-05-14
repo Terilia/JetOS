@@ -46,6 +46,7 @@ namespace IngameScript
             private static Program.CanardModule canardModule;
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
+            private static bool bingoFuelActive = false;
             public static bool AltitudeWarningActive => altitudeWarningActive;
 
             // Timing foundation — lag-resistant, uses wall-clock delta.
@@ -206,7 +207,7 @@ namespace IngameScript
                     }
                     else
                     {
-                        SoundManager.RequestWarning("Tief", SoundManager.PRIORITY_ALTITUDE);
+                        SoundManager.Event(SoundManager.PULL_UP);
                     }
                 }
                 else
@@ -214,9 +215,24 @@ namespace IngameScript
                     if (velocityKnots > spdWarn && altitude < altWarn)
                     {
                         altitudeWarningActive = true;
-                        SoundManager.RequestWarning("Tief", SoundManager.PRIORITY_ALTITUDE);
+                        SoundManager.Event(SoundManager.PULL_UP);
                     }
                 }
+
+                float bingo = GetConfigValue(CFG_BINGO_FUEL);
+                if (bingoFuelActive)
+                {
+                    if (_myJet.FuelPct > bingo + 0.05f)
+                        bingoFuelActive = false;
+                }
+                else if (_myJet.tanks.Count > 0 && _myJet.FuelPct < bingo)
+                {
+                    bingoFuelActive = true;
+                    SoundManager.Event(SoundManager.BINGO);
+                }
+
+                if (_myJet.LeftEngineBad) SoundManager.Event(SoundManager.ENGINE_LEFT);
+                if (_myJet.RightEngineBad) SoundManager.Event(SoundManager.ENGINE_RIGHT);
 
                 if (SW(argument))
                 {

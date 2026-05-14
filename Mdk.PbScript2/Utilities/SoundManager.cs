@@ -12,6 +12,7 @@ namespace IngameScript
             public const int PRIORITY_NONE = 0;
             public const int PRIORITY_RWR = 3;         // RWR Alert
             public const int PRIORITY_ALTITUDE = 4;    // Altitude warning (pilot safety)
+            public const int NEW_TARGET = 1, RWR_LOCK = 2, RWR_LAUNCH = 3, PULL_UP = 4, BINGO = 5, ENGINE_LEFT = 6, ENGINE_RIGHT = 7;
 
             class SoundChannel
             {
@@ -35,21 +36,26 @@ namespace IngameScript
                 internal double requestedLoopSeconds = 5.0;
             }
 
-            private static SoundChannel warningChannel;
+            private static SoundChannel warningChannel, rwrChannel, eventChannel;
+            static readonly double[] lastEvent = new double[9];
 
             public static void Initialize(IMyGridTerminalSystem grid)
             {
-                warningChannel = new SoundChannel();
+                warningChannel = MakeChannel(grid, "Sound Block Warning", 1.0f);
+                rwrChannel = MakeChannel(grid, "Sound Block RWR", 0.8f);
+                eventChannel = MakeChannel(grid, "Canopy Side Plate Sound Block", 0.55f);
+                if (eventChannel.blocks.Count == 0)
+                    eventChannel = MakeChannel(grid, "Sound Block Event", 0.55f);
+                if (rwrChannel.blocks.Count == 0)
+                    rwrChannel = eventChannel;
+            }
 
-                grid.GetBlocksOfType(
-                    warningChannel.blocks,
-                    b => b.CustomName.Contains("Sound Block Warning")
-                );
-
-                // Prep all blocks to a known clean state so the first
-                // Play() call works reliably. Without this, blocks may
-                // be disabled or mid-play from a previous script run.
-                PrepChannel(warningChannel);
+            static SoundChannel MakeChannel(IMyGridTerminalSystem grid, string filter, float volume)
+            {
+                var ch = new SoundChannel { volume = volume };
+                grid.GetBlocksOfType(ch.blocks, b => b.CustomName.Contains(filter));
+                PrepChannel(ch);
+                return ch;
             }
 
             private static void PrepChannel(SoundChannel ch)
@@ -64,29 +70,70 @@ namespace IngameScript
                 }
             }
 
+            public static void Event(int id)
+            {
+                SoundChannel ch;
+                string snd;
+                int pri;
+                double cool;
+                Map(id, out ch, out snd, out pri, out cool);
+                if (ch == null || SE(snd)) return;
+                double now = SystemManager.ElapsedSeconds;
+                if (id > 0 && id < lastEvent.Length && lastEvent[id] > 0.0 && now - lastEvent[id] < cool) return;
+                if (Request(ch, snd, pri, cool) && id > 0 && id < lastEvent.Length) lastEvent[id] = now;
+            }
+
+            static void Map(int id, out SoundChannel ch, out string snd, out int pri, out double cool)
+            {
+                ch = eventChannel; snd = ""; pri = 1; cool = 3.0;
+                switch (id)
+                {
+                    case NEW_TARGET: ch = eventChannel; snd = "CAP_F-16_NewContact_Air"; pri = 2; cool = 5.0; break;
+                    case RWR_LOCK: ch = rwrChannel; snd = "CAP_F-16_RWR_Lock_Short"; pri = 3; cool = 4.0; break;
+                    case RWR_LAUNCH: ch = rwrChannel; snd = "CAP_F-16_RWR_Launch_Short"; pri = 4; cool = 2.0; break;
+                    case PULL_UP: ch = warningChannel; snd = "F-18PullUp"; pri = 6; cool = 4.0; break;
+                    case BINGO: ch = warningChannel; snd = "F-18Bingo"; pri = 2; cool = 30.0; break;
+                    case ENGINE_LEFT: ch = warningChannel; snd = "F-18EngineFireLeft"; pri = 5; cool = 12.0; break;
+                    case ENGINE_RIGHT: ch = warningChannel; snd = "F-18EngineFireRight"; pri = 5; cool = 12.0; break;
+                }
+            }
+
             /// <summary>
             /// Request a sound on the warning channel (altitude, RWR).
             /// Highest priority request each tick wins.
             /// </summary>
             public static void RequestWarning(string sound, int priority, double loopSeconds = 5.0)
             {
-                if (warningChannel == null) return;
-                if (priority >= warningChannel.requestedPriority)
+                Request(warningChannel, sound, priority, loopSeconds);
+            }
+
+            static bool Request(SoundChannel ch, string sound, int priority, double loopSeconds)
+            {
+                if (ch == null) return false;
+                if (priority >= ch.requestedPriority)
                 {
-                    warningChannel.requestedSound = sound;
-                    warningChannel.requestedPriority = priority;
-                    warningChannel.requestedLoopSeconds = loopSeconds;
+                    ch.requestedSound = sound;
+                    ch.requestedPriority = priority;
+                    ch.requestedLoopSeconds = loopSeconds;
+                    return true;
                 }
+                return false;
             }
 
             public static void Tick(double currentSeconds)
             {
-                if (warningChannel != null)
-                {
-                    TickChannel(warningChannel, currentSeconds);
-                    warningChannel.requestedSound = "";
-                    warningChannel.requestedPriority = PRIORITY_NONE;
-                }
+                TickAndReset(warningChannel, currentSeconds);
+                TickAndReset(rwrChannel, currentSeconds);
+                if (eventChannel != rwrChannel)
+                    TickAndReset(eventChannel, currentSeconds);
+            }
+
+            static void TickAndReset(SoundChannel ch, double currentSeconds)
+            {
+                if (ch == null) return;
+                TickChannel(ch, currentSeconds);
+                ch.requestedSound = "";
+                ch.requestedPriority = PRIORITY_NONE;
             }
 
             const int FRAME_DELAY = 3;
@@ -154,6 +201,8 @@ namespace IngameScript
                 if (ch.state == 0)
                 {
                     string desired = ch.requestedSound ?? "";
+                    if (SE(desired) && !SE(ch.activeSound) && currentSeconds - ch.playStartSeconds < ch.activeLoopSeconds)
+                        desired = ch.activeSound;
                     bool needsChange = false;
 
                     if (desired != ch.activeSound)

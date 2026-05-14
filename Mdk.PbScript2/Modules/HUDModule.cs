@@ -304,6 +304,7 @@ namespace IngameScript
 
                     Vector2 surfaceSize = SS(hud);
                     var selectedEnemy = myjet.GetSelectedEnemy();
+                    DrawUnifiedContactBrackets(hud, worldToCockpitMatrix, shooterPosition, currentVelocity, selectedEnemy);
 
                     // Auto-fire gating: enable gatlings when the boresight overlaps the lead pip,
                     // disable otherwise. manualfire bypasses this — UpdateThrottleControl owns
@@ -383,7 +384,7 @@ namespace IngameScript
                 }
 
                 // ---- Warning conditions (high-priority alerts) ----
-                bool warning = SystemManager.AltitudeWarningActive;
+                bool warning = SystemManager.AltitudeWarningActive || myjet.LeftEngineBad || myjet.RightEngineBad;
 
                 if (!caution && !warning) return;
 

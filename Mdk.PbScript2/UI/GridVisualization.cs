@@ -246,8 +246,8 @@ namespace IngameScript
                 float col = w / 4f;
                 DrawSummaryCell(x, y, col, "BLOCKS", $"{cur}/{orig}", airC);
                 DrawSummaryCell(x + col, y, col, "AIRFRAME", $"{air * 100,3:F0}%", airC);
-                DrawSummaryCell(x + col * 2f, y, col, "THR USE", $"{useFn}/{useTot}", useFn < useTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
-                DrawSummaryCell(x + col * 3f, y, col, "THR ALL", $"{allFn}/{allTot}", allFn < allTot ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
+                DrawSummaryCell(x + col * 2f, y, col, "THR USE", $"{useFn}/{useTot}", useFn < useTot || jet.LeftEngineBad || jet.RightEngineBad ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
+                DrawSummaryCell(x + col * 3f, y, col, "THR ALL", $"{allFn}/{allTot}", allFn < allTot || jet.LeftEngineBad || jet.RightEngineBad ? MFDTheme.WARN : MFDTheme.BRIGHT_TEXT);
             }
 
             static void DrawSummaryCell(float x, float y, float w, string label, string value, Color valueColor)
@@ -275,9 +275,9 @@ namespace IngameScript
                 float s = Mn(w * 0.43f, h - 64f);
                 float cy = y + 20f + s * 0.5f;
                 DrawDial(x + w * 0.28f, cy, s, "L", Pct(jet.LeftUseCurKN, jet.LeftUseMaxKN),
-                    $"{jet.LeftAllFn}/{jet.LeftAllTot}", jet.LeftAllFn < jet.LeftAllTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                    $"{jet.LeftAllFn}/{jet.LeftAllTot}", jet.LeftEngineBad ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
                 DrawDial(x + w * 0.72f, cy, s, "R", Pct(jet.RightUseCurKN, jet.RightUseMaxKN),
-                    $"{jet.RightAllFn}/{jet.RightAllTot}", jet.RightAllFn < jet.RightAllTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
+                    $"{jet.RightAllFn}/{jet.RightAllTot}", jet.RightEngineBad ? MFDTheme.WARN : MFDTheme.STATUS_VAL);
                 int lFn = jet.LeftAbFn, lTot = jet.LeftAbTot, rFn = jet.RightAbFn, rTot = jet.RightAbTot;
                 float diff = jet.LeftUseCurKN - jet.RightUseCurKN;
                 DrawTinyLabelValue(x, y + h - 52f, w, "AB", $"{lFn + rFn}/{lTot + rTot}", lFn + rFn < lTot + rTot ? MFDTheme.WARN : MFDTheme.STATUS_VAL);

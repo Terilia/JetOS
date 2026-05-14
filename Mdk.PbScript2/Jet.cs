@@ -112,9 +112,12 @@ namespace IngameScript
             public int LeftUseFn, LeftUseTot, RightUseFn, RightUseTot;
             public int LeftAllFn, LeftAllTot, RightAllFn, RightAllTot;
             public int LeftAbFn, LeftAbTot, RightAbFn, RightAbTot;
+            public int LeftAllDam, RightAllDam, LeftAllMax, RightAllMax;
             public float LeftUseCurKN, LeftUseMaxKN, RightUseCurKN, RightUseMaxKN, LeftAbCurKN, RightAbCurKN;
             double engineClassifyAge = double.MaxValue;
             const double ENGINE_CLASSIFY_SECONDS = 1.0;
+            public bool LeftEngineBad { get { return LeftAllMax > 0 && (LeftAllTot < LeftAllMax || LeftAllFn < LeftAllTot || LeftAllDam > 0); } }
+            public bool RightEngineBad { get { return RightAllMax > 0 && (RightAllTot < RightAllMax || RightAllFn < RightAllTot || RightAllDam > 0); } }
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -221,7 +224,7 @@ namespace IngameScript
                 for (int i = 0; i < _thrustersbackwards.Count; i++)
                 {
                     var t = _thrustersbackwards[i];
-                    if (t == null) continue;
+                    if (t == null || !t.IsSameConstructAs(_cockpit)) continue;
                     Vector3I dir = t.GridThrustDirection;
                     bool forwardPropulsion = dir == FORWARD_PROPULSION_DIRECTION;
                     bool reversePropulsion = dir == REVERSE_PROPULSION_DIRECTION;
@@ -259,23 +262,26 @@ namespace IngameScript
             {
                 CacheEngineSide(leftEnginesAll, leftABAll, leftEngines, leftAB,
                     out LeftAllFn, out LeftAllTot, out LeftUseFn, out LeftUseTot,
-                    out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAbCurKN);
+                    out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAbCurKN, out LeftAllDam);
                 CacheEngineSide(rightEnginesAll, rightABAll, rightEngines, rightAB,
                     out RightAllFn, out RightAllTot, out RightUseFn, out RightUseTot,
-                    out RightAbFn, out RightAbTot, out RightUseCurKN, out RightUseMaxKN, out RightAbCurKN);
+                    out RightAbFn, out RightAbTot, out RightUseCurKN, out RightUseMaxKN, out RightAbCurKN, out RightAllDam);
+                if (LeftAllTot > LeftAllMax) LeftAllMax = LeftAllTot;
+                if (RightAllTot > RightAllMax) RightAllMax = RightAllTot;
             }
 
             static void CacheEngineSide(List<IMyThrust> allEng, List<IMyThrust> allAb,
                 List<IMyThrust> useEng, List<IMyThrust> useAb,
                 out int allFn, out int allTot, out int useFn, out int useTot,
-                out int abFn, out int abTot, out float useCur, out float useMax, out float abCur)
+                out int abFn, out int abTot, out float useCur, out float useMax, out float abCur, out int allDam)
             {
-                int af, at, ef, et;
-                GetEngineHealth(allEng, out af, out at);
-                GetEngineHealth(allAb, out abFn, out abTot);
+                int af, at, ef, et, ad, abd;
+                GetEngineHealth(allEng, out af, out at, out ad);
+                GetEngineHealth(allAb, out abFn, out abTot, out abd);
                 allFn = af + abFn; allTot = at + abTot;
-                GetEngineHealth(useEng, out ef, out et);
-                GetEngineHealth(useAb, out af, out at);
+                allDam = ad + abd;
+                GetEngineHealth(useEng, out ef, out et, out ad);
+                GetEngineHealth(useAb, out af, out at, out abd);
                 useFn = ef + af; useTot = et + at;
                 float cur, max, abMax;
                 GetEngineThrust(useEng, out cur, out max);
@@ -405,6 +411,7 @@ namespace IngameScript
                 {
                     if (entityId != 0) _entityIdIndex[entityId] = enemyList.Count;
                     enemyList.Add(contact);
+                    SoundManager.Event(SoundManager.NEW_TARGET);
                 }
             }
 
@@ -579,16 +586,26 @@ namespace IngameScript
             /// <summary>
             /// Returns (functional, total) count for an engine group.
             /// </summary>
-            public static void GetEngineHealth(List<IMyThrust> engines, out int functional, out int total)
+            public static void GetEngineHealth(List<IMyThrust> engines, out int functional, out int total, out int damaged)
             {
                 total = engines.Count;
                 functional = 0;
+                damaged = 0;
                 for (int i = 0; i < engines.Count; i++)
                 {
                     var e = engines[i];
                     if (e != null && e.IsFunctional)
                         functional++;
+                    if (EngineDamaged(e))
+                        damaged++;
                 }
+            }
+
+            static bool EngineDamaged(IMyThrust e)
+            {
+                if (e == null || !e.IsFunctional) return true;
+                var s = e.CubeGrid.GetCubeBlock(e.Position);
+                return s == null || s.CurrentDamage > 0.01f;
             }
 
             /// <summary>

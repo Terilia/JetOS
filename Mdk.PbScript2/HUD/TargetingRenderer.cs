@@ -215,6 +215,44 @@ namespace IngameScript
                 SpriteHelpers.Tt(aspectText, targetScreenPos.X, textY + 24f, textScale, bracketColor);
             }
 
+            private void DrawUnifiedContactBrackets(
+                IMyTextSurface hud,
+                MatrixD worldToCockpitMatrix,
+                Vector3D shooterPosition,
+                Vector3D shooterVelocity,
+                Jet.EnemyContact? selected
+            )
+            {
+                if (hud == null || myjet == null) return;
+                for (int i = 0; i < myjet.enemyList.Count; i++)
+                {
+                    var c = myjet.enemyList[i];
+                    if (selected.HasValue && c.Matches(selected.Value)) continue;
+                    Vector3D p = c.Position + (c.Velocity - shooterVelocity) * SystemManager.DeltaSeconds;
+                    DrawSimpleHudBracket(hud, worldToCockpitMatrix, shooterPosition, p, Cr(myjet.GetEnemyContactColor(c), 0.58f));
+                }
+
+                var friends = Datalink.GetActiveFriendlies();
+                for (int i = 0; i < friends.Count; i++)
+                    DrawSimpleHudBracket(hud, worldToCockpitMatrix, shooterPosition, friends[i].Position, Cr(Color.DeepSkyBlue, 0.78f));
+            }
+
+            private void DrawSimpleHudBracket(IMyTextSurface hud, MatrixD worldToCockpitMatrix, Vector3D shooterPosition, Vector3D targetPosition, Color color)
+            {
+                double range = VDi(shooterPosition, targetPosition);
+                if (range < 1) return;
+                Vector3D local = VTN(targetPosition - shooterPosition, worldToCockpitMatrix);
+                if (Ab(local.Z) < MIN_Z_FOR_PROJECTION)
+                    local.Z = -MIN_Z_FOR_PROJECTION;
+                if (local.Z >= 0) return;
+
+                Vector2 surfaceSize = SS(hud);
+                Vector2 pos = SpriteHelpers.ProjectToScreen(local, surfaceSize / 2f, surfaceSize);
+                if (pos.X < 0 || pos.X > surfaceSize.X || pos.Y < 0 || pos.Y > surfaceSize.Y) return;
+                float s = Cl((float)(2200.0 / range), 16f, 52f) * 1.6f;
+                SpriteHelpers.Sp(TEX_TGT_BRACKET, pos.X, pos.Y, s, s, color);
+            }
+
             private void DrawGunFunnel(
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,

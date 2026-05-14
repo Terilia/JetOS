@@ -785,7 +785,7 @@ namespace IngameScript
             {
                 if (activeRwrThreatCount > 0)
                 {
-                    SoundManager.RequestWarning("Alert 2", SoundManager.PRIORITY_RWR, 1.0);
+                    SoundManager.Event(SoundManager.RWR_LOCK);
                 }
             }
 
