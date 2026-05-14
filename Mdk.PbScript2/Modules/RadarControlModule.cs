@@ -12,6 +12,8 @@ namespace IngameScript
         {
             private Jet myJet;
             private List<RadarTrackingModule> allRadars = new List<RadarTrackingModule>();
+            private IMyTerminalBlock pluginFeedBlock;
+            private string pluginFeedRaw = "";
 
             // ==== Sequential Activation State Machine ====
             // Pool radars activate one at a time in a chain:
@@ -82,14 +84,16 @@ namespace IngameScript
                 myJet = jet;
                 name = "Radar";
 
-                // Auto-detect all AI Flight/Combat pairs (1-99)
+                pluginFeedBlock = GetRadarBlock<IMyTerminalBlock>("JetOS Radar Feed");
+
+                // Auto-detect all AI Flight/Combat pairs (1-99), allowing names tagged with [JO].
                 for (int i = 1; i <= 99; i++)
                 {
-                    string flightName = i == 1 ? "AI Flight" : $"AI Flight {i}";
-                    string combatName = i == 1 ? "AI Combat" : $"AI Combat {i}";
+                    string flightName = "AI Flight" + (i == 1 ? "" : " " + i);
+                    string combatName = "AI Combat" + (i == 1 ? "" : " " + i);
 
-                    var flightBlock = program.GridTerminalSystem.GetBlockWithName(flightName) as IMyFlightMovementBlock;
-                    var combatBlock = program.GridTerminalSystem.GetBlockWithName(combatName) as IMyOffensiveCombatBlock;
+                    var flightBlock = GetRadarBlock<IMyFlightMovementBlock>(flightName);
+                    var combatBlock = GetRadarBlock<IMyOffensiveCombatBlock>(combatName);
 
                     if (flightBlock != null && combatBlock != null)
                     {
@@ -152,7 +156,6 @@ namespace IngameScript
                         options.Add("RWR SCAN");
                     }
                 }
-
                 // Per-radar state display
                 for (int i = 0; i < allRadars.Count; i++)
                 {
@@ -226,7 +229,12 @@ namespace IngameScript
 
             public override void Tick()
             {
-                if (allRadars.Count == 0) return;
+                if (allRadars.Count == 0)
+                {
+                    ProcessPluginFeed();
+                    myJet.UpdateEnemyDecay();
+                    return;
+                }
 
                 // Accumulate absolute time for radar tracking
                 accumulatedTimeTicks += ParentProgram.Runtime.TimeSinceLastRun.Ticks;
@@ -379,8 +387,56 @@ namespace IngameScript
                 // ============================================================
                 // PHASE 5: Decay old contacts
                 // ============================================================
+                ProcessPluginFeed();
                 myJet.UpdateEnemyDecay();
 
+            }
+
+            private T GetRadarBlock<T>(string targetName) where T : class, IMyTerminalBlock
+            {
+                var b = ParentProgram.GridTerminalSystem.GetBlockWithName(targetName + " [JO]") as T;
+                if (b == null || (myJet._cockpit != null && !b.IsSameConstructAs(myJet._cockpit)))
+                    b = ParentProgram.GridTerminalSystem.GetBlockWithName(targetName) as T;
+                return b != null && (myJet._cockpit == null || b.IsSameConstructAs(myJet._cockpit)) ? b : null;
+            }
+
+            private void ProcessPluginFeed()
+            {
+                if (pluginFeedBlock == null) return;
+
+                string raw = pluginFeedBlock.CustomData;
+                if (SE(raw) || raw == pluginFeedRaw || !raw.StartsWith("JORAD|")) return;
+
+                pluginFeedRaw = raw;
+
+                string[] lines = raw.Split('\n');
+                int feedContactCount = 0;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    string line = lines[i].Trim();
+                    if (!line.StartsWith("R|")) continue;
+
+                    string[] p = line.Split('|');
+                    if (p.Length < 9) continue;
+
+                    long targetId;
+                    double px, py, pz, vx, vy, vz;
+                    long.TryParse(p[1], out targetId);
+                    if (!TryParseFeedDouble(p[2], out px) || !TryParseFeedDouble(p[3], out py) || !TryParseFeedDouble(p[4], out pz)) continue;
+                    if (!TryParseFeedDouble(p[5], out vx) || !TryParseFeedDouble(p[6], out vy) || !TryParseFeedDouble(p[7], out vz)) continue;
+
+                    Vector3D pos = new Vector3D(px, py, pz);
+                    if (pos.LengthSquared() < 1.0) continue;
+
+                    string name = p[8];
+                    myJet.UpdateOrAddEnemy(pos, new Vector3D(vx, vy, vz), name, 100 + feedContactCount, targetId);
+                    feedContactCount++;
+                }
+            }
+
+            private static bool TryParseFeedDouble(string s, out double value)
+            {
+                return double.TryParse(s, out value);
             }
 
             // ============================================================

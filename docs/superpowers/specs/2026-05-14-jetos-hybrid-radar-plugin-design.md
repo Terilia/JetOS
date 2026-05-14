@@ -46,7 +46,7 @@ JetOS has two radar providers:
 
 2. Patched provider
 
-   A server-side Pulsar/plugin/mod component discovers `[JO]` AI Combat blocks and publishes a multi-contact radar feed for JetOS. JetOS detects the feed heartbeat and ingests the plugin contacts. If the heartbeat expires, JetOS falls back to the vanilla provider without pilot action.
+   A server-side Pulsar/plugin/mod component discovers `[JO]` AI Combat blocks and publishes a multi-contact radar feed for JetOS. JetOS ingests each new feed sequence. If the feed stops changing, plugin contacts are no longer refreshed and the normal JetOS target decay returns the jet to vanilla radar behavior without pilot action.
 
 ## Patched Provider Behavior
 
@@ -73,22 +73,27 @@ The first bridge is a text panel or LCD block named `JetOS Radar Feed [JO]` on t
 The plugin publishes compact contact records:
 
 - feed version
-- heartbeat timestamp or frame
-- radar block entity id
-- radar slot index
+- sequence number
 - target entity id
 - target name or type label when available
 - world position
 - linear velocity
-- relationship or target kind
-- contact timestamp
+
+Current compact feed format:
+
+```text
+JORAD|1|<sequence>
+R|<targetEntityId>|<px>|<py>|<pz>|<vx>|<vy>|<vz>|<name>
+```
+
+The plugin writes one `R` line per assigned tagged combat block in sorted radar order. JetOS uses the feed row as the contact source id when merging into the existing target list.
 
 JetOS ingests these records into the existing datalink-backed enemy/target list. The active target remains a pilot/JetOS decision, not a plugin decision.
 
 ## Fallback And Failure Modes
 
 - No plugin feed: use vanilla provider only.
-- Plugin feed stale: discard plugin contacts and return to vanilla provider.
+- Plugin feed stale or stopped: plugin contacts are not refreshed and age out through normal target decay.
 - Tagged combat block missing matching flight block: plugin can still use the combat block for contact feed, but JetOS should mark the slot degraded if flight-derived data is unavailable.
 - Block disabled, damaged, unpowered, or incomplete: remove that radar slot from plugin capacity.
 - Duplicate contacts: merge by target entity id first, then by normalized name and proximity if entity id is unavailable.
@@ -100,7 +105,7 @@ JetOS changes:
 
 - Normalize radar block names by removing `[JO]` during discovery.
 - Add a plugin-feed reader that can merge external radar contacts into the existing target list.
-- Add provider status reporting so the pilot can tell whether radar is in vanilla or patched mode.
+- Keep PB-side status minimal to stay under the programmable-block size limit; the existing target count reflects ingested plugin contacts.
 - Keep current one-radar vanilla behavior intact.
 
 Plugin changes:
