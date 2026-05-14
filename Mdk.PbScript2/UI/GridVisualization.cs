@@ -10,6 +10,7 @@ namespace IngameScript
         static class GridVisualization
         {
             static int originalBlockCount;
+            static int lastConnectedBays;
             static List<IMyTerminalBlock> gridBlocks = new List<IMyTerminalBlock>();
             static List<MySprite> cachedSprites = new List<MySprite>();
 
@@ -63,6 +64,7 @@ namespace IngameScript
                 if (gridBot < gridTop + 40f) gridBot = airBot - 16f;
 
                 // Staggered rebuild state machine
+                AccountBayChanges(jet);
                 if (rebuildPhase > 0)
                 {
                     RunRebuildPhase(program, area, gridTop, gridBot);
@@ -213,6 +215,17 @@ namespace IngameScript
                         rebuildPhase = 0;
                         break;
                 }
+            }
+
+            static void AccountBayChanges(Jet jet)
+            {
+                if (jet == null) return;
+                int n = 0;
+                for (int i = 0; i < jet._bays.Count; i++)
+                    if (jet._bays[i]?.IsConnected == true) n++;
+                if (lastConnectedBays > n && originalBlockCount > 17)
+                    originalBlockCount -= (lastConnectedBays - n) * 17;
+                lastConnectedBays = n;
             }
 
             static void DrawAirframeBand(float x, float y, float w, float h)

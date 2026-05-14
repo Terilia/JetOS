@@ -19,7 +19,7 @@ The active launch command uses `%APPDATA%\Pulsar\Interim.exe`, and the current g
 
 - `LcdBoosterClient.dll`
 - `CameraLCD-CAMOV.dll`
-- `JetOSRadarFeed.dll`
+- `JetOSRadarFeed.dll` is a local no-op shim. The radar feed terminal property is server-side only; enabling it from Pulsar breaks the programmable block terminal UI and cannot feed multiplayer server PB scripts.
 
 `ExternalMods/Built/Torch` is for Torch dedicated server deployment:
 

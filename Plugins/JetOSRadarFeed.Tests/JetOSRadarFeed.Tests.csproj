@@ -9,5 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\JetOSRadarFeed\JetOSRadarFeed.csproj" />
+    <Reference Include="VRage.Game" HintPath="$(Bin64)\VRage.Game.dll" Private="True" />
   </ItemGroup>
 </Project>

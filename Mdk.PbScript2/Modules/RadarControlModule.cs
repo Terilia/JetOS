@@ -2,6 +2,7 @@ using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using System.Collections.Generic;
+using System.Text;
 using VRageMath;
 
 namespace IngameScript
@@ -12,7 +13,7 @@ namespace IngameScript
         {
             private Jet myJet;
             private List<RadarTrackingModule> allRadars = new List<RadarTrackingModule>();
-            private IMyTerminalBlock pluginFeedBlock;
+            private bool pluginFeedAvailable;
             private string pluginFeedRaw = "";
 
             // ==== Sequential Activation State Machine ====
@@ -20,7 +21,8 @@ namespace IngameScript
             //   IDLE → SEARCHING → LOCKED
             // Only 1 radar is SEARCHING at any time. When it finds a new target
             // (not already locked by another), it transitions to LOCKED and the
-            // next IDLE radar becomes SEARCHING.
+            // next IDLE radar becomes SEARCHING. Duplicate sightings yield so
+            // one sticky SE target cannot block the chain.
             private enum RadarRole { IDLE, SEARCHING, LOCKED, RWR }
 
             private class RadarState
@@ -84,7 +86,7 @@ namespace IngameScript
                 myJet = jet;
                 name = "Radar";
 
-                pluginFeedBlock = GetRadarBlock<IMyTerminalBlock>("JetOS Radar Feed");
+                pluginFeedAvailable = ParentProgram.Me.GetProperty("JetOSRadarFeed") != null;
 
                 // Auto-detect all AI Flight/Combat pairs (1-99), allowing names tagged with [JO].
                 for (int i = 1; i <= 99; i++)
@@ -402,10 +404,12 @@ namespace IngameScript
 
             private void ProcessPluginFeed()
             {
-                if (pluginFeedBlock == null) return;
+                if (!pluginFeedAvailable) return;
 
-                string raw = pluginFeedBlock.CustomData;
-                if (SE(raw) || raw == pluginFeedRaw || !raw.StartsWith("JORAD|")) return;
+                StringBuilder sb = ParentProgram.Me.GetValue<StringBuilder>("JetOSRadarFeed");
+                if (sb == null) return;
+                string raw = sb.ToString();
+                if (SE(raw) || raw == pluginFeedRaw || !raw.StartsWith("JORAD|2|")) return;
 
                 pluginFeedRaw = raw;
 
@@ -413,11 +417,8 @@ namespace IngameScript
                 int feedContactCount = 0;
                 for (int i = 1; i < lines.Length; i++)
                 {
-                    string line = lines[i].Trim();
-                    if (!line.StartsWith("R|")) continue;
-
-                    string[] p = line.Split('|');
-                    if (p.Length < 9) continue;
+                    string[] p = lines[i].Trim().Split('|');
+                    if (p.Length < 9 || p[0] != "R") continue;
 
                     long targetId;
                     double px, py, pz, vx, vy, vz;
@@ -428,9 +429,7 @@ namespace IngameScript
                     Vector3D pos = new Vector3D(px, py, pz);
                     if (pos.LengthSquared() < 1.0) continue;
 
-                    string name = p[8];
-                    myJet.UpdateOrAddEnemy(pos, new Vector3D(vx, vy, vz), name, 100 + feedContactCount, targetId);
-                    feedContactCount++;
+                    myJet.UpdateOrAddEnemy(pos, new Vector3D(vx, vy, vz), p[8], 100 + feedContactCount++, targetId);
                 }
             }
 
@@ -457,27 +456,26 @@ namespace IngameScript
                 long entityId = radar.TrackedEntityId;
                 string targetName = radar.TrackedObjectName;
 
-                // Check if this target is already LOCKED by another radar
-                bool alreadyLocked = IsEntityLockedByAnother(entityId, targetName, index, poolSize);
-
                 // Always feed enemy list — even for already-locked targets,
                 // the SEARCHING radar is a valid data source
-                string feedName = !SE(targetName) ? targetName : "";
-                myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
+                targetName = !SE(targetName) ? targetName : "";
+                myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, targetName, index, entityId);
 
-                if (!alreadyLocked)
+                if (IsEntityLockedByAnother(entityId, targetName, index, poolSize))
+                {
+                    DemoteToIdle(index);
+                }
+                else
                 {
                     // NEW target found! Lock onto it
                     state.Role = RadarRole.LOCKED;
                     state.TrackedEntityId = entityId;
-                    state.TrackedName = feedName;
+                    state.TrackedName = targetName;
                     state.SecondsSinceLastSeen = 0;
-
-                    // Activate next IDLE radar as SEARCHING
-                    ActivateNextSearcher(index, poolSize);
                 }
-                // If already locked by another, stay SEARCHING — SE will naturally
-                // cycle to a different target via UpdateTargetInterval
+
+                // Activate next IDLE radar as SEARCHING
+                ActivateNextSearcher(index, poolSize);
             }
 
             // ============================================================

@@ -180,9 +180,9 @@ namespace IngameScript
 
             private void DrawGForceIndicator(double gForces, double peakGForce)
             {
-                const float PADDING = 10f;
-                const float TEXT_SCALE = 0.8f;
-                const float LINE_HEIGHT = 20f;
+                float PADDING = 10f;
+                float TEXT_SCALE = 0.8f;
+                float LINE_HEIGHT = 20f;
 
                 string gForceText = $"G: {gForces:F1}";
                 SpriteHelpers.Tt(gForceText, PADDING, SY(hud) - PADDING - LINE_HEIGHT, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
@@ -193,12 +193,12 @@ namespace IngameScript
 
             private void DrawAOAIndexer(double aoa, Vector3D acceleration, double velocity)
             {
-                const float INDEXER_X = 100f;
+                float INDEXER_X = 100f;
                 float indexerY = SY(hud) / 2f;
-                const float SYMBOL_SIZE = 18f;
+                float SYMBOL_SIZE = 18f;
 
-                const double OPTIMAL_AOA_MIN = 8.0;
-                const double OPTIMAL_AOA_MAX = 15.0;
+                double OPTIMAL_AOA_MIN = 8.0;
+                double OPTIMAL_AOA_MAX = 15.0;
 
                 // Calculate stall percentage (using absolute AoA)
                 double absAoA = Ab(aoa);
@@ -332,12 +332,12 @@ namespace IngameScript
                 params LabelValue[] extraValues
             )
             {
-                const float Y_OFFSET_PER_VALUE = 30f;
-                const float X_OFFSET_FACTOR = 0.75f;
-                const float Y_OFFSET_FACTOR = 0.5f;
-                const float LABEL_COLUMN_OFFSET = 40f;
-                const float NUMBER_COLUMN_OFFSET = 40f;
-                const float TEXT_SCALE = 0.75f;
+                float Y_OFFSET_PER_VALUE = 30f;
+                float X_OFFSET_FACTOR = 0.75f;
+                float Y_OFFSET_FACTOR = 0.5f;
+                float LABEL_COLUMN_OFFSET = 40f;
+                float NUMBER_COLUMN_OFFSET = 40f;
+                float TEXT_SCALE = 0.75f;
 
                 float xoffset = centerX - centerX * X_OFFSET_FACTOR;
                 float yoffset = centerY - centerY * Y_OFFSET_FACTOR;
@@ -360,9 +360,9 @@ namespace IngameScript
             {
                 float t = (float)throttle / 100f;
 
-                const float BAR_W = 14f;
-                const float BAR_H = 100f;
-                const float BORDER = 1.5f;
+                float BAR_W = 14f;
+                float BAR_H = 100f;
+                float BORDER = 1.5f;
 
                 float barX = 5f;
                 float barY = SY(hud) - 170f;

@@ -5,22 +5,18 @@ namespace JetOSRadarFeed
 {
     public sealed class JetOSRadarFeedPlugin : IPlugin
     {
-        RadarFeedEngine _engine;
-
         public void Init(object gameInstance)
         {
-            _engine = new RadarFeedEngine(MyLog.Default.WriteLine);
-            MyLog.Default.WriteLine("JetOSRadarFeed: initialized.");
+            MyLog.Default.WriteLine("JetOSRadarFeed: Pulsar shim loaded; radar feed terminal property is Torch/server-only.");
         }
 
         public void Update()
         {
-            _engine?.Update();
         }
 
         public void Dispose()
         {
-            MyLog.Default.WriteLine("JetOSRadarFeed: disposed.");
+            MyLog.Default.WriteLine("JetOSRadarFeed: Pulsar shim disposed.");
         }
     }
 }
