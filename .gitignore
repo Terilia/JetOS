@@ -380,6 +380,9 @@ TARGETING_ANALYSIS.md
 /*.py
 image_display.cs
 
+# Local mod source/runtime links; distributable DLLs live in ExternalMods/Built.
+ExternalMods/Dev/
+
 # SE API analysis reports
 se_api_usage.json
 se_api_usage_report.txt
