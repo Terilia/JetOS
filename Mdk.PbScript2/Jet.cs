@@ -34,8 +34,9 @@ namespace IngameScript
             public static int IC, IP, IA;
 
             // Identity-based target selection
-            public string selectedEnemyName = "";
-            public long selectedEnemyEntityId = 0;
+            string selectedEnemyName = "";
+            long selectedEnemyEntityId;
+            int selectedEnemySourceIndex;
 
             // Enemy contact tracking with decay
             public struct EnemyContact
@@ -75,11 +76,7 @@ namespace IngameScript
                 /// </summary>
                 public bool Matches(EnemyContact other)
                 {
-                    if (EntityId != 0 && other.EntityId != 0)
-                        return EntityId == other.EntityId;
-                    if (!SE(Name) && !SE(other.Name))
-                        return Name == other.Name;
-                    return VDi(Position, other.Position) < 50.0;
+                    return SameTarget(EntityId, Name, SourceIndex, other.EntityId, other.Name, other.SourceIndex);
                 }
 
                 public uint GetDisplayHistory()
@@ -95,10 +92,9 @@ namespace IngameScript
 
             public List<EnemyContact> enemyList = new List<EnemyContact>();
             Dictionary<long, int> _entityIdIndex = new Dictionary<long, int>();
-            public const double CONTACT_DECAY_SECONDS = 30.0;   // wall-clock seconds without update before removal
-            public const double SELECTED_DECAY_SECONDS = 60.0;  // longer timeout for the pilot-selected target
+            const double CONTACT_DECAY_SECONDS = 30;   // wall-clock seconds without update before removal
             private double decayCheckAccum = 0;
-            private const double DECAY_CHECK_SECONDS = 1.0;      // re-check decay once per wall-clock second
+            private const double DECAY_CHECK_SECONDS = 1;      // re-check decay once per wall-clock second
 
             // Cached gravity vector (updated once per tick by SystemManager)
             public Vector3D CachedGravity = VZ;
@@ -118,6 +114,11 @@ namespace IngameScript
             const double ENGINE_CLASSIFY_SECONDS = 1.0;
             public bool LeftEngineBad { get { return LeftAllMax > 0 && (LeftAllTot < LeftAllMax || LeftAllFn < LeftAllTot || LeftAllDam > 0); } }
             public bool RightEngineBad { get { return RightAllMax > 0 && (RightAllTot < RightAllMax || RightAllFn < RightAllTot || RightAllDam > 0); } }
+
+            public static bool SameTarget(long aId, string aName, int aSource, long bId, string bName, int bSource)
+            {
+                return aId != 0 && bId != 0 ? aId == bId : aId == bId && aSource == bSource && !SE(aName) && aName == bName;
+            }
 
             public List<IMyShipMergeBlock> _bays;
             public List<IMyTerminalBlock> leftstab = new List<IMyTerminalBlock>();
@@ -322,8 +323,6 @@ namespace IngameScript
             /// </summary>
             public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex, long entityId = 0)
             {
-                const double PROXIMITY_SQ = 50.0 * 50.0; // 50m merge threshold, squared
-
                 int existingIndex = -1;
 
                 // Priority 1: Match by EntityId — O(1) dictionary lookup
@@ -335,12 +334,12 @@ namespace IngameScript
                         existingIndex = tmp;
                 }
 
-                // Priority 2: Match by name
-                if (existingIndex < 0 && !SE(name))
+                // Priority 2/3 are only for legacy no-id contacts. Real ids are authoritative.
+                if (entityId == 0 && existingIndex < 0 && !SE(name))
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
-                        if (enemyList[i].Name == name)
+                        if (SameTarget(0, name, sourceIndex, enemyList[i].EntityId, enemyList[i].Name, enemyList[i].SourceIndex))
                         {
                             existingIndex = i;
                             break;
@@ -348,12 +347,13 @@ namespace IngameScript
                     }
                 }
 
-                // Priority 3: Match by position proximity (for unnamed/unknown targets)
                 if (existingIndex < 0)
                 {
                     for (int i = 0; i < enemyList.Count; i++)
                     {
-                        if ((enemyList[i].Position - pos).LengthSquared() < PROXIMITY_SQ)
+                        if (entityId != 0 && enemyList[i].EntityId != 0 && enemyList[i].EntityId != entityId)
+                            continue;
+                        if ((enemyList[i].Position - pos).LengthSquared() < 2500)
                         {
                             existingIndex = i;
                             break;
@@ -364,32 +364,37 @@ namespace IngameScript
                 Vector3D accel = VZ;
                 if (existingIndex >= 0)
                 {
-                    if (SE(name))
-                        name = enemyList[existingIndex].Name;
-
                     double dt = GameSeconds - enemyList[existingIndex].LastSeen;
-                    if (dt > 0 && dt < 5.0) // <5s old
+                    if (dt > 0 && dt < 5) // <5s old
                     {
                         Vector3D rawAccel = (vel - enemyList[existingIndex].Velocity) / dt;
                         accel = enemyList[existingIndex].Acceleration * 0.6 + rawAccel * 0.4; // EMA α=0.4
                     }
                 }
 
-                if (existingIndex >= 0 && sourceIndex < 0)
+                if (existingIndex >= 0)
                 {
                     var old = enemyList[existingIndex];
-                    if (old.SourceIndex >= 0 && old.AgeSeconds <= 3.0)
+                    if (sourceIndex < 0 && old.SourceIndex >= 0 && old.AgeSeconds <= 3)
+                        return;
+                    if (sourceIndex >= 0 && sourceIndex < 100 && old.SourceIndex > 99 && old.AgeSeconds <= 3)
                         return;
                 }
 
-                EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, entityId, accel);
+                long contactId = entityId;
+                if (contactId == 0 && existingIndex >= 0)
+                    contactId = enemyList[existingIndex].EntityId;
+                if (existingIndex >= 0 && SE(name))
+                    name = enemyList[existingIndex].Name;
+
+                EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, contactId, accel);
 
                 // Carry over and advance tracking history
                 if (existingIndex >= 0)
                 {
                     var old = enemyList[existingIndex];
                     // Update EntityId index: remove old mapping if EntityId changed
-                    if (old.EntityId != 0 && old.EntityId != entityId)
+                    if (old.EntityId != 0 && old.EntityId != contactId)
                         _entityIdIndex.Remove(old.EntityId);
 
                     int elapsedSeconds = (int)(GameSeconds - old.LastHistoryShift);
@@ -405,18 +410,18 @@ namespace IngameScript
                     }
                     // else elapsedSeconds >= 30: history is all stale, new contact starts fresh with 1
                     enemyList[existingIndex] = contact;
-                    if (entityId != 0) _entityIdIndex[entityId] = existingIndex;
+                    if (contactId != 0) _entityIdIndex[contactId] = existingIndex;
                 }
                 else
                 {
-                    if (entityId != 0) _entityIdIndex[entityId] = enemyList.Count;
+                    if (contactId != 0) _entityIdIndex[contactId] = enemyList.Count;
                     enemyList.Add(contact);
                     SoundManager.Event(SoundManager.NEW_TARGET);
                 }
             }
 
             /// <summary>
-            /// Removes contacts older than CONTACT_DECAY_SECONDS (or SELECTED_DECAY_SECONDS if selected).
+            /// Removes contacts older than CONTACT_DECAY_SECONDS.
             /// Throttled to run at most once per DECAY_CHECK_SECONDS of wall-clock time.
             /// </summary>
             public void UpdateEnemyDecay()
@@ -431,10 +436,8 @@ namespace IngameScript
                 for (int i = enemyList.Count - 1; i >= 0; i--)
                 {
                     var c = enemyList[i];
-                    bool isSelected = (c.EntityId != 0 && c.EntityId == selectedEnemyEntityId)
-                        || (!SE(c.Name) && c.Name == selectedEnemyName);
-                    double timeout = isSelected ? SELECTED_DECAY_SECONDS : CONTACT_DECAY_SECONDS;
-                    if (c.AgeSeconds > timeout)
+                    bool isSelected = SameTarget(c.EntityId, c.Name, c.SourceIndex, selectedEnemyEntityId, selectedEnemyName, selectedEnemySourceIndex);
+                    if (c.AgeSeconds > CONTACT_DECAY_SECONDS)
                     {
                         if (isSelected) ClearSelection();
                         enemyList.RemoveAt(i);
@@ -455,26 +458,6 @@ namespace IngameScript
 
             // Reusable lists to reduce GC pressure
             private List<KeyValuePair<double, EnemyContact>> _sortBuffer = new List<KeyValuePair<double, EnemyContact>>();
-            private List<EnemyContact> _resultBuffer = new List<EnemyContact>();
-
-            /// <summary>
-            /// Gets the N closest enemies sorted by distance from cockpit.
-            /// Uses pre-allocated buffers to reduce garbage collection.
-            /// </summary>
-            public List<EnemyContact> GetClosestNEnemies(int n)
-            {
-                _resultBuffer.Clear();
-
-                var sorted = SortEnemiesByDistance();
-                int count = Mn(n, sorted.Count);
-                for (int i = 0; i < count; i++)
-                {
-                    _resultBuffer.Add(sorted[i].Value);
-                }
-
-                return _resultBuffer;
-            }
-
             private List<KeyValuePair<double, EnemyContact>> SortEnemiesByDistance()
             {
                 _sortBuffer.Clear();
@@ -495,25 +478,15 @@ namespace IngameScript
 
             public EnemyContact? GetSelectedEnemy()
             {
-                if (selectedEnemyEntityId != 0)
-                {
-                    for (int i = 0; i < enemyList.Count; i++)
-                    {
-                        if (enemyList[i].EntityId == selectedEnemyEntityId)
-                            return enemyList[i];
-                    }
-                }
-
-                if (!SE(selectedEnemyName))
-                {
-                    for (int i = 0; i < enemyList.Count; i++)
-                    {
-                        if (enemyList[i].Name == selectedEnemyName)
-                            return enemyList[i];
-                    }
-                }
-
+                for (int i = 0; i < enemyList.Count; i++)
+                    if (SameTarget(selectedEnemyEntityId, selectedEnemyName, selectedEnemySourceIndex, enemyList[i].EntityId, enemyList[i].Name, enemyList[i].SourceIndex))
+                        return enemyList[i];
                 return null;
+            }
+
+            public bool IsSelected(EnemyContact contact)
+            {
+                return SameTarget(selectedEnemyEntityId, selectedEnemyName, selectedEnemySourceIndex, contact.EntityId, contact.Name, contact.SourceIndex);
             }
 
             /// <summary>
@@ -528,6 +501,7 @@ namespace IngameScript
             {
                 selectedEnemyName = contact.Name;
                 selectedEnemyEntityId = contact.EntityId;
+                selectedEnemySourceIndex = contact.SourceIndex;
             }
 
             public void ClearSelection()

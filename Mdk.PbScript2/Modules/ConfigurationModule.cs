@@ -94,7 +94,7 @@ namespace IngameScript
                 AddConfig(C_GC, CFG_GUN_KP, "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
                 AddConfig(C_GC, CFG_GUN_MAX_RPM, "Max RPM", 30f, 5f, 60f, 5f, "RPM");
                 AddConfig(C_GC, CFG_GUN_LOCK_THRESHOLD, "Lock", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
-                AddConfig(C_GC, CFG_GUN_MAX_RANGE, "Range", 6000f, 1000f, 15000f, 500f, "m");
+                AddConfig(C_GC, CFG_GUN_MAX_RANGE, "Range", 4500f, 1000f, 15000f, 500f, "m");
                 AddConfig(C_GC, CFG_GUN_MUZZLE_VELOCITY, "Muzzle", 1100f, 200f, 2000f, 50f, "m/s");
 
                 // HUD TOGGLES (1=on, 0=off)

@@ -45,7 +45,6 @@ namespace IngameScript
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
             private const float MAX_ANGLE_RAD = MAX_ANGLE_DEG * (float)PI / 180f;
-            private const int INTERCEPT_ITERATIONS = 6;
             // D-term gain: how aggressively we track target LOS rate.
             // 1.0 = full feedforward; tune up for fast-moving targets, down for jitter.
             private const float KD_LOS = 1.0f;
@@ -266,9 +265,9 @@ namespace IngameScript
                     return;
                 }
 
-                var enemies = myJet.enemyList;
-                TrackTarget(leftTurret, enemies);
-                TrackTarget(rightTurret, enemies);
+                var selected = myJet.GetSelectedEnemy();
+                TrackTarget(leftTurret, selected);
+                TrackTarget(rightTurret, selected);
             }
 
             // Unified aiming: drives turret rotor/hinge to align gun with targetWorldDir.
@@ -374,7 +373,7 @@ namespace IngameScript
                 turret.PitchError = Ab(pitchDeg);
             }
 
-            private void TrackTarget(TurretAssembly turret, List<Jet.EnemyContact> enemies)
+            private void TrackTarget(TurretAssembly turret, Jet.EnemyContact? selected)
             {
                 turret.IsTracking = false;
 
@@ -384,49 +383,39 @@ namespace IngameScript
                 if (cockpit == null)
                     return;
 
+                if (!selected.HasValue)
+                {
+                    DriveTowardDirection(turret, WF(cockpit));
+                    return;
+                }
+
                 Vector3D gunPosition = GP(turret.Gun);
                 Vector3D shipForward = WF(cockpit);
 
                 Vector3D shooterVelocity = LV(cockpit);
-                Vector3D gravity = myJet.CachedGravity;
+                var enemy = selected.Value;
+                Vector3D toTarget = enemy.Position - gunPosition;
+                double distance = toTarget.Length();
 
-                // Find closest enemy within cone of ship's forward (fixed cone, not gun's moving forward)
-                Vector3D? bestTargetPos = null;
-                Vector3D bestTargetVel = VZ;
-                Vector3D bestTargetAccel = VZ;
-                double bestDistance = double.MaxValue;
-
-                for (int i = 0; i < enemies.Count; i++)
+                if (distance < 10)
                 {
-                    var enemy = enemies[i];
-                    Vector3D toTarget = enemy.Position - gunPosition;
-                    double distance = toTarget.Length();
-
-                    if (distance < 10) continue;
-
-                    Vector3D toTargetNorm = toTarget / distance;
-                    double angleRad = At2(VX(shipForward, toTargetNorm).Length(), VD(shipForward, toTargetNorm));
-
-                    if (angleRad <= MAX_ANGLE_RAD && distance <= MAX_ENGAGE_RANGE && distance < bestDistance)
-                    {
-                        bestTargetPos = enemy.Position;
-                        bestTargetVel = enemy.Velocity;
-                        bestTargetAccel = enemy.Acceleration;
-                        bestDistance = distance;
-                    }
+                    DriveTowardDirection(turret, WF(cockpit));
+                    return;
                 }
 
-                if (!bestTargetPos.HasValue)
+                Vector3D toTargetNorm = toTarget / distance;
+                double angleRad = At2(VX(shipForward, toTargetNorm).Length(), VD(shipForward, toTargetNorm));
+
+                if (angleRad > MAX_ANGLE_RAD || distance > MAX_ENGAGE_RANGE)
                 {
-                    // No target — return to ship forward
                     DriveTowardDirection(turret, WF(cockpit));
                     return;
                 }
 
                 // Spawn-delay compensation: one dt of relative motion between computing
                 // the lead and the bullet actually spawning. Matches HUD lead pip.
-                Vector3D spawnAdjustedTargetPos = bestTargetPos.Value
-                    + (bestTargetVel - shooterVelocity) * SystemManager.DeltaSeconds;
+                Vector3D spawnAdjustedTargetPos = enemy.Position
+                    + (enemy.Velocity - shooterVelocity) * SystemManager.DeltaSeconds;
                 turret.TargetPosition = spawnAdjustedTargetPos;
 
                 // Lead prediction
@@ -436,10 +425,8 @@ namespace IngameScript
 
                 bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(
                     gunPosition, shooterVelocity, MUZZLE_VELOCITY,
-                    spawnAdjustedTargetPos, bestTargetVel,
-                    INTERCEPT_ITERATIONS,
-                    out interceptPoint, out timeToIntercept, out aimPoint,
-                    bestTargetAccel);
+                    spawnAdjustedTargetPos, enemy.Velocity, myJet.CachedGravity,
+                    out interceptPoint, out timeToIntercept, out aimPoint);
 
                 if (!hasIntercept)
                     aimPoint = spawnAdjustedTargetPos;

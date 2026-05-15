@@ -358,11 +358,10 @@ namespace IngameScript
 
             static void DrawContacts(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr, Jet j)
             {
-                var sel = j.GetSelectedEnemy();
                 for (int i = 0; i < j.enemyList.Count; i++)
                 {
                     var e = j.enemyList[i];
-                    bool s = sel.HasValue && e.Matches(sel.Value);
+                    bool s = j.IsSelected(e);
                     Color c = e.IsStale ? MFDTheme.DIM_TEXT : s ? MFDTheme.BRIGHT_TEXT : j.GetEnemyContactColor(e);
                     DrawMapContact(cx, cy, ma, ppm, sp, jf, jr, e.Position, SE(e.Name) ? "TGT" : e.Name,
                         s ? TEX_C_HOSTILE : TEX_C_UNKNOWN, c, s, s);
@@ -420,7 +419,7 @@ namespace IngameScript
                 float dx = (float)VD(to, jr) * ppm, dy = -(float)VD(to, jf) * ppm;
                 bool off = Ab(dx) > h || Ab(dy) > h;
                 Vector2 p = ClipMap(cx, cy, dx, dy, h - 3f);
-                float z = (selected ? 15f : off ? 10f : 11f) * sizeScale;
+                float z = (selected ? 16f : off ? 11f : 12f) * sizeScale;
                 SpriteHelpers.Sp(sprite, p.X, p.Y, z, z, c);
                 if (!showInfo) return;
                 string n = SE(label) ? "TGT" : label;

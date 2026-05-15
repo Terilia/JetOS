@@ -121,7 +121,6 @@ namespace IngameScript
 
 
             // --- Shared Constants for renderers ---
-            internal const int INTERCEPT_ITERATIONS = 10;
             internal const double MIN_Z_FOR_PROJECTION = 0.1;
             internal const float RADAR_BOX_SIZE_PX = 100f;
             internal const float RADAR_BORDER_MARGIN = 10f;
@@ -304,7 +303,7 @@ namespace IngameScript
 
                     Vector2 surfaceSize = SS(hud);
                     var selectedEnemy = myjet.GetSelectedEnemy();
-                    DrawUnifiedContactBrackets(hud, worldToCockpitMatrix, shooterPosition, currentVelocity, selectedEnemy);
+                    DrawUnifiedContactBrackets(hud, worldToCockpitMatrix, shooterPosition, currentVelocity);
 
                     // Auto-fire gating: enable gatlings when the boresight overlaps the lead pip,
                     // disable otherwise. manualfire bypasses this — UpdateThrottleControl owns
@@ -315,7 +314,6 @@ namespace IngameScript
                     if (selectedEnemy.HasValue)
                     {
                         Vector3D activeTargetVel = selectedEnemy.Value.Velocity;
-                        Vector3D activeTargetAccel = selectedEnemy.Value.Acceleration;
                         // Spawn-delay compensation: one dt of relative motion between
                         // computing the lead and the bullet actually spawning.
                         Vector3D activeTargetPos = selectedEnemy.Value.Position
@@ -326,7 +324,7 @@ namespace IngameScript
                         Vector3D interceptPoint;
                         double timeToIntercept;
                         Vector3D aimPoint;
-                        bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(shooterPosition, currentVelocity, muzzleVelocity, activeTargetPos, activeTargetVel, INTERCEPT_ITERATIONS, out interceptPoint, out timeToIntercept, out aimPoint, activeTargetAccel);
+                        bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(shooterPosition, currentVelocity, muzzleVelocity, activeTargetPos, activeTargetVel, myjet.CachedGravity, out interceptPoint, out timeToIntercept, out aimPoint);
 
                         if (hasIntercept)
                         {

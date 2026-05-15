@@ -168,17 +168,17 @@ namespace IngameScript
             {
                 pos = default(Vector3D);
                 vel = VZ;
-                if (jet != null)
+                if (jet == null)
+                    return false;
+
+                var selected = jet.GetSelectedEnemy();
+                if (selected.HasValue)
                 {
-                    var selected = jet.GetSelectedEnemy();
-                    if (selected.HasValue)
-                    {
-                        pos = selected.Value.Position;
-                        vel = selected.Value.Velocity;
-                        return true;
-                    }
+                    pos = selected.Value.Position;
+                    vel = selected.Value.Velocity;
+                    return true;
                 }
-                return NavigationHelper.TryParseGps(SystemManager.GetCustomDataValue(CD_CACHED), out pos);
+                return false;
             }
 
             /// <summary>

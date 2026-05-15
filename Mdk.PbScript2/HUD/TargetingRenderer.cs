@@ -219,15 +219,14 @@ namespace IngameScript
                 IMyTextSurface hud,
                 MatrixD worldToCockpitMatrix,
                 Vector3D shooterPosition,
-                Vector3D shooterVelocity,
-                Jet.EnemyContact? selected
+                Vector3D shooterVelocity
             )
             {
                 if (hud == null || myjet == null) return;
                 for (int i = 0; i < myjet.enemyList.Count; i++)
                 {
                     var c = myjet.enemyList[i];
-                    if (selected.HasValue && c.Matches(selected.Value)) continue;
+                    if (myjet.IsSelected(c)) continue;
                     Vector3D p = c.Position + (c.Velocity - shooterVelocity) * SystemManager.DeltaSeconds;
                     DrawSimpleHudBracket(hud, worldToCockpitMatrix, shooterPosition, p, Cr(myjet.GetEnemyContactColor(c), 0.58f));
                 }

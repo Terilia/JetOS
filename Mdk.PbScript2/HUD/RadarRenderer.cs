@@ -136,8 +136,6 @@ namespace IngameScript
                 SpriteHelpers.Sp(TEX_OWN_SHIP, radarCenter.X, radarCenter.Y, radarRadius * 0.25f, radarRadius * 0.25f, HUD_PRIMARY);
 
                 // --- Draw contacts (reuses Pass 1 cache) ---
-                var selectedEnemy = myjet.GetSelectedEnemy();
-
                 for (int i = 0; i < n; i++)
                 {
                     var enemy = enemies[i];
@@ -178,12 +176,12 @@ namespace IngameScript
                         contactColor = Cr(100, 100, 100);
 
                     // Highlight selected enemy
-                    bool isSelected = selectedEnemy.HasValue && enemy.Matches(selectedEnemy.Value);
+                    bool isSelected = myjet.IsSelected(enemy);
 
                     // Selected: hostile diamond glyph (with armed line). Others: plain square.
                     // Visible content fills ~70% of canvas, so sprite size is ~1.5× iconSize.
                     string contactTex = isSelected ? TEX_C_HOSTILE : TEX_C_UNKNOWN;
-                    float iconSize = clamped ? 9f : 12f;
+                    float iconSize = clamped ? 10f : 13f;
                     SpriteHelpers.Sp(contactTex, pos.X, pos.Y, iconSize, iconSize, contactColor);
 
                     // Bearing line for dangerous/imminent threats

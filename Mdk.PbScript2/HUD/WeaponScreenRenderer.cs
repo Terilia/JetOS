@@ -90,7 +90,7 @@ namespace IngameScript
                     var enemies = myjet.GetEnemiesSortedByDistance();
                     if (enemies.Count > 0)
                     {
-                        DrawEnemyList(enemies, selected, shooterPosition, margin, secY, sw, contentBot);
+                        DrawEnemyList(enemies, shooterPosition, margin, secY, sw, contentBot);
                     }
                     else
                     {
@@ -226,7 +226,7 @@ namespace IngameScript
                 }
             }
 
-            private void DrawEnemyList(List<Jet.EnemyContact> enemies, Jet.EnemyContact? selected, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
+            private void DrawEnemyList(List<Jet.EnemyContact> enemies, Vector3D shooterPosition, float margin, float startY, float screenWidth, float contentBot)
             {
                 const float LINE_HEIGHT = 20f;
                 const float TEXT_SCALE = 0.55f;
@@ -239,7 +239,7 @@ namespace IngameScript
                 for (int i = 0; i < Mn(maxRows, enemies.Count); i++)
                 {
                     var contact = enemies[i];
-                    bool isSelected = IsContactSelected(contact, selected);
+                    bool isSelected = myjet.IsSelected(contact);
 
                     if (isSelected)
                     {
@@ -279,12 +279,6 @@ namespace IngameScript
                         MFDFrame.Txt($"+{enemies.Count - maxRows}", screenWidth / 2f, textY, 0.45f,
                         MFDTheme.DIM_TEXT, MFDTheme.AC);
                 }
-            }
-
-            private bool IsContactSelected(Jet.EnemyContact contact, Jet.EnemyContact? selected)
-            {
-                if (!selected.HasValue) return false;
-                return contact.Matches(selected.Value);
             }
 
             private static string ContactKey(Jet.EnemyContact contact)

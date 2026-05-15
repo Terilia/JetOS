@@ -369,13 +369,7 @@ namespace IngameScript
                 {
                     for (int i = 0; i < sorted.Count; i++)
                     {
-                        // Match by EntityId first, then Name+SourceIndex
-                        if (selected.Value.EntityId != 0 && sorted[i].EntityId == selected.Value.EntityId)
-                        {
-                            currentIndex = i;
-                            break;
-                        }
-                        if (sorted[i].Name == selected.Value.Name && sorted[i].SourceIndex == selected.Value.SourceIndex)
+                        if (sorted[i].Matches(selected.Value))
                         {
                             currentIndex = i;
                             break;
@@ -395,6 +389,8 @@ namespace IngameScript
                 var selected = _myJet.GetSelectedEnemy();
                 if (!selected.HasValue)
                 {
+                    if (!SE(GetCustomDataValue(CD_CACHED))) SetCustomDataValue(CD_CACHED, "");
+                    if (!SE(GetCustomDataValue("CachedSpeed"))) SetCustomDataValue("CachedSpeed", "");
                     return;
                 }
 

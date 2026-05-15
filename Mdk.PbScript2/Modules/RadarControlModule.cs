@@ -13,7 +13,6 @@ namespace IngameScript
         {
             private Jet myJet;
             private List<RadarTrackingModule> allRadars = new List<RadarTrackingModule>();
-            private bool pluginFeedAvailable;
             private string pluginFeedRaw = "";
 
             // ==== Sequential Activation State Machine ====
@@ -30,6 +29,7 @@ namespace IngameScript
                 public RadarRole Role;
                 public long TrackedEntityId;
                 public string TrackedName;
+                public Vector3D TrackedPosition;
                 public double SecondsSinceLastSeen;
                 // True once we've called ActivateBehavior_On for this radar at runtime
                 public bool BehaviorActivated;
@@ -75,18 +75,16 @@ namespace IngameScript
 
             // Activation cooldown: after calling ActivateBehavior_On, wait this long
             // (wall-clock) before reading data (SE needs time to process the action)
-            private const double ACTIVATION_COOLDOWN_SECONDS = 0.167;
+            private const double ACTIVATION_COOLDOWN_SECONDS = .167;
             // Wall-clock seconds before a LOCKED radar that lost its target reverts to IDLE
-            private const double LOST_TARGET_TIMEOUT_SECONDS = 2.0;
+            private const double LOST_TARGET_TIMEOUT_SECONDS = 2;
             // RWR stabilization delay before threat classification fires
-            private const double RWR_STABILIZATION_SECONDS = 0.5;
+            private const double RWR_STABILIZATION_SECONDS = .5;
 
             public RadarControlModule(Program program, Jet jet) : base(program)
             {
                 myJet = jet;
                 name = "Radar";
-
-                pluginFeedAvailable = ParentProgram.Me.GetProperty("JetOSRadarFeed") != null;
 
                 // Auto-detect all AI Flight/Combat pairs (1-99), allowing names tagged with [JO].
                 for (int i = 1; i <= 99; i++)
@@ -356,8 +354,7 @@ namespace IngameScript
                         var state = radarStates[i];
                         if (state.Role != RadarRole.LOCKED) continue;
 
-                        if ((selected.Value.EntityId != 0 && selected.Value.EntityId == state.TrackedEntityId) ||
-                            (!SE(selected.Value.Name) && selected.Value.Name == state.TrackedName))
+                        if (Jet.SameTarget(selected.Value.EntityId, selected.Value.Name, selected.Value.SourceIndex, state.TrackedEntityId, state.TrackedName, i))
                         {
                             IsTrackLocked = true;
                             break;
@@ -404,7 +401,7 @@ namespace IngameScript
 
             private void ProcessPluginFeed()
             {
-                if (!pluginFeedAvailable) return;
+                if (ParentProgram.Me.GetProperty("JetOSRadarFeed") == null) return;
 
                 StringBuilder sb = ParentProgram.Me.GetValue<StringBuilder>("JetOSRadarFeed");
                 if (sb == null) return;
@@ -427,7 +424,7 @@ namespace IngameScript
                     if (!TryParseFeedDouble(p[5], out vx) || !TryParseFeedDouble(p[6], out vy) || !TryParseFeedDouble(p[7], out vz)) continue;
 
                     Vector3D pos = new Vector3D(px, py, pz);
-                    if (pos.LengthSquared() < 1.0) continue;
+                    if (pos.LengthSquared() < 1) continue;
 
                     myJet.UpdateOrAddEnemy(pos, new Vector3D(vx, vy, vz), p[8], 100 + feedContactCount++, targetId);
                 }
@@ -450,7 +447,7 @@ namespace IngameScript
                     return; // Still scanning, nothing found yet
 
                 Vector3D targetPos = radar.TargetPosition;
-                if (targetPos.LengthSquared() < 1.0)
+                if (targetPos.LengthSquared() < 1)
                     return; // Stale/zero position
 
                 long entityId = radar.TrackedEntityId;
@@ -461,7 +458,7 @@ namespace IngameScript
                 targetName = !SE(targetName) ? targetName : "";
                 myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, targetName, index, entityId);
 
-                if (IsEntityLockedByAnother(entityId, targetName, index, poolSize))
+                if (IsEntityLockedByAnother(entityId, targetName, targetPos, index, poolSize))
                 {
                     DemoteToIdle(index);
                 }
@@ -471,6 +468,7 @@ namespace IngameScript
                     state.Role = RadarRole.LOCKED;
                     state.TrackedEntityId = entityId;
                     state.TrackedName = targetName;
+                    state.TrackedPosition = targetPos;
                     state.SecondsSinceLastSeen = 0;
                 }
 
@@ -490,7 +488,7 @@ namespace IngameScript
                 if (radar.IsTracking && radar.HasReceivedPosition)
                 {
                     Vector3D targetPos = radar.TargetPosition;
-                    if (targetPos.LengthSquared() < 1.0)
+                    if (targetPos.LengthSquared() < 1)
                     {
                         // Position is zero/stale
                         state.SecondsSinceLastSeen += dt;
@@ -505,10 +503,11 @@ namespace IngameScript
                     string targetName = radar.TrackedObjectName;
                     string feedName = !SE(targetName) ? targetName : state.TrackedName;
 
-                    if (entityId == state.TrackedEntityId)
+                    if (Jet.SameTarget(entityId, targetName, index, state.TrackedEntityId, state.TrackedName, index))
                     {
                         // Same target — feed and reset
                         myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, feedName, index, entityId);
+                        state.TrackedPosition = targetPos;
                         state.SecondsSinceLastSeen = 0;
                         if (!SE(targetName))
                             state.TrackedName = targetName;
@@ -518,12 +517,13 @@ namespace IngameScript
                         // SE switched to a different target
                         string newTargetName = !SE(targetName) ? targetName : "";
 
-                        if (!IsEntityLockedByAnother(entityId, newTargetName, index, poolSize))
+                        if (!IsEntityLockedByAnother(entityId, newTargetName, targetPos, index, poolSize))
                         {
                             // New target is NOT locked by anyone else — adopt it
                             myJet.UpdateOrAddEnemy(targetPos, radar.TargetVelocity, newTargetName, index, entityId);
                             state.TrackedEntityId = entityId;
                             state.TrackedName = newTargetName;
+                            state.TrackedPosition = targetPos;
                             state.SecondsSinceLastSeen = 0;
                         }
                         else
@@ -646,16 +646,15 @@ namespace IngameScript
             // ============================================================
             // Check if an entity is already LOCKED by another pool radar
             // ============================================================
-            private bool IsEntityLockedByAnother(long entityId, string name, int excludeIndex, int poolSize)
+            private bool IsEntityLockedByAnother(long entityId, string name, Vector3D pos, int excludeIndex, int poolSize)
             {
                 for (int i = 0; i < poolSize; i++)
                 {
                     if (i == excludeIndex) continue;
                     if (radarStates[i].Role != RadarRole.LOCKED) continue;
 
-                    if (entityId != 0 && radarStates[i].TrackedEntityId == entityId)
-                        return true;
-                    if (!SE(name) && radarStates[i].TrackedName == name)
+                    if (Jet.SameTarget(entityId, name, excludeIndex, radarStates[i].TrackedEntityId, radarStates[i].TrackedName, i)
+                        || !SE(name) && name == radarStates[i].TrackedName && (radarStates[i].TrackedPosition - pos).LengthSquared() < 2500)
                         return true;
                 }
                 return false;
@@ -745,7 +744,7 @@ namespace IngameScript
                     Vector3D enemyPos = radar.TargetPosition;
                     Vector3D enemyVel = radar.TargetVelocity;
 
-                    if (enemyPos.LengthSquared() < 1.0)
+                    if (enemyPos.LengthSquared() < 1)
                     {
                         if (state.CurrentEnemyName != "" || state.CurrentEnemyEntityId != 0)
                         {
@@ -760,9 +759,7 @@ namespace IngameScript
                     myJet.UpdateOrAddEnemy(enemyPos, enemyVel, feedName, radarIndex, enemyId);
                     activeRwrTrackCount++;
 
-                    bool enemyChanged = enemyId != 0
-                        ? enemyId != state.CurrentEnemyEntityId
-                        : enemyName != state.CurrentEnemyName;
+                    bool enemyChanged = !Jet.SameTarget(enemyId, enemyName, radarIndex, state.CurrentEnemyEntityId, state.CurrentEnemyName, radarIndex);
 
                     if (enemyChanged)
                     {
@@ -802,17 +799,17 @@ namespace IngameScript
                 Vector3D relativeVel = playerVel - enemyVel;
 
                 double range = relativePos.Length();
-                if (range < 1.0)
+                if (range < 1)
                     return false;
 
                 double relativeSpeed = relativeVel.Length();
                 double enemySpeed = enemyVel.Length();
 
-                if (relativeSpeed < 1.0)
+                if (relativeSpeed < 1)
                 {
-                    if (enemySpeed < 0.5) return false;
+                    if (enemySpeed < .5) return false;
                     double aspectAngleDeg = NavigationHelper.GetAspectAngleDeg(enemyVel, relativePos);
-                    return aspectAngleDeg < 30.0;
+                    return aspectAngleDeg < 30;
                 }
 
                 Vector3D losDirection = VN(relativePos);
@@ -821,16 +818,16 @@ namespace IngameScript
                 if (closingVelocity <= 0) return false;
 
                 double timeToClosestApproach = range / closingVelocity;
-                if (timeToClosestApproach > 300.0) return false;
+                if (timeToClosestApproach > 300) return false;
 
                 Vector3D ourFuturePos = playerPos + playerVel * timeToClosestApproach;
                 Vector3D enemyFuturePos = enemyPos + enemyVel * timeToClosestApproach;
                 double closestApproachDistance = VDi(ourFuturePos, enemyFuturePos);
 
-                if (closestApproachDistance > 500.0) return false;
+                if (closestApproachDistance > 500) return false;
 
                 double aspectAngleDeg2 = NavigationHelper.GetAspectAngleDeg(enemyVel, relativePos);
-                if (aspectAngleDeg2 > 90.0) return false;
+                if (aspectAngleDeg2 > 90) return false;
 
                 return true;
             }

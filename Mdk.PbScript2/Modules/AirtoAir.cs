@@ -84,12 +84,7 @@ namespace IngameScript
             {
                 MissileBayHelper.PollMissileStatus(ParentProgram);
 
-                if (!myJet.HasSelectedEnemy() && myJet.enemyList.Count > 0)
-                {
-                    var closest = myJet.GetClosestNEnemies(1);
-                    if (closest.Count > 0) myJet.SelectEnemy(closest[0]);
-                }
-                if (myJet.HasSelectedEnemy()) SystemManager.UpdateActiveTargetGPS();
+                SystemManager.UpdateActiveTargetGPS();
 
                 MissileBayHelper.BroadcastTargetUpdates(ParentProgram, myJet, missileBays);
             }
