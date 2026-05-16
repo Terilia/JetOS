@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="#FFFFFF">
+  <!-- Heat-seeker missile silhouette — narrow body, IR seeker dome at the nose
+       (rounded), forward canard fins + tail fins in cruciform layout. -->
+  <!-- IR dome (rounded nose) -->
+  <path d="M 120,38 Q 120,18 128,18 Q 136,18 136,38 L 136,52 L 120,52 Z"/>
+  <!-- Body -->
+  <rect x="120" y="52" width="16" height="138"/>
+  <!-- Forward canards (small) -->
+  <polygon points="106,82 120,76 120,98 106,92"/>
+  <polygon points="150,82 136,76 136,98 150,92"/>
+  <!-- Tail fins (large, swept) -->
+  <polygon points="100,190 120,166 120,190"/>
+  <polygon points="156,190 136,166 136,190"/>
+  <!-- Exhaust nozzle -->
+  <rect x="122" y="190" width="12" height="14"/>
+</svg>

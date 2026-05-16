@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter">
+  <!--
+    MFD frame corner bracket (designed as the top-left orientation).
+    Script renders this once for top-left, rotated 90/180/270deg for the
+    other three corners — single sprite, four placements per surface.
+    Replaces 4 line primitives per corner = 16 per surface.
+  -->
+  <polyline points="32,128 32,32 128,32"/>
+  <!-- Inner accent tick (corp-MFD style detail) -->
+  <line x1="56" y1="56" x2="88" y2="56" stroke-width="8"/>
+  <line x1="56" y1="56" x2="56" y2="88" stroke-width="8"/>
+</svg>

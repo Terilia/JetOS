@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linejoin="miter">
+  <!--
+    Hostile radar contact icon (MIL-STD-2525 inspired).
+    Hollow rotated square (diamond) with vertical centerline emphasizing
+    "armed". Script tints red/orange depending on threat level.
+  -->
+  <polygon points="128,36 220,128 128,220 36,128"/>
+  <!-- Vertical "armed" mark -->
+  <line x1="128" y1="68" x2="128" y2="188" stroke-width="8"/>
+</svg>

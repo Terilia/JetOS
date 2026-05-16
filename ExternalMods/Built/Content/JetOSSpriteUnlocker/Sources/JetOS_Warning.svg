@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linejoin="miter">
+  <!-- Warning triangle with thick exclamation. Tinted yellow/red by script per severity. -->
+  <polygon points="128,28 232,212 24,212"/>
+  <line x1="128" y1="96" x2="128" y2="160" stroke-width="16" stroke-linecap="square"/>
+  <rect x="118" y="180" width="20" height="20" fill="#FFFFFF" stroke="none"/>
+</svg>

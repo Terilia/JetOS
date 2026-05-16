@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter">
+  <!-- F-18 style aircraft waterline / reference symbol — wing-tip-dipping "W" shape.
+       Outer wings horizontal, inner segments dive into a V at center. -->
+  <polyline points="40,128 96,128 128,156 160,128 216,128"/>
+  <!-- Optional centerline pip on the V -->
+  <circle cx="128" cy="156" r="6" fill="#FFFFFF" stroke="none"/>
+</svg>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="8">
+  <!-- "No signal" — round badge with diagonal slash and concentric arcs
+       suggesting a broken transmission. Used as placeholder on empty MFD pages. -->
+  <circle cx="128" cy="128" r="92" stroke-width="10"/>
+  <!-- Slash through -->
+  <line x1="60"  y1="60"  x2="196" y2="196" stroke-width="14" stroke-linecap="round"/>
+  <!-- Inner concentric tick marks -->
+  <circle cx="128" cy="128" r="60" stroke-dasharray="4 12" stroke-width="6"/>
+  <!-- Center dot -->
+  <circle cx="128" cy="128" r="8" fill="#FFFFFF" stroke="none"/>
+</svg>

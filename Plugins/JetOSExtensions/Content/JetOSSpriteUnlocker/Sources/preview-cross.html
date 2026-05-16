@@ -1,0 +1,159 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Glyph Cross — breakaway warning preview</title>
+<style>
+  body { background:#0a1208; color:#5a9a5a; font-family: ui-monospace, Consolas, monospace; padding:24px; }
+  h1 { color:#a07a3a; font-weight:400; letter-spacing:.3em; font-size:14px; margin:0 0 24px; }
+  .row { display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start; }
+  .panel { background:#020503; border:1px solid #1d3520; padding:16px; }
+  .panel h2 { font-size:11px; color:#8ab28a; margin:0 0 8px; letter-spacing:.2em; }
+  .panel small { font-size:10px; color:#4a704a; display:block; margin-bottom:6px; }
+  .hud { position:relative; width:480px; height:270px; background:radial-gradient(ellipse at center, #001a00 0%, #000800 100%); border:1px solid #1f4020; box-shadow: inset 0 0 0 0px transparent; }
+  .hud .glassClip { position:absolute; left:0; right:0; top:0; bottom:0; overflow:hidden; }
+  .hud .glassMask {
+    /* SE HUD blocks have texture pixels that extend beyond the visible glass.
+       Various community estimates put the visible region at ~70-80% of the
+       texture's vertical extent, centered vertically. */
+    position:absolute; left:0; right:0; top:13%; bottom:13%;
+    border:1px dashed #80401a;
+  }
+  .hud .label-glass { position:absolute; left:8px; top:13%; font-size:9px; color:#80401a; transform:translateY(-12px); letter-spacing:.15em;}
+  .hud .label-tex { position:absolute; left:8px; top:0; font-size:9px; color:#1f4020; letter-spacing:.15em;}
+  .x-cross {
+    position:absolute;
+    transform: translate(-50%, -50%);
+    color:#cc4040;
+    /* The SVG is white; we tint via filter to approximate HUD_WARNING red. */
+  }
+  .x-cross svg { display:block; }
+  .warning-text {
+    position:absolute;
+    transform: translate(-50%, 0);
+    font-family: 'Arial Black', sans-serif;
+    font-weight:900;
+    color:#cc4040;
+    text-align:center;
+    line-height:1;
+  }
+
+  /* Variant containers */
+  .variants { display:flex; flex-direction:column; gap:24px; }
+  .desc { color:#8ab28a; font-size:11px; margin-top:8px; }
+  .desc b { color:#a0c0a0; }
+</style>
+</head>
+<body>
+
+<h1>NYINAH CORP — BREAKAWAY WARNING X SPRITE / SIZING PREVIEW</h1>
+
+<div class="variants">
+
+  <!-- ────────── Current size: 0.25 of min(SX,SY), anchor lifted by xSize*0.35 ────────── -->
+  <div class="panel">
+    <h2>CURRENT IN-GAME SIZE</h2>
+    <small>HUD canvas 480×270, sprite size = 0.25 × min(W,H) = 67.5px, anchor lifted 23.6px above center, text at +37.75px below anchor (scale 1.0)</small>
+    <div class="row">
+      <div class="hud">
+        <span class="label-tex">TEXTURE FULL</span>
+        <span class="label-glass">VISIBLE GLASS (estimate, dashed)</span>
+        <div class="glassMask"></div>
+
+        <!-- center 240, 135. anchor 240, 111.4. xSize 67.5. -->
+        <div class="x-cross" style="left:240px; top:111.4px;">
+          <svg width="67.5" height="67.5" viewBox="0 0 256 256" fill="none" stroke="#cc4040" stroke-width="22" stroke-linecap="round">
+            <line x1="56"  y1="56"  x2="200" y2="200"/>
+            <line x1="200" y1="56"  x2="56"  y2="200"/>
+          </svg>
+        </div>
+        <!-- text at anchorY + xSize/2 + 4 = 111.4 + 33.75 + 4 = 149.15 -->
+        <div class="warning-text" style="left:240px; top:149.15px; font-size:14px;">PULL UP</div>
+      </div>
+      <div class="desc">
+        Visible X content spans ~65% of sprite (round caps).<br>
+        At sprite=67.5 → visible X = <b>~44 px</b>, y range <b>89.5 → 133</b>.<br>
+        "PULL UP" text at y=149, ~12px tall → bottom at <b>~161</b>.<br>
+        If glass crops at <b>~13% margin</b> = y=235 max, text fits.<br>
+        If glass crops at <b>~20%</b> (=216 max), text just clears.<br>
+        If glass crops at <b>~40%</b> (=189 max), text bottom CUT.
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── Smaller / higher proposal ────────── -->
+  <div class="panel">
+    <h2>PROPOSAL A — SHRINK TO 0.18 + LIFT MORE</h2>
+    <small>sprite = 0.18 × min(W,H) = 48.6px, anchor lifted 30% (14.6px above center), text scaled 0.85 → ~10px tall</small>
+    <div class="row">
+      <div class="hud">
+        <span class="label-tex">TEXTURE FULL</span>
+        <span class="label-glass">VISIBLE GLASS</span>
+        <div class="glassMask"></div>
+
+        <div class="x-cross" style="left:240px; top:120.4px;">
+          <svg width="48.6" height="48.6" viewBox="0 0 256 256" fill="none" stroke="#cc4040" stroke-width="22" stroke-linecap="round">
+            <line x1="56"  y1="56"  x2="200" y2="200"/>
+            <line x1="200" y1="56"  x2="56"  y2="200"/>
+          </svg>
+        </div>
+        <div class="warning-text" style="left:240px; top:148.7px; font-size:11.9px;">PULL UP</div>
+      </div>
+      <div class="desc">
+        Visible X = <b>~31 px</b>, y range <b>104 → 137</b>.<br>
+        Text at 149, ~10px tall → bottom <b>~159</b>.<br>
+        Tighter overall, more headroom both ways.
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── Above-center anchor with text overlapping ────────── -->
+  <div class="panel">
+    <h2>PROPOSAL B — TEXT OVERLAID ON X (no vertical stack)</h2>
+    <small>sprite = 0.30 × min, anchor at 0.5 × center.Y (well above middle), text drawn INSIDE the X bounds</small>
+    <div class="row">
+      <div class="hud">
+        <span class="label-tex">TEXTURE FULL</span>
+        <span class="label-glass">VISIBLE GLASS</span>
+        <div class="glassMask"></div>
+
+        <!-- xSize = 270*0.30 = 81. anchor at 270*0.45 = 121.5 -->
+        <div class="x-cross" style="left:240px; top:121.5px;">
+          <svg width="81" height="81" viewBox="0 0 256 256" fill="none" stroke="#cc4040" stroke-width="22" stroke-linecap="round">
+            <line x1="56"  y1="56"  x2="200" y2="200"/>
+            <line x1="200" y1="56"  x2="56"  y2="200"/>
+          </svg>
+        </div>
+        <!-- text positioned at the center of the X horizontal line so it sits inside the lower-V of the X -->
+        <div class="warning-text" style="left:240px; top:155px; font-size:14px;">PULL UP</div>
+      </div>
+      <div class="desc">
+        Bigger X but text is below it inside lower visible region.<br>
+        Useful if user wants the X big and dramatic.
+      </div>
+    </div>
+  </div>
+
+  <!-- ────────── X-only no text ────────── -->
+  <div class="panel">
+    <h2>PROPOSAL C — X ONLY, TEXT REMOVED</h2>
+    <small>The X glyph itself reads as "no go / break away" without a label. Eliminates text-clipping problem entirely.</small>
+    <div class="row">
+      <div class="hud">
+        <span class="label-tex">TEXTURE FULL</span>
+        <span class="label-glass">VISIBLE GLASS</span>
+        <div class="glassMask"></div>
+
+        <div class="x-cross" style="left:240px; top:135px;">
+          <svg width="80" height="80" viewBox="0 0 256 256" fill="none" stroke="#cc4040" stroke-width="22" stroke-linecap="round">
+            <line x1="56"  y1="56"  x2="200" y2="200"/>
+            <line x1="200" y1="56"  x2="56"  y2="200"/>
+          </svg>
+        </div>
+      </div>
+      <div class="desc">
+        Cleanest. The flashing X carries the urgency on its own; "PULL UP" labels are common but optional.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body></html>

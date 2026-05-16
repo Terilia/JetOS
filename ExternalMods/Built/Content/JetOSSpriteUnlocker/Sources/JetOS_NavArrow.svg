@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="#FFFFFF">
+  <!-- Menu navigation arrow (filled triangle, default points up). Rotate 0/180 in script for up/down, 90/270 for left/right. -->
+  <polygon points="128,40 220,200 36,200"/>
+</svg>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="square">
+  <!--
+    Positive pitch ladder rung (climb side, above horizon).
+    F-18 convention: solid line, two segments with center gap for angle label,
+    end ticks point DOWN toward the horizon.
+  -->
+  <!-- Left half-bar -->
+  <line x1="40" y1="128" x2="100" y2="128"/>
+  <!-- Left end tick (pointing down toward horizon) -->
+  <line x1="40" y1="128" x2="40" y2="160"/>
+  <!-- Right half-bar -->
+  <line x1="156" y1="128" x2="216" y2="128"/>
+  <!-- Right end tick -->
+  <line x1="216" y1="128" x2="216" y2="160"/>
+</svg>

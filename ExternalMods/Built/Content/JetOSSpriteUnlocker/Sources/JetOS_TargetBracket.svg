@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter">
+  <!--
+    Target lock bracket: four L-shaped corner ticks forming a square.
+    Hollow center so the target stays visible. Tinted by script for state:
+    green (search), yellow (track), red (lock).
+  -->
+  <!-- Top-left corner -->
+  <polyline points="48,96 48,48 96,48"/>
+  <!-- Top-right corner -->
+  <polyline points="160,48 208,48 208,96"/>
+  <!-- Bottom-right corner -->
+  <polyline points="208,160 208,208 160,208"/>
+  <!-- Bottom-left corner -->
+  <polyline points="96,208 48,208 48,160"/>
+</svg>

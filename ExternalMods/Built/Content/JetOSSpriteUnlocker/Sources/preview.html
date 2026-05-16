@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>JetOS sprite preview</title>
+<style>
+  :root {
+    --bg: rgb(5, 8, 5);
+    --tint: rgb(90, 154, 90);
+    --tint-warn: rgb(232, 180, 64);
+    --tint-lock: rgb(232, 80, 80);
+    --tint-friendly: rgb(80, 156, 232);
+    --tint-dim: rgba(90,154,90,0.35);
+    --label: rgb(138, 122, 80);
+  }
+  body { background: var(--bg); color: var(--label); font: 14px ui-monospace, "Cascadia Mono", Menlo, monospace; margin: 0; padding: 32px; }
+  h1 { font-weight: 400; letter-spacing: 0.15em; margin: 0 0 6px; color: var(--label); }
+  .sub { color: rgba(138,122,80,0.6); font-size: 12px; letter-spacing: 0.05em; margin-bottom: 32px; }
+  .section { margin-bottom: 32px; }
+  .section h2 { font-weight: 400; font-size: 14px; letter-spacing: 0.15em; color: var(--label); border-bottom: 1px solid rgba(138,122,80,0.3); padding-bottom: 4px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cell { background: rgba(0,0,0,0.4); border: 1px solid rgba(138,122,80,0.3); padding: 14px; text-align: center; }
+  .cell h3 { margin: 0 0 10px; color: var(--label); font-weight: 400; font-size: 12px; letter-spacing: 0.05em; }
+  .stage { aspect-ratio: 1; background: var(--bg); margin-bottom: 10px; display:flex; align-items:center; justify-content:center; position:relative; }
+  .stage svg { width: 70%; height: 70%; color: var(--tint); }
+  .stage.warn svg { color: var(--tint-warn); }
+  .stage.lock svg { color: var(--tint-lock); }
+  .stage.friendly svg { color: var(--tint-friendly); }
+  .stage.dim svg { color: var(--tint-dim); }
+  .row-tints { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+  .row-tints .stage { width: 56px; height: 56px; flex: 0 0 56px; margin-bottom: 0; }
+  .meta { color: rgba(138,122,80,0.7); font-size: 11px; line-height: 1.4; }
+
+  .corner-stage { position: relative; aspect-ratio: 1; background: var(--bg); margin-bottom: 10px; }
+  .corner-stage svg { position: absolute; width: 28%; height: 28%; color: var(--tint); }
+  .corner-stage svg.tl { top: 6px; left: 6px; transform: rotate(0deg); }
+  .corner-stage svg.tr { top: 6px; right: 6px; transform: rotate(90deg); }
+  .corner-stage svg.br { bottom: 6px; right: 6px; transform: rotate(180deg); }
+  .corner-stage svg.bl { bottom: 6px; left: 6px; transform: rotate(270deg); }
+</style>
+</head>
+<body>
+<h1>NYINAH CORP — SPRITE PREVIEW</h1>
+<div class="sub">white-on-transparent SVGs · tinted via script Color · 256×256 source</div>
+
+<!-- ============================ HORIZON / FLIGHT REFERENCE ============================ -->
+<div class="section"><h2>HORIZON / FLIGHT REFERENCE</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_PitchRung_Pos</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="square">
+      <line x1="40" y1="128" x2="100" y2="128"/><line x1="40" y1="128" x2="40" y2="160"/>
+      <line x1="156" y1="128" x2="216" y2="128"/><line x1="216" y1="128" x2="216" y2="160"/>
+    </svg></div><div class="meta">Climb rung. End ticks down toward horizon.</div></div>
+
+  <div class="cell"><h3>JetOS_PitchRung_Neg</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="square">
+      <line x1="40" y1="128" x2="55" y2="128"/><line x1="65" y1="128" x2="80" y2="128"/><line x1="90" y1="128" x2="105" y2="128"/>
+      <line x1="40" y1="128" x2="40" y2="96"/>
+      <line x1="151" y1="128" x2="166" y2="128"/><line x1="176" y1="128" x2="191" y2="128"/><line x1="201" y1="128" x2="216" y2="128"/>
+      <line x1="216" y1="128" x2="216" y2="96"/>
+    </svg></div><div class="meta">Dive rung. Dashed bar, end ticks up.</div></div>
+
+  <div class="cell"><h3>JetOS_PitchRung_Zero</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+      <line x1="32" y1="128" x2="224" y2="128"/>
+    </svg></div><div class="meta">Horizon line — solid bar, no gap.</div></div>
+
+  <div class="cell"><h3>JetOS_PitchRung_Inverted</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="square" stroke-linejoin="miter">
+      <polyline points="40,108 100,128 40,148"/>
+      <polyline points="216,108 156,128 216,148"/>
+    </svg></div><div class="meta">Inverted flight (pitch &gt;90°).</div></div>
+
+  <div class="cell"><h3>JetOS_RollPointer</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="128,160 96,96 160,96"/>
+    </svg></div><div class="meta">Bank-arc pointer triangle (12 o'clock).</div></div>
+
+  <div class="cell"><h3>JetOS_BankArc</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="6">
+      <path d="M 28,128 A 100 100 0 0 1 228,128"/>
+      <line x1="128" y1="20" x2="128" y2="44" stroke-width="6"/>
+      <line x1="78" y1="36" x2="86" y2="56"/><line x1="178" y1="36" x2="170" y2="56"/>
+      <line x1="42" y1="78" x2="58" y2="92"/><line x1="214" y1="78" x2="198" y2="92"/>
+    </svg></div><div class="meta">Half-arc with bank-angle ticks (one sprite, drawn once).</div></div>
+
+  <div class="cell"><h3>JetOS_AoABracket</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="square">
+      <line x1="48" y1="64" x2="48" y2="192"/>
+      <line x1="48" y1="64" x2="160" y2="64"/>
+      <line x1="48" y1="128" x2="120" y2="128"/>
+      <line x1="48" y1="192" x2="160" y2="192"/>
+    </svg></div><div class="meta">E-bracket on the AoA tape.</div></div>
+
+  <div class="cell"><h3>JetOS_Boresight</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="square">
+      <line x1="40" y1="128" x2="100" y2="128"/><line x1="156" y1="128" x2="216" y2="128"/>
+      <line x1="128" y1="40" x2="128" y2="100"/><line x1="128" y1="156" x2="128" y2="216"/>
+      <circle cx="128" cy="128" r="4" fill="currentColor" stroke="none"/>
+    </svg></div><div class="meta">Centered cross + center pip.</div></div>
+
+  <div class="cell"><h3>JetOS_HeadingChevron</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="128,176 64,80 192,80"/>
+    </svg></div><div class="meta">Tape index marker.</div></div>
+
+</div></div>
+
+<!-- ============================ TAPE MARKERS ============================ -->
+<div class="section"><h2>TAPE MARKERS</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_TapeBug</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="48,80 128,80 168,128 128,176 48,176"/>
+    </svg></div><div class="meta">Setpoint bug (points right into tape).</div></div>
+
+  <div class="cell"><h3>JetOS_TapeIndex</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="64,128 144,80 192,80 192,176 144,176"/>
+    </svg></div><div class="meta">Current-value pointer (boxed).</div></div>
+
+</div></div>
+
+<!-- ============================ GAUGES ============================ -->
+<div class="section"><h2>GAUGES</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_GMeterFace</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="8">
+      <circle cx="128" cy="128" r="92"/>
+      <line x1="128" y1="36" x2="128" y2="56"/><line x1="128" y1="200" x2="128" y2="220"/>
+      <line x1="36" y1="128" x2="56" y2="128"/><line x1="200" y1="128" x2="220" y2="128"/>
+      <g stroke-width="5">
+        <line x1="65" y1="65" x2="78" y2="78"/><line x1="178" y1="78" x2="191" y2="65"/>
+        <line x1="65" y1="191" x2="78" y2="178"/><line x1="178" y1="178" x2="191" y2="191"/>
+      </g>
+    </svg></div><div class="meta">Circular gauge ring + 8 ticks.</div></div>
+
+  <div class="cell"><h3>JetOS_GaugeNeedle</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="128,28 138,128 128,148 118,128"/>
+      <circle cx="128" cy="128" r="12"/>
+    </svg></div><div class="meta">Needle (default points up; rotate per value).</div></div>
+
+</div></div>
+
+<!-- ============================ TARGETING ============================ -->
+<div class="section"><h2>TARGETING</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_TargetBracket</h3>
+    <div class="row-tints">
+      <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="square">
+        <polyline points="48,96 48,48 96,48"/><polyline points="160,48 208,48 208,96"/>
+        <polyline points="208,160 208,208 160,208"/><polyline points="96,208 48,208 48,160"/>
+      </svg></div>
+      <div class="stage warn"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="square">
+        <polyline points="48,96 48,48 96,48"/><polyline points="160,48 208,48 208,96"/>
+        <polyline points="208,160 208,208 160,208"/><polyline points="96,208 48,208 48,160"/>
+      </svg></div>
+      <div class="stage lock"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="square">
+        <polyline points="48,96 48,48 96,48"/><polyline points="160,48 208,48 208,96"/>
+        <polyline points="208,160 208,208 160,208"/><polyline points="96,208 48,208 48,160"/>
+      </svg></div>
+    </div><div class="meta">Search / track / lock — three tints.</div></div>
+
+  <div class="cell"><h3>JetOS_LeadPip</h3>
+    <div class="stage"><svg viewBox="0 0 256 256">
+      <circle cx="128" cy="128" r="36" fill="currentColor"/>
+      <circle cx="128" cy="128" r="64" fill="none" stroke="currentColor" stroke-width="8"/>
+    </svg></div><div class="meta">Gun lead pip.</div></div>
+
+</div></div>
+
+<!-- ============================ RADAR CONTACTS ============================ -->
+<div class="section"><h2>RADAR CONTACTS</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_Contact_Hostile</h3>
+    <div class="stage lock"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linejoin="miter">
+      <polygon points="128,36 220,128 128,220 36,128" stroke-width="12"/>
+      <line x1="128" y1="68" x2="128" y2="188" stroke-width="8"/>
+    </svg></div><div class="meta">Hostile diamond + armed mark.</div></div>
+
+  <div class="cell"><h3>JetOS_Contact_Friendly</h3>
+    <div class="stage friendly"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12">
+      <circle cx="128" cy="128" r="92"/>
+      <line x1="60" y1="128" x2="196" y2="128" stroke-width="8" stroke-linecap="square"/>
+    </svg></div><div class="meta">Friendly circle + horizontal mark.</div></div>
+
+  <div class="cell"><h3>JetOS_Contact_Unknown</h3>
+    <div class="stage warn"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linejoin="miter">
+      <rect x="44" y="44" width="168" height="168"/>
+    </svg></div><div class="meta">Unknown / unidentified — plain square.</div></div>
+
+  <div class="cell"><h3>JetOS_Warning</h3>
+    <div class="stage lock"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linejoin="miter">
+      <polygon points="128,28 232,212 24,212"/>
+      <line x1="128" y1="96" x2="128" y2="160" stroke-width="16" stroke-linecap="square"/>
+      <rect x="118" y="180" width="20" height="20" fill="currentColor" stroke="none"/>
+    </svg></div><div class="meta">Caution / RWR launch alert.</div></div>
+
+</div></div>
+
+<!-- ============================ RADAR MINIMAP ============================ -->
+<div class="section"><h2>RADAR MINIMAP</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_RangeRing</h3>
+    <div class="stage dim"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="4">
+      <circle cx="128" cy="128" r="120"/>
+    </svg></div><div class="meta">Single ring, scaled per range bracket.</div></div>
+
+  <div class="cell"><h3>JetOS_OwnShip</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="128,40 144,200 112,200"/>
+      <polygon points="40,140 220,140 200,160 56,160"/>
+      <polygon points="100,190 156,190 148,210 108,210"/>
+    </svg></div><div class="meta">Top-down jet silhouette (minimap center).</div></div>
+
+  <div class="cell"><h3>JetOS_LockCone</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none">
+      <path d="M 128,128 L 80,28 A 110 110 0 0 1 176,28 Z" fill="currentColor" fill-opacity="0.18" stroke="currentColor" stroke-width="6"/>
+    </svg></div><div class="meta">Detection wedge (BC3 alpha is preserved).</div></div>
+
+  <div class="cell"><h3>JetOS_RadarSweep</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-linecap="round">
+      <line x1="128" y1="128" x2="128" y2="20" stroke-width="6"/>
+      <path d="M 128,20 A 108 108 0 0 0 70,40" stroke-width="4" opacity="0.45"/>
+      <path d="M 70,40 A 108 108 0 0 0 30,82" stroke-width="3" opacity="0.20"/>
+    </svg></div><div class="meta">Sweep arm with fading trail.</div></div>
+
+</div></div>
+
+<!-- ============================ WEAPONS & BAYS ============================ -->
+<div class="section"><h2>WEAPONS &amp; BAYS</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_Missile</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <rect x="120" y="64" width="16" height="128"/>
+      <polygon points="120,64 128,32 136,64"/>
+      <polygon points="100,192 120,170 120,192"/>
+      <polygon points="156,192 136,170 136,192"/>
+    </svg></div><div class="meta">Missile silhouette (in-flight icon).</div></div>
+
+  <div class="cell"><h3>JetOS_Bay_Empty</h3>
+    <div class="stage dim"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10">
+      <rect x="48" y="64" width="160" height="128" rx="12"/>
+    </svg></div><div class="meta">Empty bay slot (dim tint).</div></div>
+
+  <div class="cell"><h3>JetOS_Bay_Loaded</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor">
+      <rect x="48" y="64" width="160" height="128" rx="12" stroke-width="10"/>
+      <g fill="currentColor" stroke="none">
+        <rect x="120" y="100" width="16" height="80"/>
+        <polygon points="120,100 128,84 136,100"/>
+        <polygon points="106,180 120,168 120,180"/>
+        <polygon points="150,180 136,168 136,180"/>
+      </g>
+    </svg></div><div class="meta">Loaded bay (tint warn/lock when selected).</div></div>
+
+</div></div>
+
+<!-- ============================ STATUS PANEL — INDICATORS ============================ -->
+<div class="section"><h2>STATUS PANEL — INDICATORS</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_FuelTank</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10">
+      <rect x="60" y="56" width="136" height="160" rx="20"/>
+      <rect x="116" y="32" width="24" height="24" fill="currentColor"/>
+      <line x1="60" y1="120" x2="196" y2="120" stroke-width="6"/>
+    </svg></div><div class="meta">H2 tank silhouette.</div></div>
+
+  <div class="cell"><h3>JetOS_Battery</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="10">
+      <rect x="48" y="80" width="160" height="96" rx="6"/>
+      <rect x="208" y="108" width="20" height="40" fill="currentColor"/>
+      <line x1="98" y1="100" x2="98" y2="156"/>
+      <line x1="148" y1="100" x2="148" y2="156"/>
+    </svg></div><div class="meta">Battery icon.</div></div>
+
+  <div class="cell"><h3>JetOS_StatusDot</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <circle cx="128" cy="128" r="60"/>
+    </svg></div><div class="meta">Active indicator (filled).</div></div>
+
+  <div class="cell"><h3>JetOS_StatusRing</h3>
+    <div class="stage dim"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14">
+      <circle cx="128" cy="128" r="60"/>
+    </svg></div><div class="meta">Inactive indicator (hollow).</div></div>
+
+</div></div>
+
+<!-- ============================ MFD CHROME & MENU ============================ -->
+<div class="section"><h2>MFD CHROME &amp; MENU</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_MFD_Corner</h3>
+    <div class="corner-stage">
+      <svg class="tl" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+        <polyline points="32,128 32,32 128,32"/>
+        <line x1="56" y1="56" x2="88" y2="56" stroke-width="8"/><line x1="56" y1="56" x2="56" y2="88" stroke-width="8"/>
+      </svg>
+      <svg class="tr" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+        <polyline points="32,128 32,32 128,32"/>
+        <line x1="56" y1="56" x2="88" y2="56" stroke-width="8"/><line x1="56" y1="56" x2="56" y2="88" stroke-width="8"/>
+      </svg>
+      <svg class="br" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+        <polyline points="32,128 32,32 128,32"/>
+        <line x1="56" y1="56" x2="88" y2="56" stroke-width="8"/><line x1="56" y1="56" x2="56" y2="88" stroke-width="8"/>
+      </svg>
+      <svg class="bl" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+        <polyline points="32,128 32,32 128,32"/>
+        <line x1="56" y1="56" x2="88" y2="56" stroke-width="8"/><line x1="56" y1="56" x2="56" y2="88" stroke-width="8"/>
+      </svg>
+    </div><div class="meta">One sprite, four rotations per surface.</div></div>
+
+  <div class="cell"><h3>JetOS_NavArrow</h3>
+    <div class="row-tints">
+      <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor"><polygon points="128,40 220,200 36,200"/></svg></div>
+      <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor" style="transform:rotate(90deg)"><polygon points="128,40 220,200 36,200"/></svg></div>
+      <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor" style="transform:rotate(180deg)"><polygon points="128,40 220,200 36,200"/></svg></div>
+      <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor" style="transform:rotate(270deg)"><polygon points="128,40 220,200 36,200"/></svg></div>
+    </div><div class="meta">One sprite, four rotations.</div></div>
+
+</div></div>
+
+<!-- ============================ MODULE ICONS (POLISH) ============================ -->
+<div class="section"><h2>MODULE ICONS — menu prefix glyphs (POLISH)</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_Icon_HUD</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="square">
+      <line x1="64" y1="128" x2="192" y2="128"/>
+      <polyline points="64,96 64,64 96,64"/><polyline points="160,64 192,64 192,96"/>
+      <polyline points="192,160 192,192 160,192"/><polyline points="96,192 64,192 64,160"/>
+    </svg></div><div class="meta">Horizon line + corner brackets.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Radar</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round">
+      <path d="M 64,180 Q 128,80 192,180"/>
+      <line x1="128" y1="180" x2="128" y2="216"/>
+      <line x1="100" y1="216" x2="156" y2="216"/>
+      <path d="M 90,80 Q 128,60 166,80" opacity="0.7"/>
+      <path d="M 70,52 Q 128,28 186,52" opacity="0.4"/>
+    </svg></div><div class="meta">Dish + signal waves.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Weapons</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14">
+      <circle cx="128" cy="128" r="80"/>
+      <line x1="128" y1="32" x2="128" y2="80"/><line x1="128" y1="176" x2="128" y2="224"/>
+      <line x1="32" y1="128" x2="80" y2="128"/><line x1="176" y1="128" x2="224" y2="128"/>
+    </svg></div><div class="meta">Reticle.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Terrain</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round">
+      <path d="M 32,180 Q 80,120 128,160 Q 176,200 224,140"/>
+      <path d="M 32,140 Q 80,80 128,120 Q 176,160 224,100" opacity="0.7"/>
+      <path d="M 32,100 Q 80,40 128,80 Q 176,120 224,60" opacity="0.4"/>
+    </svg></div><div class="meta">Contour lines (heightmap).</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Config</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor" fill-rule="evenodd">
+      <path d="M 128,32 L 156,40 L 180,28 L 200,52 L 224,72 L 216,100 L 232,128 L 216,156 L 224,184 L 200,204 L 180,228 L 156,216 L 128,224 L 100,216 L 76,228 L 56,204 L 32,184 L 40,156 L 24,128 L 40,100 L 32,72 L 56,52 L 76,28 L 100,40 Z M 128,90 a 38 38 0 1 0 0.001 0 Z"/>
+    </svg></div><div class="meta">Gear (with center cutout).</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Canard</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="40,124 116,76 200,90 224,140 104,168 40,150"/>
+    </svg></div><div class="meta">Swept fin.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Gun</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <rect x="40" y="160" width="176" height="50" rx="8"/>
+      <rect x="80" y="100" width="96" height="60" rx="8"/>
+      <rect x="116" y="32" width="24" height="80"/>
+    </svg></div><div class="meta">Turret silhouette.</div></div>
+
+</div></div>
+
+<!-- ============================ STATUS LABEL ICONS (POLISH) ============================ -->
+<div class="section"><h2>STATUS LABEL ICONS (POLISH)</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_Icon_Fuel</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <path d="M 128,40 Q 80,120 80,168 Q 80,216 128,216 Q 176,216 176,168 Q 176,120 128,40 Z"/>
+    </svg></div><div class="meta">Droplet.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Power</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <polygon points="140,32 64,140 116,140 96,224 192,108 132,108 156,32"/>
+    </svg></div><div class="meta">Lightning bolt.</div></div>
+
+  <div class="cell"><h3>JetOS_Icon_Ammo</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="currentColor">
+      <path d="M 96,40 Q 128,16 160,40 L 160,200 Q 160,216 144,216 L 112,216 Q 96,216 96,200 L 96,40 Z"/>
+    </svg></div><div class="meta">Bullet silhouette.</div></div>
+
+</div></div>
+
+<!-- ============================ BACKGROUND PATTERNS (POLISH) ============================ -->
+<div class="section"><h2>BACKGROUND PATTERNS (POLISH)</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_BG_ScanLine</h3>
+    <div class="stage dim"><svg viewBox="0 0 256 256">
+      <line x1="0" y1="40" x2="256" y2="40" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="80" x2="256" y2="80" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="120" x2="256" y2="120" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="160" x2="256" y2="160" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="200" x2="256" y2="200" stroke="currentColor" stroke-width="2"/>
+      <line x1="0" y1="240" x2="256" y2="240" stroke="currentColor" stroke-width="2"/>
+    </svg></div><div class="meta">Single line — script tiles vertically. Shown here repeated for preview.</div></div>
+
+  <div class="cell"><h3>JetOS_BG_GridDot</h3>
+    <div class="stage dim"><svg viewBox="0 0 256 256" fill="currentColor">
+      <circle cx="32" cy="32" r="2"/><circle cx="96" cy="32" r="2"/><circle cx="160" cy="32" r="2"/><circle cx="224" cy="32" r="2"/>
+      <circle cx="32" cy="96" r="2"/><circle cx="96" cy="96" r="2"/><circle cx="160" cy="96" r="2"/><circle cx="224" cy="96" r="2"/>
+      <circle cx="32" cy="160" r="2"/><circle cx="96" cy="160" r="2"/><circle cx="160" cy="160" r="2"/><circle cx="224" cy="160" r="2"/>
+      <circle cx="32" cy="224" r="2"/><circle cx="96" cy="224" r="2"/><circle cx="160" cy="224" r="2"/><circle cx="224" cy="224" r="2"/>
+    </svg></div><div class="meta">Single dot — script tiles in a grid. Shown here repeated for preview.</div></div>
+
+</div></div>
+
+<!-- ============================ FOOTER / ACTION GLYPHS (POLISH) ============================ -->
+<div class="section"><h2>FOOTER / ACTION GLYPHS (POLISH)</h2><div class="grid">
+
+  <div class="cell"><h3>JetOS_KeyHint_Box</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="14">
+      <rect x="32" y="32" width="192" height="192" rx="24"/>
+    </svg></div><div class="meta">Key hint frame (text overlays separately).</div></div>
+
+  <div class="cell"><h3>JetOS_Glyph_Check</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="miter">
+      <polyline points="48,128 104,184 208,72"/>
+    </svg></div><div class="meta">Confirm / OK.</div></div>
+
+  <div class="cell"><h3>JetOS_Glyph_Cross</h3>
+    <div class="stage lock"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round">
+      <line x1="56" y1="56" x2="200" y2="200"/>
+      <line x1="200" y1="56" x2="56" y2="200"/>
+    </svg></div><div class="meta">Cancel / error.</div></div>
+
+  <div class="cell"><h3>JetOS_Glyph_Back</h3>
+    <div class="stage"><svg viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-linejoin="miter">
+      <line x1="48" y1="128" x2="208" y2="128"/>
+      <polyline points="112,64 48,128 112,192"/>
+    </svg></div><div class="meta">Back arrow (Back hotkey).</div></div>
+
+</div></div>
+
+</body>
+</html>
