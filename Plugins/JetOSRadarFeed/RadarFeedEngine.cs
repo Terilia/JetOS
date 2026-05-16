@@ -4,6 +4,7 @@ using Sandbox.Game.World;
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
 using SpaceEngineers.Game.Entities.Blocks;
+using SpaceEngineers.Game.EntityComponents.Blocks;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -20,21 +21,25 @@ namespace JetOSRadarFeed
         const string CombatBaseName = "AI Combat";
         const string PropertyName = "JetOSRadarFeed";
         const string Header = "JORAD";
-        const int FeedVersion = 2;
+        const int FeedVersion = 3;
         const char KindEnemy = 'E';
         const char KindFriendly = 'F';
         const char KindUnknown = 'U';
-        const double RadarRangeMeters = 2500.0;
+        const char KindHostileV2 = 'H';
+        const char KindNeutralV2 = 'N';
+        const double FallbackRadarRangeMeters = 2500.0;
         const int UpdateIntervalFrames = 10;
+        const int MaxHostileContacts = 32;
+        const int MaxMapContacts = 32;
 
         readonly Action<string> _log;
         readonly List<MyEntity> _candidates = new List<MyEntity>(128);
         readonly List<ContactCandidate> _ranked = new List<ContactCandidate>(128);
-        readonly HashSet<long> _assignedTargets = new HashSet<long>();
         readonly List<MyCubeGrid> _radarGrids = new List<MyCubeGrid>(32);
         readonly List<MyOffensiveCombatBlock> _radars = new List<MyOffensiveCombatBlock>(64);
         readonly List<ConstructFeed> _constructFeeds = new List<ConstructFeed>(16);
         readonly List<ContactCandidate> _feedContacts = new List<ContactCandidate>(64);
+        readonly HashSet<long> _seenTopGrids = new HashSet<long>();
         readonly StringBuilder _feed = new StringBuilder(2048);
         int _frame;
         long _sequence;
@@ -81,7 +86,7 @@ namespace JetOSRadarFeed
 
             property.Enabled = block => true;
             property.Getter = GetFeed;
-            property.Setter = (block, value) => { };
+            property.Setter = SetFeedRequest;
             MyAPIGateway.TerminalControls.AddControl<Sandbox.ModAPI.Ingame.IMyProgrammableBlock>(property);
             _propertyRegistered = true;
             _log("JetOSRadarFeed: terminal property registered.");
@@ -116,6 +121,82 @@ namespace JetOSRadarFeed
             return new StringBuilder(Header + "|" + FeedVersion + "|" + _sequence + "\n");
         }
 
+        void SetFeedRequest(Sandbox.ModAPI.IMyTerminalBlock block, StringBuilder value)
+        {
+            try
+            {
+                if (block == null || value == null)
+                    return;
+                string raw = value.ToString();
+                if (string.IsNullOrEmpty(raw) || !raw.StartsWith("STT|"))
+                    return;
+
+                long targetId;
+                if (!long.TryParse(raw.Substring(4).Trim(), out targetId) || targetId == 0)
+                    return;
+
+                ApplySttRequest(block, targetId);
+            }
+            catch (Exception ex)
+            {
+                _log("JetOSRadarFeed: STT request failed: " + ex);
+            }
+        }
+
+        void ApplySttRequest(Sandbox.ModAPI.IMyTerminalBlock block, long targetId)
+        {
+            var sourceGrid = block.CubeGrid as MyCubeGrid;
+            if (sourceGrid == null || sourceGrid.MarkedForClose)
+                return;
+
+            MyOffensiveCombatBlock radar = FindRadarSourceForConstruct(sourceGrid);
+            if (radar == null)
+                return;
+
+            MyEntity targetEntity;
+            if (!MyEntities.TryGetEntityById(targetId, out targetEntity))
+                return;
+
+            var targetGrid = targetEntity as MyCubeGrid;
+            if (targetGrid == null || targetGrid.MarkedForClose || targetGrid.IsSameConstructAs(sourceGrid))
+                return;
+
+            if (GetContactKindV2(GetGridOwner(sourceGrid), targetGrid) != KindHostileV2)
+                return;
+
+            double range = GetRadarRange(radar);
+            if (Vector3D.DistanceSquared(radar.WorldMatrix.Translation, targetGrid.WorldMatrix.Translation) > range * range)
+                return;
+
+            var search = radar.SearchEnemyComponent as MySearchEnemyComponent;
+            var lockBlock = FindLockBlock(targetGrid);
+            if (search != null && lockBlock != null)
+                search.SetFoundEnemy(lockBlock);
+        }
+
+        MyOffensiveCombatBlock FindRadarSourceForConstruct(MyCubeGrid sourceGrid)
+        {
+            var radars = new List<MyOffensiveCombatBlock>(8);
+            foreach (MyEntity entity in MyEntities.GetEntities())
+            {
+                var grid = entity as MyCubeGrid;
+                if (grid == null || grid.MarkedForClose || !grid.IsSameConstructAs(sourceGrid))
+                    continue;
+                foreach (MyOffensiveCombatBlock radar in grid.GetFatBlocks<MyOffensiveCombatBlock>())
+                    if (IsEligibleRadar(radar))
+                        radars.Add(radar);
+            }
+            return radars.Count == 0 ? null : SelectRadarSource(radars);
+        }
+
+        static MyCubeBlock FindLockBlock(MyCubeGrid targetGrid)
+        {
+            foreach (MyCubeBlock block in targetGrid.GetFatBlocks<MyCubeBlock>())
+                if (block != null && !block.MarkedForClose && block.IsFunctional)
+                    return block;
+            return null;
+        }
+
         void RebuildFeeds()
         {
             _constructFeeds.Clear();
@@ -128,13 +209,11 @@ namespace JetOSRadarFeed
                     continue;
 
                 foreach (MyOffensiveCombatBlock radar in grid.GetFatBlocks<MyOffensiveCombatBlock>())
-                {
-                    if (!IsEligibleRadar(radar))
-                        continue;
-
-                    _radarGrids.Add(grid);
-                    break;
-                }
+                    if (IsEligibleRadar(radar))
+                    {
+                        _radarGrids.Add(grid);
+                        break;
+                    }
             }
 
             for (int i = 0; i < _radarGrids.Count; i++)
@@ -160,8 +239,9 @@ namespace JetOSRadarFeed
                 if (_radars.Count == 0)
                     continue;
 
-                _radars.Sort((a, b) => GetRadarIndex(a).CompareTo(GetRadarIndex(b)));
-                _constructFeeds.Add(new ConstructFeed(sourceGrid, BuildFeed(sourceGrid, _radars)));
+                MyOffensiveCombatBlock sourceRadar = SelectRadarSource(_radars);
+                if (sourceRadar != null)
+                    _constructFeeds.Add(new ConstructFeed(sourceGrid, BuildFeed(sourceGrid, sourceRadar)));
             }
         }
 
@@ -184,11 +264,23 @@ namespace JetOSRadarFeed
                 return false;
 
             string name = radar.CustomName == null ? "" : radar.CustomName.ToString();
-            if (!name.Contains(Tag))
-                return false;
-
             string normalized = NormalizeRadarName(name);
             return normalized == CombatBaseName || normalized.StartsWith(CombatBaseName + " ");
+        }
+
+        static bool IsTaggedRadar(MyOffensiveCombatBlock radar)
+        {
+            string name = radar.CustomName == null ? "" : radar.CustomName.ToString();
+            return name.Contains(Tag);
+        }
+
+        MyOffensiveCombatBlock SelectRadarSource(List<MyOffensiveCombatBlock> radars)
+        {
+            radars.Sort((a, b) => GetRadarIndex(a).CompareTo(GetRadarIndex(b)));
+            for (int i = 0; i < radars.Count; i++)
+                if (IsTaggedRadar(radars[i]))
+                    return radars[i];
+            return radars.Count > 0 ? radars[0] : null;
         }
 
         int GetRadarIndex(MyOffensiveCombatBlock radar)
@@ -217,57 +309,46 @@ namespace JetOSRadarFeed
             return n;
         }
 
-        StringBuilder BuildFeed(MyCubeGrid sourceGrid, List<MyOffensiveCombatBlock> radars)
+        StringBuilder BuildFeed(MyCubeGrid sourceGrid, MyOffensiveCombatBlock radar)
         {
-            _assignedTargets.Clear();
             _feedContacts.Clear();
+            _seenTopGrids.Clear();
             _feed.Clear();
             _feed.Append(Header).Append('|').Append(FeedVersion).Append('|').Append(_sequence).AppendLine();
 
-            for (int i = 0; i < radars.Count; i++)
-            {
-                ContactCandidate? contact = FindContactForRadar(sourceGrid, radars[i]);
-                if (!contact.HasValue)
-                    continue;
+            ScanContacts(sourceGrid, radar);
+            _feedContacts.Sort((a, b) => a.Rank.CompareTo(b.Rank));
 
-                ContactCandidate c = contact.Value;
-                _assignedTargets.Add(c.EntityId);
-                _feedContacts.Add(c);
-            }
-
+            int hostileCount = 0;
+            int mapCount = 0;
             for (int i = 0; i < _feedContacts.Count; i++)
             {
                 ContactCandidate c = _feedContacts[i];
-                AppendContact(c, HasDuplicateFeedName(c, i));
+                if (!ShouldAppendContact(c.Kind, hostileCount, mapCount))
+                    continue;
+                AppendContact(c);
+                if (c.Kind == KindHostileV2)
+                    hostileCount++;
+                else
+                    mapCount++;
             }
 
             return new StringBuilder(_feed.ToString());
         }
 
-        bool HasDuplicateFeedName(ContactCandidate contact, int index)
-        {
-            string name = Sanitize(contact.Name);
-            if (string.IsNullOrEmpty(name))
-                return true;
-
-            for (int i = 0; i < _feedContacts.Count; i++)
-                if (i != index && Sanitize(_feedContacts[i].Name) == name)
-                    return true;
-            return false;
-        }
-
-        ContactCandidate? FindContactForRadar(MyCubeGrid sourceGrid, MyOffensiveCombatBlock radar)
+        void ScanContacts(MyCubeGrid sourceGrid, MyOffensiveCombatBlock radar)
         {
             _candidates.Clear();
-            _ranked.Clear();
 
             long sourceOwner = GetGridOwner(sourceGrid);
             Vector3D radarPos = radar.WorldMatrix.Translation;
-            var sphere = new BoundingSphereD(radarPos, RadarRangeMeters);
+            double range = GetRadarRange(radar);
+            var sphere = new BoundingSphereD(radarPos, range);
             MyGamePruningStructure.GetAllTopMostEntitiesInSphere(ref sphere, _candidates, MyEntityQueryType.Dynamic);
 
-            foreach (MyEntity entity in _candidates)
+            for (int i = 0; i < _candidates.Count; i++)
             {
+                MyEntity entity = _candidates[i];
                 if (entity == null || entity.MarkedForClose || entity.EntityId == sourceGrid.EntityId)
                     continue;
 
@@ -277,21 +358,18 @@ namespace JetOSRadarFeed
                 if (targetGrid.IsSameConstructAs(sourceGrid))
                     continue;
 
-                char kind = GetContactKind(sourceOwner, targetGrid);
-                if (kind == KindFriendly)
+                long topId = targetGrid.EntityId;
+                if (topId == 0 || _seenTopGrids.Contains(topId))
+                    continue;
+
+                char kind = GetContactKindV2(sourceOwner, targetGrid);
+                if (!ShouldEmitKind(kind))
                     continue;
 
                 double distanceSq = Vector3D.DistanceSquared(radarPos, entity.WorldMatrix.Translation);
-                double rank = GetRank(radar.TargetPriority, entity, distanceSq);
-                _ranked.Add(new ContactCandidate(targetGrid, rank, kind));
+                _seenTopGrids.Add(topId);
+                _feedContacts.Add(new ContactCandidate(targetGrid, distanceSq, kind));
             }
-
-            _ranked.Sort((a, b) => a.Rank.CompareTo(b.Rank));
-            int index = FirstUnassignedIndex(_ranked, _assignedTargets);
-            if (index >= 0)
-                return _ranked[index];
-
-            return null;
         }
 
         static int FirstUnassignedIndex(List<ContactCandidate> ranked, HashSet<long> assigned)
@@ -316,19 +394,30 @@ namespace JetOSRadarFeed
             }
         }
 
-        void AppendContact(ContactCandidate contact, bool duplicateName)
+        static bool ShouldEmitKind(char kind)
         {
-            Vector3D pos = contact.Position;
-            Vector3D vel = contact.Velocity;
-            _feed.Append("R|")
-                .Append(contact.EntityId).Append('|');
-            AppendDouble(pos.X); _feed.Append('|');
-            AppendDouble(pos.Y); _feed.Append('|');
-            AppendDouble(pos.Z); _feed.Append('|');
-            AppendDouble(vel.X); _feed.Append('|');
-            AppendDouble(vel.Y); _feed.Append('|');
-            AppendDouble(vel.Z); _feed.Append('|');
-            _feed.Append(FormatContactName(contact.Name, contact.EntityId, duplicateName)).AppendLine();
+            return kind == KindHostileV2 || kind == KindNeutralV2 || kind == KindUnknown;
+        }
+
+        static bool ShouldAppendContact(char kind, int hostileCount, int mapCount)
+        {
+            return kind == KindHostileV2 ? hostileCount < MaxHostileContacts : mapCount < MaxMapContacts;
+        }
+
+        static double GetRadarRange(MyOffensiveCombatBlock radar)
+        {
+            var search = radar.SearchEnemyComponent as MySearchEnemyComponent;
+            if (search == null)
+                return FallbackRadarRangeMeters;
+            double range = search.GetSearchRadius();
+            return range > 1 ? range : FallbackRadarRangeMeters;
+        }
+
+        void AppendContact(ContactCandidate contact)
+        {
+            _feed.Append(FormatContactLine(contact.Kind, contact.EntityId, contact.Name,
+                contact.Position.X, contact.Position.Y, contact.Position.Z,
+                contact.Velocity.X, contact.Velocity.Y, contact.Velocity.Z)).AppendLine();
         }
 
         void AppendDouble(double value)
@@ -349,6 +438,25 @@ namespace JetOSRadarFeed
 
             string id = ShortId(entityId);
             return string.IsNullOrEmpty(name) ? id : id + " " + name;
+        }
+
+        static string FormatContactLine(char kind, long entityId, string name, double px, double py, double pz, double vx, double vy, double vz)
+        {
+            var sb = new StringBuilder(128);
+            sb.Append("R|").Append(kind).Append('|').Append(entityId).Append('|');
+            AppendDouble(sb, px); sb.Append('|');
+            AppendDouble(sb, py); sb.Append('|');
+            AppendDouble(sb, pz); sb.Append('|');
+            AppendDouble(sb, vx); sb.Append('|');
+            AppendDouble(sb, vy); sb.Append('|');
+            AppendDouble(sb, vz); sb.Append('|');
+            sb.Append(Sanitize(name));
+            return sb.ToString();
+        }
+
+        static void AppendDouble(StringBuilder sb, double value)
+        {
+            sb.Append(value.ToString("R"));
         }
 
         static string ShortId(long entityId)
@@ -376,6 +484,14 @@ namespace JetOSRadarFeed
             return ContactKindForRelation(MyIDModule.GetRelationPlayerBlock(sourceOwner, targetOwner, MyOwnershipShareModeEnum.Faction));
         }
 
+        static char GetContactKindV2(long sourceOwner, MyCubeGrid targetGrid)
+        {
+            long targetOwner = GetGridOwner(targetGrid);
+            if (sourceOwner == 0 || targetOwner == 0)
+                return KindUnknown;
+            return ContactKindForRelationV2(MyIDModule.GetRelationPlayerBlock(sourceOwner, targetOwner, MyOwnershipShareModeEnum.Faction));
+        }
+
         static char ContactKindForRelation(MyRelationsBetweenPlayerAndBlock relation)
         {
             switch (relation)
@@ -388,6 +504,21 @@ namespace JetOSRadarFeed
                     return KindEnemy;
                 default:
                     return KindUnknown;
+            }
+        }
+
+        static char ContactKindForRelationV2(MyRelationsBetweenPlayerAndBlock relation)
+        {
+            switch (relation)
+            {
+                case MyRelationsBetweenPlayerAndBlock.Enemies:
+                    return KindHostileV2;
+                case MyRelationsBetweenPlayerAndBlock.Neutral:
+                    return KindNeutralV2;
+                case MyRelationsBetweenPlayerAndBlock.NoOwnership:
+                    return KindUnknown;
+                default:
+                    return KindFriendly;
             }
         }
 
@@ -421,6 +552,11 @@ namespace JetOSRadarFeed
             return ContactKindForRelation(relation);
         }
 
+        public static char ContactKindForRelationForTest(MyRelationsBetweenPlayerAndBlock relation)
+        {
+            return ContactKindForRelationV2(relation);
+        }
+
         public static int FirstUnassignedIndexForTest(long[] rankedIds, long[] assignedIds)
         {
             var assigned = new HashSet<long>();
@@ -439,6 +575,16 @@ namespace JetOSRadarFeed
         public static string FormatContactNameForTest(string name, long entityId, bool duplicateName)
         {
             return FormatContactName(name, entityId, duplicateName);
+        }
+
+        public static bool ShouldAppendContactForTest(char kind, int hostileCount, int mapCount)
+        {
+            return ShouldAppendContact(kind, hostileCount, mapCount);
+        }
+
+        public static string FormatContactLineForTest(char kind, long entityId, string name, double px, double py, double pz, double vx, double vy, double vz)
+        {
+            return FormatContactLine(kind, entityId, name, px, py, pz, vx, vy, vz);
         }
 
         struct ConstructFeed

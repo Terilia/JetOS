@@ -34,15 +34,15 @@ Features:
 - G-force and AOA indicators
 - Weapon screen rendering
 
-### RadarControlModule.cs
-Centralized radar and RWR (Radar Warning Receiver) management.
+### RadarControlModuleV2.cs
+Centralized v2 radar, datalink, and RWR threat management.
 
 Features:
-- Manages all AI Flight/Combat block pairs
-- Tracks multiple enemy contacts with decay
-- Assigns radars to requesting modules
-- Feeds sweep/track and RWR observations into the shared contact list
-- Runs RWR threat detection and warning audio
+- Ingests server RadarFeed v2 contacts
+- Keeps one onboard AI Flight/Combat pair for STT and backward compatibility
+- Feeds datalink-backed hostile contacts into the shared target list
+- Feeds neutral/unknown contacts into the map-only contact list
+- Runs grid-based RWR threat detection and warning audio
 
 ### AirtoAir.cs
 Consolidated missile weapons module (air-to-air and air-to-ground).
@@ -87,6 +87,6 @@ Features:
 Modules communicate primarily through:
 1. The shared `Jet` instance (hardware abstraction)
 2. CustomData storage (GPS coordinates, configuration)
-3. Direct module references (e.g., HUDModule references RadarControlModule)
+3. Direct module references (e.g., HUDModule references IRadarLockStatus)
 
 The `SystemManager` orchestrates module lifecycle and ensures critical modules (radar, HUD) run even when not actively selected.

@@ -321,7 +321,7 @@ namespace IngameScript
             /// Updates or adds an enemy contact to the enemy list.
             /// Matches by EntityId first, then by name, then by position proximity.
             /// </summary>
-            public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex, long entityId = 0)
+            public void UpdateOrAddEnemy(Vector3D pos, Vector3D vel, string name, int sourceIndex, long entityId = 0, double observedAgeSeconds = 0)
             {
                 int existingIndex = -1;
 
@@ -388,6 +388,11 @@ namespace IngameScript
                     name = enemyList[existingIndex].Name;
 
                 EnemyContact contact = new EnemyContact(pos, vel, name, sourceIndex, contactId, accel);
+                if (observedAgeSeconds > 0)
+                {
+                    contact.LastSeen = GameSeconds - observedAgeSeconds;
+                    contact.LastHistoryShift = contact.LastSeen;
+                }
 
                 // Carry over and advance tracking history
                 if (existingIndex >= 0)
@@ -408,6 +413,8 @@ namespace IngameScript
                         contact.TrackHistory = old.TrackHistory | 1;
                         contact.LastHistoryShift = old.LastHistoryShift; // keep old reference
                     }
+                    if (observedAgeSeconds > 0)
+                        contact.LastHistoryShift = contact.LastSeen;
                     // else elapsedSeconds >= 30: history is all stale, new contact starts fresh with 1
                     enemyList[existingIndex] = contact;
                     if (contactId != 0) _entityIdIndex[contactId] = existingIndex;
@@ -504,10 +511,21 @@ namespace IngameScript
                 selectedEnemySourceIndex = contact.SourceIndex;
             }
 
+            public long GetSelectedEnemyId()
+            {
+                return selectedEnemyEntityId;
+            }
+
+            public bool IsSelectedEntity(long entityId)
+            {
+                return entityId != 0 && selectedEnemyEntityId == entityId;
+            }
+
             public void ClearSelection()
             {
                 selectedEnemyName = "";
                 selectedEnemyEntityId = 0;
+                selectedEnemySourceIndex = 0;
             }
 
             // Reusable buffer for sorted-by-distance results

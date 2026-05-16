@@ -55,7 +55,7 @@ namespace IngameScript
             {
                 L_FlightBlock = LBlock_F;
                 L_CombatBLock = LBlockC;
-                // Property config deferred to RadarControlModule.ActivateRadar()
+                // Property config deferred to RadarControlModuleV2.ActivateOnboardRadar()
                 if (LBlock_F != null) { LBlock_F.Enabled = false; LBlock_F.CollisionAvoidance = false; }
             }
 

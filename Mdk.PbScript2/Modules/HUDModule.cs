@@ -52,7 +52,7 @@ namespace IngameScript
             internal List<IMyGasTank> tanks = new List<IMyGasTank>();
             private List<IMyDoor> airbrakes = new List<IMyDoor>();
             internal Jet myjet;
-            internal RadarControlModule radarControl;
+            internal IRadarLockStatus radarControl;
 
             // --- Flight Data ---
             internal double peakGForce = 0;
@@ -165,7 +165,7 @@ namespace IngameScript
             // CONSTRUCTOR
             // =============================================
 
-            public HUDModule(Program program, Jet jet, RadarControlModule radar) : base(program)
+            public HUDModule(Program program, Jet jet, IRadarLockStatus radar) : base(program)
             {
                 cockpit = jet._cockpit;
                 hudBlock = jet.hudBlock;
@@ -382,7 +382,8 @@ namespace IngameScript
                 }
 
                 // ---- Warning conditions (high-priority alerts) ----
-                bool warning = SystemManager.AltitudeWarningActive || myjet.LeftEngineBad || myjet.RightEngineBad;
+                bool warning = SystemManager.AltitudeWarningActive || myjet.LeftEngineBad || myjet.RightEngineBad
+                    || (radarControl != null && radarControl.HasRwrThreat);
 
                 if (!caution && !warning) return;
 

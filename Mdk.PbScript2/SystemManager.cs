@@ -39,7 +39,7 @@ namespace IngameScript
             public static int currentTick = 0;
             private static Program.HUDModule hudProgram;
             private static Program.ConfigurationModule configModule;
-            private static Program.RadarControlModule radarControlModule;
+            private static Program.RadarControlModuleV2 radarControlModule;
             private static Program.AirtoAir airtoAirModule;
             private static Program.GunControlModule gunControlModule;
             private static Program.TerrainModule terrainModule;
@@ -87,7 +87,7 @@ namespace IngameScript
                 TerrainData.Init(program.Me);
 
                 // Initialize centralized radar control FIRST
-                radarControlModule = new RadarControlModule(parentProgram, _myJet);
+                radarControlModule = new RadarControlModuleV2(parentProgram, _myJet);
                 modules.Add(radarControlModule);
 
                 airtoAirModule = new AirtoAir(parentProgram, _myJet);
@@ -187,7 +187,7 @@ namespace IngameScript
 
                 // Cache cockpit, resource, and engine display state once per tick.
                 _myJet.UpdateTickCache();
-                Datalink.Tick(parentProgram, _myJet);
+                DatalinkV2.Tick(parentProgram, _myJet);
 
                 double velocity = _myJet.CockpitSpeed;
                 double velocityKnots = velocity * 1.94384;
@@ -258,7 +258,7 @@ namespace IngameScript
 
                 // Process sound AFTER all modules have made their requests.
                 // Previously this ran before module Tick() calls, which meant
-                // RadarControlModule and AirtoAir sound requests were delayed
+                // RadarControlModuleV2 and AirtoAir sound requests were delayed
                 // by one tick (they'd be processed next tick instead of this one).
                 SoundManager.Tick(ElapsedSeconds);
                 Jet.IC = parentProgram.Runtime.CurrentInstructionCount;

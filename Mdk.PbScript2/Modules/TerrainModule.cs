@@ -95,6 +95,7 @@ namespace IngameScript
                 DrawContacts(cx, ccy, ma, ppm, sp, jF, jR, jet);
                 DrawMissiles(cx, ccy, ma, ppm, sp, jF, jR);
                 DrawFriendlyJets(cx, ccy, ma, ppm, sp, jF, jR);
+                DrawMapOnlyContacts(cx, ccy, ma, ppm, sp, jF, jR);
                 DrawProfile(ml, mt + ma + 4f, ma, profH - 7f, sp, jet.CockpitVelocity, jF, VN(-jet.CachedGravity), ZS[zoom]);
                 SpriteHelpers.DrawCircleOutline(V2(cx, ccy), ma * 0.25f, Cr(MFDTheme.BORDER, 0.4f), 1f);
                 SpriteHelpers.Sp(TEXTURE_TRIANGLE, cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
@@ -408,6 +409,19 @@ namespace IngameScript
                     var friend = friends[i];
                     DrawMapContact(cx, cy, ma, ppm, sp, jf, jr, friend.Position, FriendlyLabel(friend.Id),
                         TEX_C_FRIENDLY, blue, true, false, FRIENDLY_CONTACT_SCALE);
+                }
+            }
+
+            static void DrawMapOnlyContacts(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
+            {
+                var contacts = MapContactStoreV2.GetActive();
+                for (int i = 0; i < contacts.Count; i++)
+                {
+                    var c = contacts[i];
+                    string label = SE(c.Name) ? (c.Kind == RadarContactV2.KIND_NEUTRAL ? "NEU" : "UNK") : c.Name;
+                    Color color = c.Kind == RadarContactV2.KIND_NEUTRAL ? Cr(120, 170, 210) : Cr(100, 130, 150);
+                    DrawMapContact(cx, cy, ma, ppm, sp, jf, jr, c.Position, label,
+                        TEX_C_FRIENDLY, color, true, false, 0.9f);
                 }
             }
 

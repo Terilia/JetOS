@@ -19,7 +19,7 @@ Static helper class for navigation calculations.
 - Returns 0 if gravity is not available
 
 ### RadarTrackingModule.cs
-AI block target extraction used by centralized `RadarControlModule`.
+AI block target extraction used by centralized `RadarControlModuleV2`.
 
 - Tracks targets via AI Flight + Combat block combinations
 - Reads combat-block target waypoints without enabling flight autopilot
