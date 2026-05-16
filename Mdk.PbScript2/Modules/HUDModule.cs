@@ -340,7 +340,7 @@ namespace IngameScript
                             }
 
                             if (SystemManager.GetConfigValue(CFG_HUD_GUN_FUNNEL) > 0.5f)
-                                DrawGunFunnel(hud, worldToCockpitMatrix, interceptPoint, shooterPosition, range, isAimingAtPip);
+                                DrawGunFunnel(hud, worldToCockpitMatrix, aimPoint, shooterPosition, range, isAimingAtPip);
                             DrawLeadingPip(hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
                             if (SystemManager.GetConfigValue(CFG_HUD_TARGET_BRACKETS) > 0.5f)
                                 DrawTargetBrackets(hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);

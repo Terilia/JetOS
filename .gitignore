@@ -383,6 +383,16 @@ image_display.cs
 # Local mod source/runtime links; distributable DLLs live in ExternalMods/Built.
 ExternalMods/Dev/
 
+# Private legacy plugin artifacts; JetOS Extensions replaces these.
+/ExternalMods/Built/Pulsar/CameraLCD-CAMOV.dll
+/ExternalMods/Built/Pulsar/JetOSRadarFeed.dll
+/ExternalMods/Built/Pulsar/LcdBoosterClient.dll
+/ExternalMods/Built/Torch/JetOSRadarFeedTorch.dll
+/ExternalMods/Built/Torch/JetOSRadarFeedTorch.zip
+/ExternalMods/Built/Torch/LcdBooster.zip
+/ExternalMods/Built/Torch/manifest.xml
+/ExternalMods/Built/Torch/Torch.cfg
+
 # SE API analysis reports
 se_api_usage.json
 se_api_usage_report.txt

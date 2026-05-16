@@ -34,13 +34,17 @@ $contentOut = Join-Path $repoRoot "ExternalMods\Built\Content\JetOSSpriteUnlocke
 New-Item -ItemType Directory -Force -Path $pulsarOut, $torchOut, (Split-Path -Parent $contentOut) | Out-Null
 
 $clientDll = Join-Path $pluginRoot "JetOSExtensions.Client\bin\$Configuration\net9.0\JetOSExtensions.Client.dll"
+$clientHarmony = Join-Path $pluginRoot "JetOSExtensions.Client\bin\$Configuration\net9.0\0Harmony.dll"
 $serverDll = Join-Path $pluginRoot "JetOSExtensions.Server\bin\$Configuration\net48\JetOSExtensions.Server.dll"
 $serverPdb = Join-Path $pluginRoot "JetOSExtensions.Server\bin\$Configuration\net48\JetOSExtensions.Server.pdb"
+$serverHarmony = Join-Path $pluginRoot "JetOSExtensions.Server\bin\$Configuration\net48\0Harmony.dll"
 $serverManifest = Join-Path $pluginRoot "JetOSExtensions.Server\manifest.xml"
 
 Copy-Item -LiteralPath $clientDll -Destination (Join-Path $pulsarOut "JetOSExtensions.Client.dll") -Force
+Copy-Item -LiteralPath $clientHarmony -Destination (Join-Path $pulsarOut "0Harmony.dll") -Force
 Copy-Item -LiteralPath $serverDll -Destination (Join-Path $torchOut "JetOSExtensions.Server.dll") -Force
 Copy-Item -LiteralPath $serverPdb -Destination (Join-Path $torchOut "JetOSExtensions.Server.pdb") -Force
+Copy-Item -LiteralPath $serverHarmony -Destination (Join-Path $torchOut "0Harmony.dll") -Force
 
 if (Test-Path -LiteralPath $contentOut) {
     Remove-Item -LiteralPath $contentOut -Recurse -Force
@@ -55,6 +59,7 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $serverManifest -Destination (Join-Path $stage "manifest.xml") -Force
 Copy-Item -LiteralPath $serverDll -Destination (Join-Path $stage "JetOSExtensions.Server.dll") -Force
 Copy-Item -LiteralPath $serverPdb -Destination (Join-Path $stage "JetOSExtensions.Server.pdb") -Force
+Copy-Item -LiteralPath $serverHarmony -Destination (Join-Path $stage "0Harmony.dll") -Force
 
 $zip = Join-Path $torchOut "JetOSExtensions.Server.zip"
 if (Test-Path -LiteralPath $zip) {
@@ -64,5 +69,7 @@ Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Compression
 
 Get-FileHash -Algorithm SHA256 `
     (Join-Path $pulsarOut "JetOSExtensions.Client.dll"), `
+    (Join-Path $pulsarOut "0Harmony.dll"), `
     (Join-Path $torchOut "JetOSExtensions.Server.dll"), `
+    (Join-Path $torchOut "0Harmony.dll"), `
     (Join-Path $torchOut "JetOSExtensions.Server.zip")

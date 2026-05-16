@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<PluginManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <Name>JetOS Radar Feed Torch</Name>
-  <Guid>6f2b0e7d-43e2-4a3a-93fd-4f6bdf6ab4f1</Guid>
-  <Version>1.0.0</Version>
-</PluginManifest>

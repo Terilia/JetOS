@@ -366,10 +366,19 @@ namespace JetOSRadarFeed
                 if (!ShouldEmitKind(kind))
                     continue;
 
-                double distanceSq = Vector3D.DistanceSquared(radarPos, entity.WorldMatrix.Translation);
+                Vector3D contactPosition = GetContactPosition(targetGrid);
+                double distanceSq = Vector3D.DistanceSquared(radarPos, contactPosition);
                 _seenTopGrids.Add(topId);
-                _feedContacts.Add(new ContactCandidate(targetGrid, distanceSq, kind));
+                _feedContacts.Add(new ContactCandidate(targetGrid, contactPosition, distanceSq, kind));
             }
+        }
+
+        static Vector3D GetContactPosition(MyEntity entity)
+        {
+            var grid = entity as MyCubeGrid;
+            if (grid != null)
+                return MyGridPhysicalGroupData.GetGroupSharedProperties(grid).CoMWorld;
+            return entity.PositionComp == null ? entity.WorldMatrix.Translation : entity.PositionComp.WorldAABB.Center;
         }
 
         static int FirstUnassignedIndex(List<ContactCandidate> ranked, HashSet<long> assigned)
@@ -608,11 +617,11 @@ namespace JetOSRadarFeed
             public readonly double Rank;
             public readonly char Kind;
 
-            public ContactCandidate(MyEntity entity, double rank, char kind)
+            public ContactCandidate(MyEntity entity, Vector3D position, double rank, char kind)
             {
                 EntityId = entity.EntityId;
                 Name = entity.DisplayName ?? "";
-                Position = entity.WorldMatrix.Translation;
+                Position = position;
                 Velocity = entity.Physics == null ? Vector3D.Zero : entity.Physics.LinearVelocity;
                 Rank = rank;
                 Kind = kind;

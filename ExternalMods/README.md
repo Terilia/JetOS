@@ -1,30 +1,26 @@
 # External Mods
 
-This folder keeps JetOS-adjacent Space Engineers plugins visible from the JetOS repo.
+This folder keeps JetOS-adjacent Space Engineers deployment artifacts visible from the JetOS repo.
 
 ## Dev
 
-`ExternalMods/Dev` is intentionally gitignored. It contains local Windows junctions to development or runtime folders:
-
-- `LcdBoosterClient` -> `C:\Users\xerdi\source\repos\LcdBoosterClient`
-- `PulsarLegacyLocal` -> `%APPDATA%\Pulsar\Legacy\Local`
-
-The active launch command uses `%APPDATA%\Pulsar\Interim.exe`, and the current game log shows Interim loading plugins through the legacy preloader path. The old `LcdBoosterProxy` folder in the Space Engineers install is not linked here.
+`ExternalMods/Dev` is intentionally gitignored. It is for local Windows junctions to development or runtime folders, such as `%APPDATA%\Pulsar\Legacy\Local`.
 
 ## Built
 
-`ExternalMods/Built` is tracked on purpose. The DLLs there are hard links to the current built/deployed DLLs so git sees shareable binary contents.
+`ExternalMods/Built` contains the current JetOS deployment artifacts.
 
-`ExternalMods/Built/Pulsar` is for `%APPDATA%\Pulsar\Interim.exe` / Pulsar local plugin deployment:
+`ExternalMods/Built/Pulsar` is for Pulsar local plugin deployment:
 
-- `LcdBoosterClient.dll`
-- `CameraLCD-CAMOV.dll`
-- `JetOSRadarFeed.dll` is a local no-op shim. The radar feed terminal property is server-side only; enabling it from Pulsar breaks the programmable block terminal UI and cannot feed multiplayer server PB scripts.
+- `JetOSExtensions.Client.dll`
+- `0Harmony.dll`
 
 `ExternalMods/Built/Torch` is for Torch dedicated server deployment:
 
-- `JetOSRadarFeedTorch.dll`
-- `JetOSRadarFeedTorch.zip` contains the Torch plugin package with `manifest.xml`, the DLL, and PDB. This is the package shape Torch uses for proper plugin registration.
-- `LcdBooster.zip` is kept as the reference package for the existing Torch LCD Booster server plugin.
+- `JetOSExtensions.Server.zip`
+- `JetOSExtensions.Server.dll`
+- `0Harmony.dll`
 
-Refresh these links after rebuilding or redeploying a plugin if the build tool replaces the target file instead of updating it in place.
+Use the combined JetOS Extensions bundle for new installs. Legacy standalone plugin binaries are private artifacts and should not be added here.
+
+Refresh these artifacts after rebuilding or redeploying a plugin if the build tool replaces the target file instead of updating it in place.
