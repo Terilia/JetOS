@@ -4,7 +4,6 @@ using HarmonyLib;
 using JetOSRadarFeed;
 using LcdBooster;
 using NLog;
-using Sandbox.ModAPI;
 using TerrainAPI;
 using Torch;
 using Torch.API;
@@ -21,8 +20,6 @@ namespace JetOSExtensions.Server
         readonly LcdBoosterFeature _lcd = new LcdBoosterFeature();
         RadarFeedEngine _radar;
         Harmony _harmony;
-        int _tick;
-        int _lastHeartbeatSecond;
 
         public override void Init(ITorchBase torch)
         {
@@ -60,11 +57,9 @@ namespace JetOSExtensions.Server
 
         public override void Update()
         {
-            _tick++;
             UpdateFeature("TerrainAPI", () => _terrain.Update());
             UpdateFeature("LcdBooster", () => _lcd.Update());
             UpdateFeature("JetOSRadarFeed", () => _radar?.Update());
-            LogHeartbeat();
         }
 
         public override void Dispose()
@@ -91,28 +86,5 @@ namespace JetOSExtensions.Server
             }
         }
 
-        void LogHeartbeat()
-        {
-            int second = _tick / 60;
-            if (second == _lastHeartbeatSecond)
-                return;
-            _lastHeartbeatSecond = second;
-
-            int frame = MyAPIGateway.Session?.GameplayFrameCounter ?? -1;
-            Log.Info("JetOSExtensions.Server: heartbeat tick=" + _tick
-                + " gameFrame=" + frame
-                + " terrainRegistered=" + _terrain.Registered
-                + " terrainSubs=" + _terrain.SubscriptionCount
-                + " terrainDownloads=" + _terrain.DownloadCount
-                + " terrainResponses=" + _terrain.ResponseCount
-                + " terrainPlanets=" + _terrain.PlanetCount
-                + " radarRegistered=" + (_radar?.PropertyRegistered ?? false)
-                + " radarSeq=" + (_radar?.Sequence ?? 0)
-                + " radarFeeds=" + (_radar?.ConstructFeedCount ?? 0)
-                + " lcdCallSitesPatched=" + _lcd.CallSitesPatched
-                + " lcdCallSites=" + _lcd.PatchedCallSiteCount
-                + " canardResolved=" + _lcd.CanardResolverReady
-                + " canardsTracked=" + _lcd.TrackedCanardCount);
-        }
     }
 }

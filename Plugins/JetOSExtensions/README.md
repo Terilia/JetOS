@@ -18,13 +18,9 @@ JetOS Extensions is the consolidated first-release development bundle for the Je
 - `[Ani]` canard angle sync/fix on server and client.
 - JetOS LCD sprite definitions and textures.
 
-## First Release Dev Telemetry
+## Runtime Logging
 
-This first bundle is intentionally noisy. The client and server write startup logs for every feature, list Harmony patches as they are applied, and then emit a heartbeat roughly once per second.
-
-Server heartbeat fields include TerrainAPI registration/subscription/download counts, radar property registration/feed sequence/feed count, LCD call-site patch status, and canard resolver/tracked-block counts.
-
-Client heartbeat fields include CAMOV enabled/range/ratio state, LCD patch presence, canard fix activity, and an explicit reminder that the radar property is not registered client-side.
+The client and server write startup logs for loaded features and Harmony patches, plus error logs when feature updates fail. Repeating heartbeat telemetry is disabled for normal use.
 
 ## Build And Package
 

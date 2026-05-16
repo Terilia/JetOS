@@ -32,8 +32,8 @@ namespace CameraLCD
                 FirstPersonCharacter = null;
             }
 
-            // Scan the grid for LCDs flagged "Forced" in CustomData and create shadow TSS
-            // instances for them (so camera renders even when ContentType != SCRIPT).
+            // Scan for LCDs flagged "Forced" in CustomData and keep the real Camera
+            // Display text-surface script selected for those surfaces.
             CamovShadowManager.Update();
         }
 

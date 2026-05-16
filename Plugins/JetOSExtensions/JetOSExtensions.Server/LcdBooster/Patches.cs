@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using HarmonyLib;
+using JetOSExtensions.Shared;
 using NLog;
 using Sandbox;
 using Sandbox.Game.Entities.Blocks;
@@ -72,6 +73,7 @@ namespace LcdBooster
 
         // Direct field/method accessors — no reflection, no boxing on every call
         private static readonly AccessTools.FieldRef<MyTextPanelComponent, bool> DirtyRef;
+        private static readonly AccessTools.FieldRef<MyTextPanelComponent, MySpriteCollection> QueueRef;
         private static readonly AccessTools.FieldRef<MyTextPanelComponent, MySpriteCollection> LastQueueRef;
         private static readonly Action<MyTextPanelComponent> CallSendSpriteQueue;
         private static readonly FieldInfo BlockField;  // cold path only (tag check + cleanup)
@@ -103,6 +105,7 @@ namespace LcdBooster
             try
             {
                 DirtyRef = AccessTools.FieldRefAccess<MyTextPanelComponent, bool>("m_areSpritesDirty");
+                QueueRef = AccessTools.FieldRefAccess<MyTextPanelComponent, MySpriteCollection>("m_spriteQueue");
                 LastQueueRef = AccessTools.FieldRefAccess<MyTextPanelComponent, MySpriteCollection>("m_lastSpriteQueue");
 
                 var sendMethod = AccessTools.Method(typeof(MyTextPanelComponent), "SendSpriteQueue");
@@ -117,7 +120,7 @@ namespace LcdBooster
                 ok = false;
             }
 
-            if (DirtyRef == null || LastQueueRef == null || CallSendSpriteQueue == null || BlockField == null)
+            if (DirtyRef == null || QueueRef == null || LastQueueRef == null || CallSendSpriteQueue == null || BlockField == null)
                 ok = false;
 
             Broken = !ok;
@@ -125,20 +128,21 @@ namespace LcdBooster
                 Log.Warn("LcdBooster: ImmediateSpriteSendPatch inactive — not all accessors resolved.");
         }
 
-        static void Postfix(MyTextPanelComponent __instance)
+        static void Postfix(MyTextPanelComponent __instance, [HarmonyArgument(0)] MySpriteDrawFrame drawFrame)
         {
             if (!Sync.IsServer || Broken)
                 return;
 
             // Direct field read — no FieldInfo.GetValue, no boxing
             ref bool dirty = ref DirtyRef(__instance);
+            bool forcedScriptSprites = TryQueueForcedScriptSprites(__instance, drawFrame, ref dirty);
             if (!dirty)
                 return;
 
             long now = Sandbox.Game.World.MySession.Static?.GameplayFrameCounter ?? 0;
             var state = Panels.GetOrAdd(__instance, _ => new PanelState());
 
-            if (!CheckTagged(state, __instance, now))
+            if (!forcedScriptSprites && !CheckTagged(state, __instance, now))
                 return;
 
             bool isIdle = state.EmptyDeltaCount >= IdleThreshold;
@@ -175,6 +179,25 @@ namespace LcdBooster
                 _lastCleanupTick = now;
                 CleanupDeadEntries();
             }
+        }
+
+        private static bool TryQueueForcedScriptSprites(MyTextPanelComponent panel, MySpriteDrawFrame drawFrame, ref bool dirty)
+        {
+            if (dirty || panel.Script != CamovSurfaceProtocol.CameraDisplayScriptId)
+                return false;
+
+            var block = BlockField.GetValue(panel) as Sandbox.Game.Entities.Cube.MyTerminalBlock;
+            if (block == null)
+                return false;
+
+            int surfaceKey = block is MyTextPanel ? 0 : panel.Area;
+            if (!CamovSurfaceProtocol.IsForcedSurface(block.CustomData, surfaceKey))
+                return false;
+
+            ref MySpriteCollection queue = ref QueueRef(panel);
+            queue = drawFrame.ToCollection();
+            dirty = true;
+            return true;
         }
 
         private static bool CheckTagged(PanelState state, MyTextPanelComponent panel, long now)
@@ -247,18 +270,28 @@ namespace LcdBooster
     {
         private static readonly Logger Log = LogManager.GetCurrentClassLogger();
 
-        private static FieldInfo _clientStreamDataField;
-        private static FieldInfo _lastSentField;
-        private static FieldInfo _remainingBitsField;
-        private static FieldInfo _incompleteField;
-        private static FieldInfo _dirtyField;
-        private static FieldInfo _forceSendField;
-        private static FieldInfo _stateEntryGroupField;
-        private static FieldInfo _clientStateField;
-        private static PropertyInfo _endpointIdProp;
-        private static MethodInfo _dictTryGetMethod;
-        private static bool _resolvedGroup, _resolvedScd, _resolvedClient;
+        private const BindingFlags InstanceFields = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+        private static readonly ConcurrentDictionary<Type, FieldInfo> ClientStreamDataFields =
+            new ConcurrentDictionary<Type, FieldInfo>();
+        private static readonly ConcurrentDictionary<Type, FieldInfo> EntryGroupFields =
+            new ConcurrentDictionary<Type, FieldInfo>();
+        private static readonly ConcurrentDictionary<Type, MethodInfo> DictTryGetMethods =
+            new ConcurrentDictionary<Type, MethodInfo>();
+        private static readonly ConcurrentDictionary<Type, StreamClientDataFields> StreamClientDataFieldSets =
+            new ConcurrentDictionary<Type, StreamClientDataFields>();
+        private static readonly ConcurrentDictionary<string, bool> LoggedMissingMembers =
+            new ConcurrentDictionary<string, bool>();
         private static bool _reflectionFailed;
+
+        private sealed class StreamClientDataFields
+        {
+            public FieldInfo LastSent;
+            public FieldInfo RemainingBits;
+            public FieldInfo Incomplete;
+            public FieldInfo Dirty;
+            public FieldInfo ForceSend;
+        }
 
         // Reusable args array — avoids allocating new object[2] per call
         [ThreadStatic] private static object[] _dictArgs;
@@ -270,51 +303,40 @@ namespace LcdBooster
 
             try
             {
-                if (!_resolvedGroup)
+                var clientStateField = client.GetType().GetField("State", InstanceFields);
+                if (clientStateField == null)
                 {
-                    _resolvedGroup = true;
-                    _clientStreamDataField = stateGroup.GetType().GetField("m_clientStreamData",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (_clientStreamDataField == null)
-                    {
-                        Log.Warn("LcdBooster: StreamingPipelinePatch — m_clientStreamData field not found.");
-                        _reflectionFailed = true;
-                        return null;
-                    }
+                    WarnMissingMember(client.GetType(), "State");
+                    return null;
                 }
 
-                if (!_resolvedClient)
-                {
-                    _resolvedClient = true;
-                    _clientStateField = client.GetType().GetField("State");
-                    if (_clientStateField != null)
-                    {
-                        var stateObj = _clientStateField.GetValue(client);
-                        _endpointIdProp = stateObj?.GetType().GetProperty("EndpointId");
-                    }
-                    if (_clientStateField == null || _endpointIdProp == null)
-                    {
-                        Log.Warn("LcdBooster: StreamingPipelinePatch — Client.State.EndpointId not found.");
-                        _reflectionFailed = true;
-                        return null;
-                    }
-                }
-
-                var clientState = _clientStateField.GetValue(client);
+                var clientState = clientStateField.GetValue(client);
                 if (clientState == null) return null;
-                var endpoint = _endpointIdProp.GetValue(clientState);
+                var endpointIdProp = clientState.GetType().GetProperty("EndpointId", InstanceFields);
+                if (endpointIdProp == null)
+                {
+                    WarnMissingMember(clientState.GetType(), "EndpointId");
+                    return null;
+                }
+
+                var endpoint = endpointIdProp.GetValue(clientState);
                 if (endpoint == null) return null;
 
-                var dict = _clientStreamDataField.GetValue(stateGroup);
+                FieldInfo clientStreamDataField;
+                if (!TryGetCachedField(ClientStreamDataFields, stateGroup.GetType(), "m_clientStreamData", out clientStreamDataField))
+                    return null;
+
+                var dict = clientStreamDataField.GetValue(stateGroup);
                 if (dict == null) return null;
 
-                if (_dictTryGetMethod == null)
-                    _dictTryGetMethod = dict.GetType().GetMethod("TryGetValue");
+                MethodInfo tryGetMethod;
+                if (!TryGetCachedTryGetValue(dict.GetType(), out tryGetMethod))
+                    return null;
 
                 if (_dictArgs == null) _dictArgs = new object[2];
                 _dictArgs[0] = endpoint;
                 _dictArgs[1] = null;
-                bool found = (bool)_dictTryGetMethod.Invoke(dict, _dictArgs);
+                bool found = (bool)tryGetMethod.Invoke(dict, _dictArgs);
                 var result = found ? _dictArgs[1] : null;
                 _dictArgs[0] = null;  // don't hold references
                 _dictArgs[1] = null;
@@ -323,28 +345,73 @@ namespace LcdBooster
             catch (Exception ex)
             {
                 Log.Error(ex, "LcdBooster: StreamingPipelinePatch reflection error.");
-                _reflectionFailed = true;
                 return null;
             }
         }
 
-        private static void ResolveScdFields(object scd)
+        private static bool TryGetCachedField(ConcurrentDictionary<Type, FieldInfo> cache, Type type, string name, out FieldInfo field)
         {
-            if (_resolvedScd) return;
-            _resolvedScd = true;
-            var t = scd.GetType();
-            _lastSentField = t.GetField("LastSent");
-            _remainingBitsField = t.GetField("RemainingBits");
-            _incompleteField = t.GetField("Incomplete");
-            _dirtyField = t.GetField("Dirty");
-            _forceSendField = t.GetField("ForceSend");
+            if (cache.TryGetValue(type, out field))
+                return true;
 
-            if (_lastSentField == null || _remainingBitsField == null ||
-                _incompleteField == null || _dirtyField == null)
+            field = type.GetField(name, InstanceFields);
+            if (field == null)
             {
-                Log.Warn("LcdBooster: StreamingPipelinePatch — StreamClientData fields not fully resolved.");
-                _reflectionFailed = true;
+                WarnMissingMember(type, name);
+                return false;
             }
+
+            cache.TryAdd(type, field);
+            return true;
+        }
+
+        private static bool TryGetCachedTryGetValue(Type dictionaryType, out MethodInfo method)
+        {
+            if (DictTryGetMethods.TryGetValue(dictionaryType, out method))
+                return true;
+
+            method = dictionaryType.GetMethod("TryGetValue");
+            if (method == null)
+            {
+                WarnMissingMember(dictionaryType, "TryGetValue");
+                return false;
+            }
+
+            DictTryGetMethods.TryAdd(dictionaryType, method);
+            return true;
+        }
+
+        private static bool TryGetStreamClientDataFields(object scd, out StreamClientDataFields fields)
+        {
+            Type type = scd.GetType();
+            if (StreamClientDataFieldSets.TryGetValue(type, out fields))
+                return true;
+
+            fields = new StreamClientDataFields
+            {
+                LastSent = type.GetField("LastSent", InstanceFields),
+                RemainingBits = type.GetField("RemainingBits", InstanceFields),
+                Incomplete = type.GetField("Incomplete", InstanceFields),
+                Dirty = type.GetField("Dirty", InstanceFields),
+                ForceSend = type.GetField("ForceSend", InstanceFields)
+            };
+
+            if (fields.LastSent == null || fields.RemainingBits == null ||
+                fields.Incomplete == null || fields.Dirty == null)
+            {
+                WarnMissingMember(type, "StreamClientData required fields");
+                return false;
+            }
+
+            StreamClientDataFieldSets.TryAdd(type, fields);
+            return true;
+        }
+
+        private static void WarnMissingMember(Type type, string member)
+        {
+            string key = type.FullName + "::" + member;
+            if (LoggedMissingMembers.TryAdd(key, true))
+                Log.Warn("LcdBooster: StreamingPipelinePatch — " + member + " not found on " + type.FullName + ".");
         }
 
         static void Prefix(object client, object entry)
@@ -353,16 +420,19 @@ namespace LcdBooster
 
             try
             {
-                if (_stateEntryGroupField == null)
-                    _stateEntryGroupField = entry.GetType().GetField("Group");
+                FieldInfo stateEntryGroupField;
+                if (!TryGetCachedField(EntryGroupFields, entry.GetType(), "Group", out stateEntryGroupField))
+                    return;
 
-                var stateGroup = _stateEntryGroupField?.GetValue(entry);
+                var stateGroup = stateEntryGroupField.GetValue(entry);
                 var scd = GetStreamClientData(stateGroup, client);
                 if (scd == null) return;
 
-                if (!_resolvedScd) ResolveScdFields(scd);
+                StreamClientDataFields fields;
+                if (!TryGetStreamClientDataFields(scd, out fields))
+                    return;
 
-                _lastSentField?.SetValue(scd, (byte?)null);
+                fields.LastSent.SetValue(scd, (byte?)null);
             }
             catch (Exception ex)
             {
@@ -377,17 +447,25 @@ namespace LcdBooster
 
             try
             {
-                var stateGroup = _stateEntryGroupField?.GetValue(entry);
+                FieldInfo stateEntryGroupField;
+                if (!TryGetCachedField(EntryGroupFields, entry.GetType(), "Group", out stateEntryGroupField))
+                    return;
+
+                var stateGroup = stateEntryGroupField.GetValue(entry);
                 var scd = GetStreamClientData(stateGroup, client);
                 if (scd == null) return;
 
-                long remaining = (long)_remainingBitsField.GetValue(scd);
-                bool incomplete = (bool)_incompleteField.GetValue(scd);
+                StreamClientDataFields fields;
+                if (!TryGetStreamClientDataFields(scd, out fields))
+                    return;
+
+                long remaining = (long)fields.RemainingBits.GetValue(scd);
+                bool incomplete = (bool)fields.Incomplete.GetValue(scd);
 
                 if (remaining == 0L && !incomplete)
                 {
-                    _dirtyField.SetValue(scd, false);
-                    _forceSendField.SetValue(scd, false);
+                    fields.Dirty.SetValue(scd, false);
+                    fields.ForceSend?.SetValue(scd, false);
                 }
             }
             catch (Exception ex)

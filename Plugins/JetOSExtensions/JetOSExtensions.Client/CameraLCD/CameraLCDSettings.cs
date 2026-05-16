@@ -19,6 +19,7 @@ namespace CameraLCD
         public int Range { get; set; } = 40;
         public bool HeadFix { get; set; } = true;
         public bool OcclusionFix { get; set; } = true;
+        public bool DebugLogging { get; set; } = false;
 
         public static CameraLCDSettings Load()
         {

@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Reflection;
+using CameraLCD;
 using HarmonyLib;
 using Sandbox.Game.Entities.Blocks;
+using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.Multiplayer;
 using Sandbox.Game.World;
 using VRage.Game.GUI.TextPanel;
@@ -32,6 +34,8 @@ namespace LcdBoosterClient
 
         private static readonly ConcurrentDictionary<MyTextPanelComponent, long> LastRenderTick =
             new ConcurrentDictionary<MyTextPanelComponent, long>();
+        private static readonly ConcurrentDictionary<MyTextPanelComponent, bool> CamovSkipLogged =
+            new ConcurrentDictionary<MyTextPanelComponent, bool>();
 
         private const double FullRateDistSq = 5.0 * 5.0;
         private const double HalfRateDistSq = 12.0 * 12.0;
@@ -74,6 +78,15 @@ namespace LcdBoosterClient
             if (__instance.ContentType != ContentType.SCRIPT)
                 return;
 
+            if (__instance.Script == CameraTSS.SCRIPT_ID)
+            {
+                LogCamovSkip(__instance);
+                return;
+            }
+
+            if (__instance.Render == null)
+                return;
+
             var camera = MySector.MainCamera;
             if (camera == null)
                 return;
@@ -111,6 +124,27 @@ namespace LcdBoosterClient
                 if (block == null || block.MarkedForClose)
                     LastRenderTick.TryRemove(kvp.Key, out _);
             }
+
+            foreach (var kvp in CamovSkipLogged)
+            {
+                var block = BlockField.GetValue(kvp.Key) as Sandbox.Game.Entities.Cube.MyTerminalBlock;
+                if (block == null || block.MarkedForClose)
+                    CamovSkipLogged.TryRemove(kvp.Key, out _);
+            }
+        }
+
+        private static void LogCamovSkip(MyTextPanelComponent panel)
+        {
+            if (!Plugin.Settings.DebugLogging)
+                return;
+
+            if (!CamovSkipLogged.TryAdd(panel, true))
+                return;
+
+            var block = BlockField?.GetValue(panel) as MyTerminalBlock;
+            MyLog.Default.WriteLine(
+                $"CAMOV CLIENT: lcdbooster-skip lcd={block?.EntityId ?? 0} area={panel.Area} " +
+                $"lcdName=\"{block?.CustomName}\" script={panel.Script}");
         }
     }
 }

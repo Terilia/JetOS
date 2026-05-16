@@ -15,17 +15,19 @@ namespace JetOSExtensions.Client
 
         readonly Plugin _cameraLcd = new Plugin();
         Harmony _harmony;
-        uint _tick;
-        uint _lastHeartbeatSecond;
         bool _canardLoggedOnce;
 
         public void Init(object gameInstance)
         {
-            MyLog.Default.WriteLine("JetOSExtensions.Client: dev build init start.");
-            MyLog.Default.WriteLine("JetOSExtensions.Client: CAMOV camera LCD + PB overlay feature present.");
-            MyLog.Default.WriteLine("JetOSExtensions.Client: 60 FPS LCD client patch feature present.");
-            MyLog.Default.WriteLine("JetOSExtensions.Client: [Ani] canard animation fix feature present.");
-            MyLog.Default.WriteLine("JetOSExtensions.Client: radar shim present; server-only property '" + RadarFeedProtocol.PropertyName + "' will not be registered on the client.");
+            MyLog.Default.WriteLine("JetOSExtensions.Client: init start.");
+            if (Plugin.Settings.DebugLogging)
+            {
+                MyLog.Default.WriteLine("JetOSExtensions.Client: CAMOV camera LCD + PB overlay feature present.");
+                MyLog.Default.WriteLine("JetOSExtensions.Client: CAMOV client lifecycle diagnostics enabled.");
+                MyLog.Default.WriteLine("JetOSExtensions.Client: 60 FPS LCD client patch feature present.");
+                MyLog.Default.WriteLine("JetOSExtensions.Client: [Ani] canard animation fix feature present.");
+                MyLog.Default.WriteLine("JetOSExtensions.Client: radar shim present; server-only property '" + RadarFeedProtocol.PropertyName + "' will not be registered on the client.");
+            }
 
             _harmony = new Harmony(HarmonyId);
             _harmony.PatchAll(Assembly.GetExecutingAssembly());
@@ -33,19 +35,18 @@ namespace JetOSExtensions.Client
             int patchCount = 0;
             foreach (var method in _harmony.GetPatchedMethods())
             {
-                MyLog.Default.WriteLine("JetOSExtensions.Client: patched " + method.DeclaringType?.FullName + "." + method.Name);
+                if (Plugin.Settings.DebugLogging)
+                    MyLog.Default.WriteLine("JetOSExtensions.Client: patched " + method.DeclaringType?.FullName + "." + method.Name);
                 patchCount++;
             }
 
-            MyLog.Default.WriteLine("JetOSExtensions.Client: dev build init complete; patchCount=" + patchCount + ".");
+            MyLog.Default.WriteLine("JetOSExtensions.Client: init complete; patchCount=" + patchCount + ".");
         }
 
         public void Update()
         {
-            _tick++;
             _cameraLcd.Update();
             UpdateCanards();
-            LogHeartbeat();
         }
 
         public void OpenConfigDialog()
@@ -76,20 +77,5 @@ namespace JetOSExtensions.Client
             }
         }
 
-        void LogHeartbeat()
-        {
-            uint second = _tick / 60;
-            if (second == _lastHeartbeatSecond)
-                return;
-            _lastHeartbeatSecond = second;
-
-            MyLog.Default.WriteLine("JetOSExtensions.Client: heartbeat tick=" + _tick
-                + " camovEnabled=" + Plugin.Settings.Enabled
-                + " camovRange=" + Plugin.Settings.Range
-                + " camovRatio=" + Plugin.Settings.Ratio
-                + " lcd60fpsPatch=loaded"
-                + " canardFix=active"
-                + " radarClientProperty=not-registered");
-        }
     }
 }

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
+using JetOSExtensions.Shared;
 using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using Sandbox.Game.EntityComponents;
-using VRage.Game.Entity;
 using VRage.Game.GUI.TextPanel;
 using VRage.Utils;
 
@@ -12,29 +12,46 @@ namespace CameraLCD
 {
     /// <summary>
     /// For LCDs whose CustomData contains a surface line with the "Forced" flag
-    /// (e.g. "0:Eye:Forced"), creates and maintains a shadow CameraTSS instance so
-    /// the camera-overlay pipeline runs even when the user hasn't selected the
-    /// "Camera Display" TSS in the content dropdown.
-    ///
-    /// If the player picks our TSS via the UI, SE creates its own TSS and our
-    /// shadow is disposed on the next scan.
+    /// (e.g. "0:Eye:Forced"), keeps the real Camera Display text-surface script
+    /// selected. That lets vanilla release and recreate generated textures normally
+    /// while the UpdateSpriteCollection patch preserves PB/app sprite overlays.
     /// </summary>
     internal static class CamovShadowManager
     {
-        public const string ForcedMarker = "Forced";
+        public const string ForcedMarker = CamovSurfaceProtocol.ForcedMarker;
 
         private const int ScanIntervalTicks = 60;
         private static long _tickCounter;
+        private static readonly Dictionary<DisplayId, ForcedSurfaceState> ForcedStates = new Dictionary<DisplayId, ForcedSurfaceState>();
 
-        // key = (entityId << 8) | surfaceId
-        private static readonly Dictionary<long, CameraTSS> _shadows = new Dictionary<long, CameraTSS>();
+        private struct ForcedSurfaceState
+        {
+            public ContentType ContentType;
+            public string Script;
+            public bool TextureGenerated;
+            public bool Registered;
+
+            public ForcedSurfaceState(ContentType contentType, string script, bool textureGenerated, bool registered)
+            {
+                ContentType = contentType;
+                Script = script ?? "<null>";
+                TextureGenerated = textureGenerated;
+                Registered = registered;
+            }
+
+            public bool SameAs(ForcedSurfaceState other)
+            {
+                return ContentType == other.ContentType
+                    && Script == other.Script
+                    && TextureGenerated == other.TextureGenerated
+                    && Registered == other.Registered;
+            }
+        }
 
         public static void Update()
         {
             if (++_tickCounter % ScanIntervalTicks != 0) return;
             if (!Plugin.Settings.Enabled) return;
-
-            var seen = new HashSet<long>();
 
             var entities = MyEntities.GetEntities();
             if (entities == null) return;
@@ -50,81 +67,79 @@ namespace CameraLCD
                     // inside CameraTSS.TryParseForcedForSurface.
                     if (data.IndexOf(ForcedMarker, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
-                    ProcessBlock(block, seen);
+                    ProcessBlock(block);
                 }
             }
-
-            // Dispose shadows for keys not seen this scan (marker removed / block destroyed)
-            List<long> toRemove = null;
-            foreach (var kvp in _shadows)
-            {
-                if (!seen.Contains(kvp.Key))
-                {
-                    try { kvp.Value?.Dispose(); } catch { }
-                    (toRemove ?? (toRemove = new List<long>())).Add(kvp.Key);
-                }
-            }
-            if (toRemove != null)
-                foreach (var k in toRemove) _shadows.Remove(k);
         }
 
-        private static void ProcessBlock(MyTerminalBlock block, HashSet<long> seen)
+        private static void ProcessBlock(MyTerminalBlock block)
         {
             if (block is MyTextPanel tp)
             {
                 var comp = tp.PanelComponent;
-                if (comp != null) ProcessSurface(block, comp, 0, seen);
+                if (comp != null) ProcessSurface(block, comp, 0);
                 return;
             }
             var multi = block.Components.Get<MyMultiTextPanelComponent>();
             if (multi?.Panels != null)
             {
                 for (int i = 0; i < multi.Panels.Count; i++)
-                    ProcessSurface(block, multi.Panels[i], i, seen);
+                    ProcessSurface(block, multi.Panels[i], i);
             }
         }
 
-        private static void ProcessSurface(MyTerminalBlock block, MyTextPanelComponent surface, int area, HashSet<long> seen)
+        private static void ProcessSurface(MyTerminalBlock block, MyTextPanelComponent surface, int area)
         {
             // Only claim this surface if its specific CustomData line actually has the Forced flag.
             if (!CameraTSS.TryParseForcedForSurface(block.CustomData, GetSurfaceKey(block, area)))
                 return;
 
-            long key = (block.EntityId << 8) | (uint)(area & 0xFF);
-            seen.Add(key);
-
-            // If SE already runs the Camera Display TSS for this surface, defer to it.
-            bool seHasTss = surface.ContentType == ContentType.SCRIPT && surface.Script == CameraTSS.SCRIPT_ID;
-            if (seHasTss)
-            {
-                if (_shadows.TryGetValue(key, out var existing))
-                {
-                    try { existing?.Dispose(); } catch { }
-                    _shadows.Remove(key);
-                }
-                return;
-            }
-
-            if (_shadows.TryGetValue(key, out var current))
-            {
-                // Surface still has the Forced marker — nudge the shadow to rebind its
-                // camera if it drifted (away-then-return, local CustomData edit, etc.).
-                try { current.RefreshIfBroken(); }
-                catch (Exception ex)
-                {
-                    MyLog.Default.WriteLine($"CameraLCD-CAMOV: RefreshIfBroken failed for {block.CustomName}: {ex.Message}");
-                }
-                return;
-            }
-
             try
             {
-                var tss = new CameraTSS(surface, block, surface.SurfaceSize);
-                _shadows[key] = tss;
+                ContentType beforeContent = surface.ContentType;
+                string beforeScript = surface.Script ?? "<null>";
+                bool beforeTextureGenerated = surface.m_textureGenerated;
+                bool beforeRegistered = CameraLcdManager.HasDisplay(block.EntityId, area);
+
+                if (surface.ContentType != ContentType.SCRIPT)
+                    surface.ContentType = ContentType.SCRIPT;
+
+                if (surface.Script != CameraTSS.SCRIPT_ID)
+                    surface.Script = CameraTSS.SCRIPT_ID;
+
+                surface.SelectScriptToDraw(CameraTSS.SCRIPT_ID);
+
+                DisplayId id = new DisplayId(block.EntityId, area);
+                var current = new ForcedSurfaceState(
+                    surface.ContentType,
+                    surface.Script,
+                    surface.m_textureGenerated,
+                    CameraLcdManager.HasDisplay(block.EntityId, area));
+
+                bool first = !ForcedStates.TryGetValue(id, out var previous);
+                bool changed = first || !current.SameAs(previous) ||
+                    beforeContent != ContentType.SCRIPT || beforeScript != CameraTSS.SCRIPT_ID;
+
+                if (changed && Plugin.Settings.DebugLogging)
+                {
+                    string reason = first ? "first-seen" :
+                        (beforeContent != ContentType.SCRIPT || beforeScript != CameraTSS.SCRIPT_ID) ? "reattach-script" :
+                        beforeTextureGenerated != current.TextureGenerated ? "texture-state" :
+                        beforeRegistered != current.Registered ? "display-registration" :
+                        "state-change";
+
+                    MyLog.Default.WriteLine(
+                        $"CAMOV CLIENT: forced-select reason={reason} lcd={block.EntityId} area={area} " +
+                        $"lcdName=\"{block.CustomName}\" beforeContent={beforeContent} beforeScript={beforeScript} " +
+                        $"content={current.ContentType} script={current.Script} " +
+                        $"texGenerated={current.TextureGenerated} registered={current.Registered}");
+                }
+
+                ForcedStates[id] = current;
             }
             catch (Exception ex)
             {
-                MyLog.Default.WriteLine($"CameraLCD-CAMOV: shadow TSS creation failed for {block.CustomName}: {ex.Message}");
+                MyLog.Default.WriteLine($"CameraLCD-CAMOV: forced script selection failed for {block.CustomName}: {ex.Message}");
             }
         }
 

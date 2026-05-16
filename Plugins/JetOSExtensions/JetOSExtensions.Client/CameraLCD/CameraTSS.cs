@@ -8,9 +8,11 @@ using Sandbox.Game.World;
 using Sandbox.ModAPI.Ingame;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using JetOSExtensions.Shared;
 using VRage.Game;
 using VRage.Game.Components;
 using VRage.Game.Definitions;
@@ -33,7 +35,7 @@ namespace CameraLCD
     [MyTextSurfaceScript(SCRIPT_ID, "Camera Display")]
     public class CameraTSS : MyTSSCommon
     {
-        public const string SCRIPT_ID = "TSS_CameraDisplay_2";
+        public const string SCRIPT_ID = CamovSurfaceProtocol.CameraDisplayScriptId;
 
         public override ScriptUpdate NeedsUpdate => ScriptUpdate.Update100;
         public DisplayId Id { get; }
@@ -45,6 +47,10 @@ namespace CameraLCD
 
         private string _customData;
         private MyCameraBlock _camera;
+        private volatile MySprite[] _externalSprites = Array.Empty<MySprite>();
+        private string _lastDrawGate;
+        private int _spriteUpdateCount;
+        private int _lastLoggedSpriteCount = -1;
 
         // Scratch RTV name — used as the SpritesManager queue key and the pool borrow
         // debug name. The backing resource is borrowed from MyManagers.RwTexturesPool per
@@ -61,9 +67,9 @@ namespace CameraLCD
             _surfaceId = GetSurfaceId(_lcd, _lcdComponent);
             Id = new DisplayId(_lcd.EntityId, _lcdComponent.Area);
 
-            _lcd.CustomDataChanged += _ => UpdateSettings(); // doesn't work if the change occurred locally
-            _lcd.IsWorkingChanged += _ => UpdateIsActive();
-            _lcd.CubeGridChanged += _ => CubeGridChanged();
+            _lcd.CustomDataChanged += Lcd_CustomDataChanged; // doesn't work if the change occurred locally
+            _lcd.IsWorkingChanged += Lcd_IsWorkingChanged;
+            _lcd.CubeGridChanged += Lcd_CubeGridChanged;
             _lcd.OnMarkForClose += Lcd_OnMarkForClose;
             UpdateSettings();
         }
@@ -96,45 +102,65 @@ namespace CameraLCD
 
         private void RegisterCamera(MyCameraBlock camera)
         {
-            UnregisterCamera();
+            UnregisterCamera("camera-change-before-attach");
 
             _camera = camera;
             _camera.OnClose += Camera_OnClose;
-            _camera.IsWorkingChanged += _ => UpdateIsActive();
-            _camera.CubeGridChanged += _ => CubeGridChanged();
-            _camera.CustomNameChanged += _ => UpdateSettings();
-            UpdateIsActive();
+            _camera.IsWorkingChanged += Camera_IsWorkingChanged;
+            _camera.CubeGridChanged += Camera_CubeGridChanged;
+            _camera.CustomNameChanged += Camera_CustomNameChanged;
+            UpdateIsActive("attach");
             CameraLcdManager.AddDisplay(Id, this);
+            _lastDrawGate = "attach";
+            LogLifecycle("attach", "camera-bound", camera);
         }
 
-        private void UnregisterCamera()
+        private void UnregisterCamera(string reason)
         {
             if (_camera != null)
             {
+                MyCameraBlock oldCamera = _camera;
                 CameraLcdManager.RemoveDisplay(Id);
                 IsActive = false;
                 _camera.OnClose -= Camera_OnClose;
-                _camera.IsWorkingChanged -= _ => UpdateIsActive();
-                _camera.CubeGridChanged -= _ => CubeGridChanged();
-                _camera.CustomNameChanged -= _ => UpdateSettings();
+                _camera.IsWorkingChanged -= Camera_IsWorkingChanged;
+                _camera.CubeGridChanged -= Camera_CubeGridChanged;
+                _camera.CustomNameChanged -= Camera_CustomNameChanged;
                 _camera = null;
-                UpdateIsActive();
+                _lastDrawGate = "detach";
+                LogLifecycle("detach", reason, oldCamera);
+                UpdateIsActive("detach");
             }
         }
 
-        private void Camera_OnClose(MyEntity obj) => UnregisterCamera();
+        private void Camera_OnClose(MyEntity obj) => UnregisterCamera("camera-closed");
 
-        private void CubeGridChanged()
+        private void Lcd_CustomDataChanged(MyTerminalBlock block) => UpdateSettings();
+
+        private void Lcd_IsWorkingChanged(MyCubeBlock block) => UpdateIsActive("lcd-working-changed");
+
+        private void Lcd_CubeGridChanged(VRage.Game.ModAPI.IMyCubeGrid oldGrid) => CubeGridChanged("lcd-grid-changed");
+
+        private void Camera_IsWorkingChanged(MyCubeBlock block) => UpdateIsActive("camera-working-changed");
+
+        private void Camera_CubeGridChanged(VRage.Game.ModAPI.IMyCubeGrid oldGrid) => CubeGridChanged("camera-grid-changed");
+
+        private void Camera_CustomNameChanged(MyTerminalBlock block) => UpdateSettings();
+
+        private void CubeGridChanged(string reason)
         {
             if (_camera != null && !_camera.CubeGrid.IsSameConstructAs(_lcd.CubeGrid))
             {
-                UnregisterCamera();
+                UnregisterCamera(reason);
             }
         }
 
-        private void UpdateIsActive()
+        private void UpdateIsActive(string reason)
         {
+            bool wasActive = IsActive;
             IsActive = _camera != null && _camera.IsWorking && _lcd.IsWorking;
+            if (wasActive != IsActive)
+                LogLifecycle(IsActive ? "active" : "inactive", reason);
         }
 
         private void UpdateSettings()
@@ -143,7 +169,7 @@ namespace CameraLCD
 
             if (!TryFindCamera(_customData, out MyCameraBlock newCamera))
             {
-                UnregisterCamera();
+                UnregisterCamera("camera-not-found");
                 return;
             }
 
@@ -155,22 +181,79 @@ namespace CameraLCD
             if (_camera is not null)
             {
                 // unregister current camera if changed (and not null)
-                UnregisterCamera();
+                UnregisterCamera("camera-changed");
             }
 
             // is new or changed
             RegisterCamera(newCamera);
         }
 
-        // Shadow TSS instances never receive Run() ticks (SE only ticks TSS owned by a
-        // SCRIPT surface). If _camera goes null during the away-period — e.g. camera
-        // streamed out in MP, grid split, or a missed CustomDataChanged on a local edit —
-        // nothing re-binds it. CamovShadowManager calls this once per scan (60 ticks) so
-        // the shadow self-heals on return.
-        public void RefreshIfBroken()
+        public void UpdateExternalSprites(IReadOnlyList<MySprite> sprites)
         {
-            if (_camera == null || _customData != _lcd.CustomData)
-                UpdateSettings();
+            _spriteUpdateCount++;
+
+            MySprite[] frame;
+            if (sprites == null || sprites.Count == 0)
+            {
+                frame = Array.Empty<MySprite>();
+            }
+            else if (sprites is MySprite[] spriteArray)
+            {
+                frame = spriteArray;
+            }
+            else
+            {
+                frame = new MySprite[sprites.Count];
+                for (int i = 0; i < sprites.Count; i++)
+                    frame[i] = sprites[i];
+            }
+
+            _externalSprites = frame;
+
+            if (frame.Length != _lastLoggedSpriteCount || _spriteUpdateCount <= 3 || (_spriteUpdateCount % 120) == 0)
+            {
+                _lastLoggedSpriteCount = frame.Length;
+                LogLifecycle("sprites", $"update={_spriteUpdateCount}");
+            }
+        }
+
+        private void LogLifecycle(string action, string reason, MyCameraBlock cameraOverride = null)
+        {
+            if (!Plugin.Settings.DebugLogging)
+                return;
+
+            try
+            {
+                MyCameraBlock camera = cameraOverride ?? _camera;
+                bool fileTexture = TryGetRenderTexture(out IUserGeneratedTexture renderTexture);
+                string texLoaded = renderTexture != null ? renderTexture.IsLoaded.ToString() : "<none>";
+                string texRtv = renderTexture != null ? (renderTexture.Rtv != null).ToString() : "<none>";
+                string cameraId = camera != null ? camera.EntityId.ToString(CultureInfo.InvariantCulture) : "<none>";
+                string cameraName = camera != null ? camera.CustomName?.ToString() ?? "" : "";
+                string cameraWorking = camera != null ? camera.IsWorking.ToString() : "<none>";
+                string lcdName = _lcd?.CustomName?.ToString() ?? "";
+                string script = _lcdComponent.Script ?? "<null>";
+                string distance = "<none>";
+                MyCamera renderCamera = MySector.MainCamera;
+                if (renderCamera != null)
+                {
+                    distance = renderCamera
+                        .GetDistanceFromPoint(_lcd.WorldMatrix.Translation)
+                        .ToString("0.0", CultureInfo.InvariantCulture);
+                }
+
+                MyLog.Default.WriteLine(
+                    $"CAMOV CLIENT: {action} reason={reason ?? "-"} lcd={_lcd.EntityId} area={_surfaceId} " +
+                    $"lcdName=\"{lcdName}\" camera={cameraId} cameraName=\"{cameraName}\" forced={_isForced} " +
+                    $"active={IsActive} lcdWorking={_lcd.IsWorking} cameraWorking={cameraWorking} " +
+                    $"content={_lcdComponent.ContentType} script={script} texGenerated={_lcdComponent.m_textureGenerated} " +
+                    $"fileTexture={fileTexture} texLoaded={texLoaded} texRtv={texRtv} registered={CameraLcdManager.HasDisplay(_lcd.EntityId, _lcdComponent.Area)} " +
+                    $"sprites={_externalSprites.Length} dist={distance}");
+            }
+            catch (Exception ex)
+            {
+                MyLog.Default.WriteLine($"CAMOV CLIENT: lifecycle-log failed action={action} reason={reason}: {ex.Message}");
+            }
         }
 
         public bool TryFindCamera(string customData, out MyCameraBlock camera)
@@ -240,31 +323,17 @@ namespace CameraLCD
             }
         }
 #nullable disable
-        // "Forced" flag from CustomData — e.g. "0:Eye:Forced" on surface 0. When set,
-        // CameraTSS.DrawInternal bypasses the ContentType == SCRIPT check and force-binds
-        // the surface material to our RTV, so the camera view still composites even when
-        // the player keeps ContentType = NONE / TEXT_AND_IMAGE.
+        // "Forced" flag from CustomData — e.g. "0:Eye:Forced" on surface 0. CamovShadowManager
+        // uses it to keep the real Camera Display script selected; drawing still follows the
+        // normal vanilla SCRIPT lifecycle.
         private bool _isForced;
         public bool IsForced => _isForced;
 
-        // Static helper used by CamovShadowManager before constructing a CameraTSS: checks
+        // Static helper used by CamovShadowManager before selecting the real TSS: checks
         // whether the given CustomData flags the given surfaceId as forced.
         public static bool TryParseForcedForSurface(string customData, int surfaceId)
         {
-            if (string.IsNullOrWhiteSpace(customData)) return false;
-            string prefix = surfaceId + ":";
-            using (StringReader reader = new StringReader(customData))
-            {
-                while (reader.ReadLine() is string line)
-                {
-                    if (!line.StartsWith(prefix) || line.Length <= prefix.Length) continue;
-                    string rest = line.Substring(prefix.Length);
-                    foreach (var seg in rest.Split(':'))
-                        if (seg.Trim().Equals(CamovShadowManager.ForcedMarker, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                }
-            }
-            return false;
+            return CamovSurfaceProtocol.IsForcedSurface(customData, surfaceId);
         }
 
         private string GetCameraName(string customData)
@@ -373,103 +442,78 @@ namespace CameraLCD
             }
         }
 
-        // Diagnostic: last failure gate for this shadow ("" = drawing OK). We log only on
-        // transitions so each shadow emits 1-2 lines per away/return cycle, not every frame.
-        private string _lastGate = "";
-
         private bool OnGate(string gate)
         {
-            if (_lastGate != gate)
+            if (_lastDrawGate != gate)
             {
-                _lastGate = gate;
-                MyLog.Default.WriteLine(
-                    $"CAMOV: Draw gated lcd={_lcd.EntityId} area={_surfaceId} forced={_isForced} " +
-                    $"texGen={_lcdComponent.m_textureGenerated} ct={_lcdComponent.ContentType} " +
-                    $"script={_lcdComponent.Script} camBound={_camera != null} gate={gate}");
+                _lastDrawGate = gate;
+                LogLifecycle("draw-gate", gate);
             }
             return false;
         }
 
-        private void OnSuccess()
+        private void OnDrawSuccess(IUserGeneratedTexture surfaceRtv)
         {
-            if (_lastGate.Length != 0)
+            if (!surfaceRtv.IsLoaded)
+            {
+                surfaceRtv.SetTextureReady();
+                LogLifecycle("texture-ready", "draw-success");
+            }
+
+            if (_lastDrawGate == null)
+                return;
+
+            string previousGate = _lastDrawGate;
+            _lastDrawGate = null;
+            ForceRebindAfterRecovery(previousGate);
+            LogLifecycle("draw-resume", $"{previousGate} size={surfaceRtv.Size.X}x{surfaceRtv.Size.Y}");
+        }
+
+        private void ForceRebindAfterRecovery(string previousGate)
+        {
+            if (!_isForced)
+                return;
+
+            if (previousGate != "Inactive" &&
+                previousGate != "TextureNotGenerated" &&
+                previousGate != "NoRenderTexture")
+                return;
+
+            try
+            {
+                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, _lcdComponent.GetRenderTextureName(), isForced: true);
+                LogLifecycle("forced-rebind", previousGate);
+            }
+            catch (Exception ex)
             {
                 MyLog.Default.WriteLine(
-                    $"CAMOV: Draw resumed lcd={_lcd.EntityId} area={_surfaceId} afterGate={_lastGate}");
-                _lastGate = "";
+                    $"CAMOV CLIENT: forced-rebind failed lcd={_lcd?.EntityId} area={_surfaceId} reason={previousGate}: {ex}");
             }
         }
 
-        // SE's scene-cull path tears down the offscreen file texture but does not always
-        // reset MyTextPanelComponent.m_textureGenerated in lockstep. On return the flag
-        // stays true, so EnsureGeneratedTexture early-exits and never recreates the
-        // texture — and TryGetTexture fails because the FileTextures entry is gone.
-        //
-        // Repair: if the flag is false, call Ensure normally. If the flag is true but
-        // FileTextures has no matching entry, force a Release→Ensure cycle to resync.
-        private void EnsureSurfaceTexture()
+        private void EnsureRenderTargetReady(IUserGeneratedTexture surfaceRtv)
         {
-            if (!_lcdComponent.m_textureGenerated)
-            {
-                _lcdComponent.EnsureGeneratedTexture();
-                return;
-            }
-
-            string name;
-            try { name = _lcdComponent.GetRenderTextureName(); }
-            catch (NullReferenceException) { return; }
-
-            if (MyManagers.FileTextures.TryGetTexture(name, out IUserGeneratedTexture tex) && tex != null)
+            if (surfaceRtv.Rtv != null && surfaceRtv.Resource != null && surfaceRtv.Srv != null)
                 return;
 
-            MyLog.Default.WriteLine(
-                $"CAMOV: texture flag/FileTextures desync — force regen lcd={_lcd.EntityId} area={_surfaceId}");
-            _lcdComponent.ReleaseTexture(useEmptyTexture: false);
-            _lcdComponent.EnsureGeneratedTexture();
+            surfaceRtv.Reset();
+            MyRender11.RC.ClearRtv(surfaceRtv, default);
+            LogLifecycle("texture-reset", "missing-rtv");
         }
-
-        private bool _wasInRange;
-
-        // Shrink our effective range by a small margin so our range-exit release fires
-        // strictly before SE's scene-cull kicks in. Without this, we race SE: if SE
-        // destroys the file texture first, our state desyncs (flag stays true, no
-        // FileTextures entry) and the shadow gets stuck in the "Online" fallback on
-        // return. The exact distance where SE culls an LCD block depends on LOD/LOD
-        // factor and isn't easy to read; 1m is a conservative head-start.
-        private const float CullSafetyMarginMeters = 1.0f;
 
         private bool DrawInternal()
         {
-            if (!IsActive) return OnGate("IsActive=false");
+            if (!IsActive) return OnGate("Inactive");
 
             MyCamera renderCamera = MySector.MainCamera;
             if (renderCamera is null) return OnGate("NoMainCamera");
 
-            float effectiveRange = Math.Max(1f, Plugin.Settings.Range - CullSafetyMarginMeters);
-            bool inRange = renderCamera.GetDistanceFromPoint(_lcd.WorldMatrix.Translation) <= effectiveRange;
-            _wasInRange = inRange;
+            if (renderCamera.GetDistanceFromPoint(_lcd.WorldMatrix.Translation) > Plugin.Settings.Range)
+                return OnGate("OutOfRange");
 
-            if (!inRange) return OnGate("OutOfRange");
-
-            if (_isForced)
-            {
-                // Forced mode — render regardless of ContentType/Script. Ensure the surface
-                // texture exists and the material points at it (SE's TSS lifecycle does this
-                // normally; we do it here because the user has deliberately kept ContentType
-                // at NONE/TEXT_AND_IMAGE).
-                EnsureSurfaceTexture();
-                if (!_lcdComponent.m_textureGenerated) return OnGate("TexGenForcedFailed");
-                // isForced:true so SE's scene-add material-reset logic can't clobber our binding.
-                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, _lcdComponent.GetRenderTextureName(), isForced: true);
-            }
-            else
-            {
-                // Classic mode — only take over surfaces where the user has picked our
-                // Camera Display script. SE's TSS lifecycle handles the material binding.
-                if (!_lcdComponent.m_textureGenerated) return OnGate("TexGenClassicFalse");
-                if (_lcdComponent.ContentType != ContentType.SCRIPT) return OnGate("ContentTypeNotScript");
-                if (_lcdComponent.Script != SCRIPT_ID) return OnGate("ScriptMismatch");
-            }
+            if (!_lcdComponent.m_textureGenerated) return OnGate("TextureNotGenerated");
+            if (_lcdComponent.ContentType != ContentType.SCRIPT) return OnGate("ContentTypeNotScript");
+            if (_lcdComponent.Script != SCRIPT_ID) return OnGate("ScriptMismatch");
 
             // frustum test
             if (MyRender11.Environment.Matrices.ViewFrustumClippedD.Contains(_lcd.PositionComp.WorldAABB) is ContainmentType.Disjoint)
@@ -477,6 +521,8 @@ namespace CameraLCD
 
             if (!TryGetRenderTexture(out IUserGeneratedTexture surfaceRtv))
                 return OnGate("NoRenderTexture");
+
+            EnsureRenderTargetReady(surfaceRtv);
 
             var originalRendererState = new RendererState
             {
@@ -522,7 +568,7 @@ namespace CameraLCD
 
             MyRender11.RC.GenerateMips(surfaceRtv);
 
-            OnSuccess();
+            OnDrawSuccess(surfaceRtv);
             return true;
         }
 
@@ -545,8 +591,8 @@ namespace CameraLCD
 
         private void CamovComposite(IUserGeneratedTexture lcdRtv)
         {
-            var sprites = _lcdComponent.m_renderLayers;
-            if (sprites == null || sprites.Count == 0) return;
+            var sprites = _externalSprites;
+            if (sprites == null || sprites.Length == 0) return;
 
             if (_camovScratchName == null)
                 _camovScratchName = $"CAMOV_Scratch_{_lcd.EntityId}_{_surfaceId}";
@@ -610,11 +656,11 @@ namespace CameraLCD
             }
         }
 
-        private void BuildSpriteMessages(System.Collections.Generic.List<MySprite> sprites, Vector2I textureSize,
+        private void BuildSpriteMessages(MySprite[] sprites, Vector2I textureSize,
             Vector2 shift, Vector2 halfTexture, string targetName, int frameId)
         {
             bool hasScissor = false;
-            int count = sprites.Count;
+            int count = sprites.Length;
             for (int i = 0; i < count; i++)
             {
                 MySprite sprite = sprites[i];
@@ -708,152 +754,6 @@ namespace CameraLCD
         }
 
         private static void AddScissorPop(string targetName, int frameId)
-        {
-            var msg = MyRenderProxy.MessagePool.Get<MyRenderMessageSpriteScissorPop>(MyRenderMessageEnum.SpriteScissorPop);
-            msg.TargetTexture = targetName;
-            MyManagers.SpritesManager.AddMessage(msg, frameId);
-            msg.Dispose();
-        }
-
-        private static int _camovOverlayFrameId;
-
-        private void DrawPbSpritesSynchronously(IUserGeneratedTexture target)
-        {
-            var sprites = _lcdComponent.m_renderLayers;
-            if (sprites == null || sprites.Count == 0) return;
-
-            var render = _lcdComponent.m_render;
-            if (render == null) return;
-
-            string targetName = render.GenerateOffscreenTextureName(_lcd.EntityId, _lcdComponent.m_area);
-            Vector2I textureSize = _lcdComponent.m_textureSize;
-            Vector2 aspectRatio = _lcdComponent.m_screenAspectRatio;
-            Vector2 aspectFactor = MyRenderComponentScreenAreas.CalcAspectFactor(textureSize, aspectRatio);
-            Vector2 shift = MyRenderComponentScreenAreas.CalcShift(textureSize, aspectFactor);
-            Vector2 halfTexture = (Vector2)textureSize * 0.5f;
-
-            // Fresh frame id per call so SpritesManager.AddMessage doesn't coalesce with
-            // a stale batch under the same target name.
-            int frameId = System.Threading.Interlocked.Increment(ref _camovOverlayFrameId);
-
-            bool hasScissor = false;
-            int count = sprites.Count;
-            for (int i = 0; i < count; i++)
-            {
-                MySprite sprite = sprites[i];
-                Vector2 size = sprite.Size ?? (Vector2)textureSize;
-                Vector2 position = sprite.Position ?? halfTexture;
-                Color color = sprite.Color ?? Color.White;
-                position += shift;
-
-                switch (sprite.Type)
-                {
-                    case SpriteType.TEXTURE:
-                    {
-                        var def = MyDefinitionManager.Static.GetDefinition<MyLCDTextureDefinition>(MyStringHash.GetOrCompute(sprite.Data));
-                        string path = def?.SpritePath ?? def?.TexturePath;
-                        if (path == null) break;
-                        switch (sprite.Alignment)
-                        {
-                            case TextAlignment.LEFT:  position += new Vector2(size.X * 0.5f, 0f); break;
-                            case TextAlignment.RIGHT: position -= new Vector2(size.X * 0.5f, 0f); break;
-                        }
-                        Vector2 rightVec = new Vector2(1f, 0f);
-                        if (Math.Abs(sprite.RotationOrScale) > 1e-5f)
-                            rightVec = new Vector2((float)Math.Cos(sprite.RotationOrScale), (float)Math.Sin(sprite.RotationOrScale));
-
-                        var msg = MyRenderProxy.MessagePool.Get<MyRenderMessageDrawSpriteAtlas>(MyRenderMessageEnum.DrawSpriteAtlas);
-                        msg.Texture = path;
-                        msg.Position = position;
-                        msg.TextureOffset = Vector2.Zero;
-                        msg.TextureSize = Vector2.One;
-                        msg.RightVector = rightVec;
-                        msg.Scale = Vector2.One;
-                        msg.Color = color;
-                        msg.HalfSize = size * 0.5f;
-                        msg.TargetTexture = targetName;
-                        msg.IgnoreBounds = false;
-                        MyManagers.SpritesManager.AddMessage(msg, frameId);
-                        msg.Dispose();
-                        break;
-                    }
-                    case SpriteType.TEXT:
-                    {
-                        switch (sprite.Alignment)
-                        {
-                            case TextAlignment.RIGHT:  position -= new Vector2(size.X, 0f); break;
-                            case TextAlignment.CENTER: position -= new Vector2(size.X * 0.5f, 0f); break;
-                        }
-                        var fontDef = MyDefinitionManager.Static.GetDefinition<MyFontDefinition>(MyStringHash.GetOrCompute(sprite.FontId));
-                        int widthPx = (int)Math.Round(size.X);
-                        int fontIdx = (int)(fontDef?.Id.SubtypeId ?? MyStringHash.GetOrCompute("Debug"));
-
-                        var msg = MyRenderProxy.MessagePool.Get<MyRenderMessageDrawStringAligned>(MyRenderMessageEnum.DrawStringAligned);
-                        msg.Text = sprite.Data ?? string.Empty;
-                        msg.FontIndex = fontIdx;
-                        msg.ScreenCoord = position;
-                        msg.ColorMask = color;
-                        msg.ScreenScale = sprite.RotationOrScale;
-                        msg.ScreenMaxWidth = float.PositiveInfinity;
-                        msg.TargetTexture = targetName;
-                        msg.TextureWidthInPx = widthPx;
-                        msg.Alignment = (MyRenderTextAlignmentEnum)sprite.Alignment;
-                        msg.IgnoreBounds = false;
-                        MyManagers.SpritesManager.AddMessage(msg, frameId);
-                        msg.Dispose();
-                        break;
-                    }
-                    case SpriteType.CLIP_RECT:
-                        if (sprite.Position.HasValue && sprite.Size.HasValue)
-                        {
-                            if (hasScissor) PushScissorPop(targetName, frameId);
-                            else hasScissor = true;
-                            PushScissorPush(targetName, frameId, new Rectangle((int)position.X, (int)position.Y, (int)size.X, (int)size.Y));
-                        }
-                        else if (hasScissor)
-                        {
-                            PushScissorPop(targetName, frameId);
-                            hasScissor = false;
-                        }
-                        break;
-                }
-            }
-            if (hasScissor) PushScissorPop(targetName, frameId);
-
-            // Synchronous sprite pass on the LCD RTV — MySpritesRenderer.Draw does NOT clear,
-            // so sprites blend directly on top of the camera image already written by
-            // CameraViewRenderer.Draw in this same frame.
-            var messages = MyManagers.SpritesManager.AcquireDrawMessages(targetName);
-            if (messages == null) return;
-
-            var renderer = MyManagers.SpritesManager.GetSpritesRenderer();
-            try
-            {
-                if (renderer.ProcessDrawSpritesQueue(messages, touchTextures: true))
-                {
-                    MyViewport viewport = new MyViewport(target.Size.X, target.Size.Y);
-                    Vector2 viewportSize = (Vector2)target.Size * aspectFactor;
-                    renderer.Draw(MyRender11.RC, target, ref viewport, ref viewport, ref viewportSize, null,
-                        MyBlendStateManager.BlendAlphaPremultNoAlphaChannel);
-                }
-            }
-            finally
-            {
-                MyManagers.SpritesManager.Return(renderer);
-                MyManagers.SpritesManager.DisposeDrawMessages(messages);
-            }
-        }
-
-        private static void PushScissorPush(string targetName, int frameId, Rectangle rect)
-        {
-            var msg = MyRenderProxy.MessagePool.Get<MyRenderMessageSpriteScissorPush>(MyRenderMessageEnum.SpriteScissorPush);
-            msg.ScreenRectangle = rect;
-            msg.TargetTexture = targetName;
-            MyManagers.SpritesManager.AddMessage(msg, frameId);
-            msg.Dispose();
-        }
-
-        private static void PushScissorPop(string targetName, int frameId)
         {
             var msg = MyRenderProxy.MessagePool.Get<MyRenderMessageSpriteScissorPop>(MyRenderMessageEnum.SpriteScissorPop);
             msg.TargetTexture = targetName;
@@ -988,10 +888,10 @@ namespace CameraLCD
         {
             base.Dispose();
 
-            UnregisterCamera();
-            _lcd.CustomDataChanged -= _ => UpdateSettings();
-            _lcd.IsWorkingChanged -= _ => UpdateIsActive();
-            _lcd.CubeGridChanged -= _ => CubeGridChanged();
+            UnregisterCamera("dispose");
+            _lcd.CustomDataChanged -= Lcd_CustomDataChanged;
+            _lcd.IsWorkingChanged -= Lcd_IsWorkingChanged;
+            _lcd.CubeGridChanged -= Lcd_CubeGridChanged;
             _lcd.OnMarkForClose -= Lcd_OnMarkForClose;
         }
     }
