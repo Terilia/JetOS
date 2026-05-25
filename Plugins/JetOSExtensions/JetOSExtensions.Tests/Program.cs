@@ -34,6 +34,23 @@ True(CamovSurfaceProtocol.IsForcedSurface("0:Eye:Forced\r\n1:HUD", 0), "forced s
 True(CamovSurfaceProtocol.IsForcedSurface("0:Eye\r\n1:HUD:forced", 1), "forced surface is case insensitive");
 Equal(false, CamovSurfaceProtocol.IsForcedSurface("0:Eye:Forced\r\n1:HUD", 1), "forced surface is per surface");
 Equal(false, CamovSurfaceProtocol.IsForcedSurface("10:Eye:Forced", 1), "forced surface prefix is exact");
+Equal(false, CamovSurfaceProtocol.IsForcedSurface("0::Forced", 0), "forced marker requires a camera selection");
+True(CamovSurfaceProtocol.HasCameraSelection("0:Eye\r\n1:HUD", 0), "surface camera selection is detected");
+Equal(false, CamovSurfaceProtocol.HasCameraSelection("0:\r\n1:HUD", 0), "empty surface camera selection is ignored");
+True(CamovSurfaceProtocol.UsesForcedMode("0:Eye\r\n1:HUD", 0, commonTssSet: true, cameraSelected: true), "common TSS with selected camera implies forced mode");
+Equal(false, CamovSurfaceProtocol.UsesForcedMode("0:Eye\r\n1:HUD", 0, commonTssSet: true, cameraSelected: false), "common TSS without selected camera does not force");
+Equal(false, CamovSurfaceProtocol.UsesForcedMode("0:Eye\r\n1:HUD", 0, commonTssSet: false, cameraSelected: true), "camera selection alone does not force without common TSS");
+True(CamovSurfaceProtocol.UsesForcedMode("0:Eye:Forced\r\n1:HUD", 0, commonTssSet: false, cameraSelected: true), "forced marker with selected camera implies forced mode");
+Equal(false, CamovSurfaceProtocol.UsesForcedMode("0:Eye:Forced\r\n1:HUD", 0, commonTssSet: false, cameraSelected: false), "forced marker without selected camera does not force runtime mode");
+
+Equal(100, CamovResolutionScale.NormalizePercent(100), "resolution scale keeps 1x");
+Equal(150, CamovResolutionScale.NormalizePercent(150), "resolution scale keeps 1.5x");
+Equal(200, CamovResolutionScale.NormalizePercent(200), "resolution scale keeps 2x");
+Equal(400, CamovResolutionScale.NormalizePercent(400), "resolution scale keeps 4x");
+Equal(100, CamovResolutionScale.NormalizePercent(175), "resolution scale rejects unsupported values");
+Equal(768, CamovResolutionScale.ScaleDimension(512, 150), "resolution scale multiplies even dimension");
+Equal(770, CamovResolutionScale.ScaleDimension(513, 150), "resolution scale rounds fractional pixels up");
+Equal("1.5x", CamovResolutionScale.FormatLabel(150), "resolution scale formats menu label");
 
 var spriteBuffer = new List<string> { "old-a", "old-b", "old-c" };
 CamovSpriteDeltas.ApplyIndexedDelta(

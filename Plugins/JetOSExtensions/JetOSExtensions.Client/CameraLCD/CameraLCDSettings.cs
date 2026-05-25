@@ -1,6 +1,7 @@
 using System.IO;
 using System.Xml;
 using System.Xml.Serialization;
+using JetOSExtensions.Shared;
 using VRage.FileSystem;
 
 namespace CameraLCD
@@ -17,6 +18,7 @@ namespace CameraLCD
         public bool Enabled { get; set; } = true;
         public int Ratio { get; set; } = 2;
         public int Range { get; set; } = 40;
+        public int ResolutionScalePercent { get; set; } = CamovResolutionScale.DefaultPercent;
         public bool HeadFix { get; set; } = true;
         public bool OcclusionFix { get; set; } = true;
         public bool DebugLogging { get; set; } = false;
@@ -31,7 +33,9 @@ namespace CameraLCD
                     XmlSerializer serializer = new XmlSerializer(typeof(CameraLCDSettings));
                     using (XmlReader xml = XmlReader.Create(file))
                     {
-                        return (CameraLCDSettings)serializer.Deserialize(xml);
+                        CameraLCDSettings settings = (CameraLCDSettings)serializer.Deserialize(xml);
+                        settings.ResolutionScalePercent = CamovResolutionScale.NormalizePercent(settings.ResolutionScalePercent);
+                        return settings;
                     }
                 }
                 catch { }

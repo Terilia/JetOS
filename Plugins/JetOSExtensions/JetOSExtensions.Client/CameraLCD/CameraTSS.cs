@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using JetOSExtensions.Shared;
 using VRage.Game;
@@ -44,6 +45,7 @@ namespace CameraLCD
         private readonly MyTerminalBlock _lcd;
         private readonly MyTextPanelComponent _lcdComponent;
         private readonly int _surfaceId;
+        private readonly Vector2I _baseTextureSize;
 
         private string _customData;
         private MyCameraBlock _camera;
@@ -51,6 +53,14 @@ namespace CameraLCD
         private string _lastDrawGate;
         private int _spriteUpdateCount;
         private int _lastLoggedSpriteCount = -1;
+        private int _appliedResolutionScalePercent = CamovResolutionScale.DefaultPercent;
+        private string _scaledRenderTextureName;
+        private Vector2I _scaledRenderTextureSize;
+        private bool _scaledRenderTextureCreated;
+        private static readonly FieldInfo GeneratedTextureDescField =
+            typeof(MyGeneratedTextureManager).Assembly
+                .GetType("VRage.Render11.Resources.Internal.MyGeneratedTexture")
+                ?.GetField("m_desc", BindingFlags.Instance | BindingFlags.NonPublic);
 
         // Scratch RTV name — used as the SpritesManager queue key and the pool borrow
         // debug name. The backing resource is borrowed from MyManagers.RwTexturesPool per
@@ -65,6 +75,7 @@ namespace CameraLCD
             _lcd = (MyTerminalBlock)block;
             _lcdComponent = (MyTextPanelComponent)surface;
             _surfaceId = GetSurfaceId(_lcd, _lcdComponent);
+            _baseTextureSize = _lcdComponent.m_textureSize;
             Id = new DisplayId(_lcd.EntityId, _lcdComponent.Area);
 
             _lcd.CustomDataChanged += Lcd_CustomDataChanged; // doesn't work if the change occurred locally
@@ -131,6 +142,8 @@ namespace CameraLCD
                 LogLifecycle("detach", reason, oldCamera);
                 UpdateIsActive("detach");
             }
+
+            RestoreResolutionScale();
         }
 
         private void Camera_OnClose(MyEntity obj) => UnregisterCamera("camera-closed");
@@ -169,9 +182,16 @@ namespace CameraLCD
 
             if (!TryFindCamera(_customData, out MyCameraBlock newCamera))
             {
+                _isForced = false;
                 UnregisterCamera("camera-not-found");
                 return;
             }
+
+            _isForced = CamovSurfaceProtocol.UsesForcedMode(
+                _customData,
+                _surfaceId,
+                commonTssSet: true,
+                cameraSelected: true);
 
             if (_camera == newCamera)
             {
@@ -225,9 +245,12 @@ namespace CameraLCD
             try
             {
                 MyCameraBlock camera = cameraOverride ?? _camera;
-                bool fileTexture = TryGetRenderTexture(out IUserGeneratedTexture renderTexture);
+                string renderTextureName = GetActiveRenderTextureName();
+                bool fileTexture = TryGetRenderTexture(renderTextureName, out IUserGeneratedTexture renderTexture);
                 string texLoaded = renderTexture != null ? renderTexture.IsLoaded.ToString() : "<none>";
                 string texRtv = renderTexture != null ? (renderTexture.Rtv != null).ToString() : "<none>";
+                string texSize = renderTexture != null ? $"{renderTexture.Size.X}x{renderTexture.Size.Y}" : "<none>";
+                string scaledSize = _scaledRenderTextureCreated ? $"{_scaledRenderTextureSize.X}x{_scaledRenderTextureSize.Y}" : "<none>";
                 string cameraId = camera != null ? camera.EntityId.ToString(CultureInfo.InvariantCulture) : "<none>";
                 string cameraName = camera != null ? camera.CustomName?.ToString() ?? "" : "";
                 string cameraWorking = camera != null ? camera.IsWorking.ToString() : "<none>";
@@ -247,7 +270,9 @@ namespace CameraLCD
                     $"lcdName=\"{lcdName}\" camera={cameraId} cameraName=\"{cameraName}\" forced={_isForced} " +
                     $"active={IsActive} lcdWorking={_lcd.IsWorking} cameraWorking={cameraWorking} " +
                     $"content={_lcdComponent.ContentType} script={script} texGenerated={_lcdComponent.m_textureGenerated} " +
-                    $"fileTexture={fileTexture} texLoaded={texLoaded} texRtv={texRtv} registered={CameraLcdManager.HasDisplay(_lcd.EntityId, _lcdComponent.Area)} " +
+                    $"fileTexture={fileTexture} texName={renderTextureName ?? "<null>"} texSize={texSize} texLoaded={texLoaded} texRtv={texRtv} " +
+                    $"lcdTextureSize={_lcdComponent.m_textureSize.X}x{_lcdComponent.m_textureSize.Y} scaled={_scaledRenderTextureCreated} scaledSize={scaledSize} " +
+                    $"registered={CameraLcdManager.HasDisplay(_lcd.EntityId, _lcdComponent.Area)} " +
                     $"sprites={_externalSprites.Length} dist={distance}");
             }
             catch (Exception ex)
@@ -323,9 +348,8 @@ namespace CameraLCD
             }
         }
 #nullable disable
-        // "Forced" flag from CustomData — e.g. "0:Eye:Forced" on surface 0. CamovShadowManager
-        // uses it to keep the real Camera Display script selected; drawing still follows the
-        // normal vanilla SCRIPT lifecycle.
+        // Forced-mode behavior comes from either explicit CustomData before script selection
+        // or from this active common TSS instance once a camera is selected.
         private bool _isForced;
         public bool IsForced => _isForced;
 
@@ -338,31 +362,7 @@ namespace CameraLCD
 
         private string GetCameraName(string customData)
         {
-            _isForced = false;
-            if (String.IsNullOrWhiteSpace(customData))
-                return null;
-
-            string prefix = _surfaceId + ":";
-            using (StringReader reader = new StringReader(customData))
-            {
-                while (reader.ReadLine() is string line)
-                {
-                    if (line.StartsWith(prefix) && line.Length > prefix.Length)
-                    {
-                        string rest = line.Substring(prefix.Length);
-                        // Split "<name>:<flag>[:<flag>...]"; first segment is the camera name,
-                        // any later segment equal to "Forced" sets the force-bind flag.
-                        var segs = rest.Split(':');
-                        string name = segs[0].Trim();
-                        if (string.IsNullOrWhiteSpace(name)) continue;
-                        for (int i = 1; i < segs.Length; i++)
-                            if (segs[i].Trim().Equals(CamovShadowManager.ForcedMarker, StringComparison.OrdinalIgnoreCase))
-                                _isForced = true;
-                        return name;
-                    }
-                }
-            }
-            return null;
+            return CamovSurfaceProtocol.GetCameraSelectionName(customData, _surfaceId);
         }
 
         private struct RendererState
@@ -481,7 +481,7 @@ namespace CameraLCD
 
             try
             {
-                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, _lcdComponent.GetRenderTextureName(), isForced: true);
+                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetActiveRenderTextureName(), isForced: true);
                 LogLifecycle("forced-rebind", previousGate);
             }
             catch (Exception ex)
@@ -491,14 +491,199 @@ namespace CameraLCD
             }
         }
 
-        private void EnsureRenderTargetReady(IUserGeneratedTexture surfaceRtv)
+        private bool EnsureRenderTargetReady(IUserGeneratedTexture surfaceRtv)
         {
             if (surfaceRtv.Rtv != null && surfaceRtv.Resource != null && surfaceRtv.Srv != null)
+                return true;
+
+            try
+            {
+                surfaceRtv.Reset();
+                MyRender11.RC.ClearRtv(surfaceRtv, default);
+                LogLifecycle("texture-reset", "missing-rtv");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MyLog.Default.WriteLine(
+                    $"CAMOV CLIENT: texture-reset failed lcd={_lcd?.EntityId} area={_surfaceId} " +
+                    $"texture={surfaceRtv.Name} size={surfaceRtv.Size.X}x{surfaceRtv.Size.Y} " +
+                    $"scaled={_scaledRenderTextureCreated}: {ex}");
+                if (_scaledRenderTextureCreated)
+                    RestoreResolutionScale();
+                return false;
+            }
+        }
+
+        private Vector2I GetDesiredRenderTextureSize()
+        {
+            int percent = CamovResolutionScale.NormalizePercent(Plugin.Settings.ResolutionScalePercent);
+            return new Vector2I(
+                CamovResolutionScale.ScaleDimension(_baseTextureSize.X, percent),
+                CamovResolutionScale.ScaleDimension(_baseTextureSize.Y, percent));
+        }
+
+        private bool EnsureRenderTextureScale(out IUserGeneratedTexture surfaceRtv)
+        {
+            surfaceRtv = null;
+            Vector2I desiredSize = GetDesiredRenderTextureSize();
+            int percent = CamovResolutionScale.NormalizePercent(Plugin.Settings.ResolutionScalePercent);
+            string textureName = GetVanillaRenderTextureName();
+            bool textureMatches = TryGetRenderTexture(textureName, out surfaceRtv) &&
+                SameSize(surfaceRtv.Size, desiredSize);
+            bool componentMatches = SameSize(_lcdComponent.m_textureSize, desiredSize);
+
+            if (componentMatches && textureMatches)
+            {
+                SetResolutionScaleState(textureName, desiredSize, percent);
+                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, textureName, isForced: true);
+                return true;
+            }
+
+            try
+            {
+                ApplyResolutionScale(textureName, desiredSize);
+                bool ready = TryGetRenderTexture(textureName, out surfaceRtv) &&
+                    SameSize(_lcdComponent.m_textureSize, desiredSize) &&
+                    SameSize(surfaceRtv.Size, desiredSize);
+                if (!ready)
+                    throw new InvalidOperationException(
+                        $"Render texture was not ready after recreate: {textureName} {desiredSize.X}x{desiredSize.Y}");
+
+                SetResolutionScaleState(textureName, desiredSize, percent);
+                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, textureName, isForced: true);
+                LogLifecycle("resolution-scale", $"{desiredSize.X}x{desiredSize.Y} {CamovResolutionScale.FormatLabel(percent)}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MyLog.Default.WriteLine(
+                    $"CAMOV CLIENT: resolution-scale failed lcd={_lcd?.EntityId} area={_surfaceId} " +
+                    $"target={desiredSize.X}x{desiredSize.Y}: {ex}");
+                RestoreResolutionScale();
+                return false;
+            }
+        }
+
+        private string GetVanillaRenderTextureName()
+        {
+            return _lcdComponent.GetRenderTextureName();
+        }
+
+        private string GetActiveRenderTextureName()
+        {
+            return _scaledRenderTextureCreated && !string.IsNullOrEmpty(_scaledRenderTextureName)
+                ? _scaledRenderTextureName
+                : GetVanillaRenderTextureName();
+        }
+
+        private static bool SameSize(Vector2I left, Vector2I right)
+        {
+            return left.X == right.X && left.Y == right.Y;
+        }
+
+        private void SetResolutionScaleState(string textureName, Vector2I textureSize, int percent)
+        {
+            _appliedResolutionScalePercent = percent;
+
+            if (percent == CamovResolutionScale.DefaultPercent)
+            {
+                _scaledRenderTextureName = null;
+                _scaledRenderTextureSize = Vector2I.Zero;
+                _scaledRenderTextureCreated = false;
+                return;
+            }
+
+            _scaledRenderTextureName = textureName;
+            _scaledRenderTextureSize = textureSize;
+            _scaledRenderTextureCreated = true;
+        }
+
+        private void ApplyResolutionScale(string textureName, Vector2I desiredSize)
+        {
+            DestroyGeneratedRenderTexture(textureName);
+            _lcdComponent.m_textureSize = desiredSize;
+            IUserGeneratedTexture texture = MyManagers.FileTextures.CreateGeneratedTexture(
+                textureName,
+                desiredSize.X,
+                desiredSize.Y,
+                MyGeneratedTextureType.RGBA,
+                generateMipmaps: true,
+                data: null,
+                immediatelyReady: false);
+            if (texture == null || !SameSize(texture.Size, desiredSize))
+                throw new InvalidOperationException(
+                    $"Scaled generated texture was not created: {textureName} {desiredSize.X}x{desiredSize.Y}");
+            try
+            {
+                PrepareScaledRenderTexture(texture);
+            }
+            catch
+            {
+                _lcdComponent.m_textureSize = _baseTextureSize;
+                DestroyGeneratedRenderTexture(textureName);
+                throw;
+            }
+            _lcdComponent.m_textureGenerated = true;
+            _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, textureName, isForced: true);
+        }
+
+        private static void PrepareScaledRenderTexture(IUserGeneratedTexture texture)
+        {
+            // The public render message accepts numMiplevels:1, but current render messages
+            // drop that value before creating the generated texture. Force the descriptor back
+            // to the one-mip RTV shape vanilla LCDs expect, then allocate it now.
+            if (GeneratedTextureDescField == null)
+                throw new InvalidOperationException("Generated texture descriptor field was not found.");
+
+            var desc = (SharpDX.Direct3D11.Texture2DDescription)GeneratedTextureDescField.GetValue(texture);
+            desc.MipLevels = 1;
+            desc.OptionFlags = SharpDX.Direct3D11.ResourceOptionFlags.None;
+            desc.BindFlags |= SharpDX.Direct3D11.BindFlags.ShaderResource | SharpDX.Direct3D11.BindFlags.RenderTarget;
+            desc.Usage = SharpDX.Direct3D11.ResourceUsage.Default;
+            GeneratedTextureDescField.SetValue(texture, desc);
+
+            texture.Reset();
+            MyRender11.RC.ClearRtv(texture, default);
+        }
+
+        private static void DestroyGeneratedRenderTexture(string textureName)
+        {
+            if (string.IsNullOrEmpty(textureName))
                 return;
 
-            surfaceRtv.Reset();
-            MyRender11.RC.ClearRtv(surfaceRtv, default);
-            LogLifecycle("texture-reset", "missing-rtv");
+            if (MyRenderProxy.RenderSystemThread == System.Threading.Thread.CurrentThread)
+                MyManagers.FileTextures.DestroyGeneratedTexture(textureName);
+            else
+                MyRenderProxy.DestroyGeneratedTexture(textureName);
+        }
+
+        public void RestoreResolutionScale()
+        {
+            if (_appliedResolutionScalePercent == CamovResolutionScale.DefaultPercent &&
+                SameSize(_lcdComponent.m_textureSize, _baseTextureSize) &&
+                !_scaledRenderTextureCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                _lcdComponent.m_textureSize = _baseTextureSize;
+                _lcdComponent.ReleaseTexture(useEmptyTexture: false);
+                _lcdComponent.EnsureGeneratedTexture();
+                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetVanillaRenderTextureName(), isForced: true);
+                _appliedResolutionScalePercent = CamovResolutionScale.DefaultPercent;
+                _scaledRenderTextureName = null;
+                _scaledRenderTextureSize = Vector2I.Zero;
+                _scaledRenderTextureCreated = false;
+                LogLifecycle("resolution-scale", $"restore {_baseTextureSize.X}x{_baseTextureSize.Y}");
+            }
+            catch (Exception ex)
+            {
+                MyLog.Default.WriteLine(
+                    $"CAMOV CLIENT: resolution-scale restore failed lcd={_lcd?.EntityId} area={_surfaceId}: {ex}");
+            }
         }
 
         private bool DrawInternal()
@@ -511,7 +696,6 @@ namespace CameraLCD
             if (renderCamera.GetDistanceFromPoint(_lcd.WorldMatrix.Translation) > Plugin.Settings.Range)
                 return OnGate("OutOfRange");
 
-            if (!_lcdComponent.m_textureGenerated) return OnGate("TextureNotGenerated");
             if (_lcdComponent.ContentType != ContentType.SCRIPT) return OnGate("ContentTypeNotScript");
             if (_lcdComponent.Script != SCRIPT_ID) return OnGate("ScriptMismatch");
 
@@ -519,10 +703,12 @@ namespace CameraLCD
             if (MyRender11.Environment.Matrices.ViewFrustumClippedD.Contains(_lcd.PositionComp.WorldAABB) is ContainmentType.Disjoint)
                 return OnGate("Frustum");
 
-            if (!TryGetRenderTexture(out IUserGeneratedTexture surfaceRtv))
+            if (!EnsureRenderTextureScale(out IUserGeneratedTexture surfaceRtv))
                 return OnGate("NoRenderTexture");
 
-            EnsureRenderTargetReady(surfaceRtv);
+            if (!_scaledRenderTextureCreated && !_lcdComponent.m_textureGenerated) return OnGate("TextureNotGenerated");
+            if (!EnsureRenderTargetReady(surfaceRtv))
+                return OnGate("RenderTargetResetFailed");
 
             var originalRendererState = new RendererState
             {
@@ -566,7 +752,8 @@ namespace CameraLCD
             // if the surface has no sprites.
             CamovComposite(surfaceRtv);
 
-            MyRender11.RC.GenerateMips(surfaceRtv);
+            if (surfaceRtv.MipLevels > 1)
+                MyRender11.RC.GenerateMips(surfaceRtv);
 
             OnDrawSuccess(surfaceRtv);
             return true;
@@ -597,14 +784,19 @@ namespace CameraLCD
             if (_camovScratchName == null)
                 _camovScratchName = $"CAMOV_Scratch_{_lcd.EntityId}_{_surfaceId}";
 
-            Vector2I textureSize = _lcdComponent.m_textureSize;
+            Vector2I textureSize = _baseTextureSize;
+            Vector2I renderTextureSize = lcdRtv.Size;
             Vector2 aspectRatio = _lcdComponent.m_screenAspectRatio;
             Vector2 aspectFactor = MyRenderComponentScreenAreas.CalcAspectFactor(textureSize, aspectRatio);
+            Vector2 targetAspectFactor = MyRenderComponentScreenAreas.CalcAspectFactor(renderTextureSize, aspectRatio);
             Vector2 shift = MyRenderComponentScreenAreas.CalcShift(textureSize, aspectFactor);
             Vector2 halfTexture = (Vector2)textureSize * 0.5f;
+            Vector2 renderScale = new Vector2(
+                renderTextureSize.X / (float)Math.Max(1, textureSize.X),
+                renderTextureSize.Y / (float)Math.Max(1, textureSize.Y));
 
             int frameId = System.Threading.Interlocked.Increment(ref _camovFrameId);
-            BuildSpriteMessages(sprites, textureSize, shift, halfTexture, _camovScratchName, frameId);
+            BuildSpriteMessages(sprites, textureSize, shift, halfTexture, renderScale, _camovScratchName, frameId);
 
             var messages = MyManagers.SpritesManager.AcquireDrawMessages(_camovScratchName);
             if (messages == null) return;
@@ -637,7 +829,7 @@ namespace CameraLCD
                 // aspectFactor so `viewportSizeWrittenIntoShaders = texture.Size *
                 // aspectRatio`. The pool-overload hardcodes (w,h) and mis-maps sprite
                 // positions on non-square surfaces.
-                Vector2 aspectForDraw = aspectFactor;
+                Vector2 aspectForDraw = targetAspectFactor;
                 bool ok = MyRender11.DrawSpritesOffscreen(
                     MyRender11.RC, scratchRtv, messages, ref aspectForDraw,
                     new SharpDX.Mathematics.Interop.RawColor4(0f, 0f, 0f, 0f),
@@ -657,17 +849,17 @@ namespace CameraLCD
         }
 
         private void BuildSpriteMessages(MySprite[] sprites, Vector2I textureSize,
-            Vector2 shift, Vector2 halfTexture, string targetName, int frameId)
+            Vector2 shift, Vector2 halfTexture, Vector2 renderScale, string targetName, int frameId)
         {
             bool hasScissor = false;
             int count = sprites.Length;
             for (int i = 0; i < count; i++)
             {
                 MySprite sprite = sprites[i];
-                Vector2 size = sprite.Size ?? (Vector2)textureSize;
-                Vector2 position = sprite.Position ?? halfTexture;
+                Vector2 size = (sprite.Size ?? (Vector2)textureSize) * renderScale;
+                Vector2 position = (sprite.Position ?? halfTexture) + shift;
+                position *= renderScale;
                 Color color = sprite.Color ?? Color.White;
-                position += shift;
 
                 switch (sprite.Type)
                 {
@@ -716,7 +908,7 @@ namespace CameraLCD
                         msg.FontIndex = fontIdx;
                         msg.ScreenCoord = position;
                         msg.ColorMask = color;
-                        msg.ScreenScale = sprite.RotationOrScale;
+                        msg.ScreenScale = sprite.RotationOrScale * renderScale.X;
                         msg.ScreenMaxWidth = float.PositiveInfinity;
                         msg.TargetTexture = targetName;
                         msg.TextureWidthInPx = widthPx;
@@ -731,7 +923,11 @@ namespace CameraLCD
                         {
                             if (hasScissor) AddScissorPop(targetName, frameId);
                             else hasScissor = true;
-                            AddScissorPush(targetName, frameId, new Rectangle((int)position.X, (int)position.Y, (int)size.X, (int)size.Y));
+                            AddScissorPush(targetName, frameId, new Rectangle(
+                                (int)Math.Round(position.X),
+                                (int)Math.Round(position.Y),
+                                (int)Math.Round(size.X),
+                                (int)Math.Round(size.Y)));
                         }
                         else if (hasScissor)
                         {
@@ -868,17 +1064,24 @@ namespace CameraLCD
 
         private bool TryGetRenderTexture(out IUserGeneratedTexture texture)
         {
-            string name;
             try
             {
-                name = _lcdComponent.GetRenderTextureName();
+                return TryGetRenderTexture(GetActiveRenderTextureName(), out texture);
             }
             catch (NullReferenceException)
             {
                 texture = null;
                 return false;
             }
+        }
 
+        private static bool TryGetRenderTexture(string name, out IUserGeneratedTexture texture)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                texture = null;
+                return false;
+            }
             return MyManagers.FileTextures.TryGetTexture(name, out texture) && texture != null;
         }
 

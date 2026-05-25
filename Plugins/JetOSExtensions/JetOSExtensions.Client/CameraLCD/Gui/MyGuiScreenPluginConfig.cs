@@ -1,6 +1,7 @@
 using Sandbox;
 using Sandbox.Graphics.GUI;
 using System;
+using JetOSExtensions.Shared;
 using VRage;
 using VRage.Utils;
 using VRageMath;
@@ -11,7 +12,7 @@ namespace CameraLCD.Gui
     {
         private const float space = 0.01f;
 
-        public MyGuiScreenPluginConfig() : base(new Vector2(0.5f, 0.5f), MyGuiConstants.SCREEN_BACKGROUND_COLOR, new Vector2(0.47f, 0.43f), false, null, MySandboxGame.Config.UIBkOpacity, MySandboxGame.Config.UIOpacity)
+        public MyGuiScreenPluginConfig() : base(new Vector2(0.5f, 0.5f), MyGuiConstants.SCREEN_BACKGROUND_COLOR, new Vector2(0.47f, 0.48f), false, null, MySandboxGame.Config.UIBkOpacity, MySandboxGame.Config.UIOpacity)
         {
             EnabledBackgroundFade = true;
             CloseButtonEnabled = true;
@@ -63,6 +64,24 @@ namespace CameraLCD.Gui
             AddCustomSliderLabel(rangeSlider, val => $"{val}m");
             pos.Y += rangeSlider.Size.Y + space;
 
+            MyGuiControlCombobox resolutionScaleCombo = new MyGuiControlCombobox(
+                pos,
+                size: null,
+                backgroundColor: null,
+                textOffset: null,
+                openAreaItemsCount: CamovResolutionScale.AllowedPercents.Length,
+                iconSize: null,
+                useScrollBarOffset: true,
+                toolTip: "Render adjusted camera LCDs at a higher texture resolution.\n4x is expensive and only affects CAMOV camera displays.",
+                originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
+            foreach (int percent in CamovResolutionScale.AllowedPercents)
+                resolutionScaleCombo.AddItem(percent, CamovResolutionScale.FormatLabel(percent));
+            resolutionScaleCombo.SelectItemByKey(CamovResolutionScale.NormalizePercent(settings.ResolutionScalePercent));
+            resolutionScaleCombo.ItemSelected += () => ResolutionScaleChanged(resolutionScaleCombo);
+            Controls.Add(resolutionScaleCombo);
+            AddCaption(resolutionScaleCombo, "LCD resolution");
+            pos.Y += resolutionScaleCombo.Size.Y + space;
+
             MyGuiControlCheckbox headFixCheckbox = new MyGuiControlCheckbox(pos, isChecked: settings.HeadFix, originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
             headFixCheckbox.SetToolTip("Fix invisible character head on camera lcd in 1st person view.\nMay cause issues with modded characters.");
             headFixCheckbox.IsCheckedChanged += IsHeadfixCheckedChanged;
@@ -113,6 +132,13 @@ namespace CameraLCD.Gui
         void IsEnabledCheckedChanged(MyGuiControlCheckbox cb) => Plugin.Settings.Enabled = cb.IsChecked;
         void RenderRatioChanged(MyGuiControlSlider slider) => Plugin.Settings.Ratio = (int)slider.Value;
         void RangeValueChanged(MyGuiControlSlider slider) => Plugin.Settings.Range = (int)slider.Value;
+        void ResolutionScaleChanged(MyGuiControlCombobox combo)
+        {
+            int percent = CamovResolutionScale.NormalizePercent((int)combo.GetSelectedKey());
+            Plugin.Settings.ResolutionScalePercent = percent;
+            Plugin.Settings.Save();
+            MyLog.Default.WriteLine($"CAMOV CLIENT: lcd-resolution setting changed to {CamovResolutionScale.FormatLabel(percent)} ({percent}%).");
+        }
         void IsHeadfixCheckedChanged(MyGuiControlCheckbox cb) => Plugin.Settings.HeadFix = cb.IsChecked;
         void IsOcclusionfixCheckedChanged(MyGuiControlCheckbox cb) => Plugin.Settings.OcclusionFix = cb.IsChecked;
     }

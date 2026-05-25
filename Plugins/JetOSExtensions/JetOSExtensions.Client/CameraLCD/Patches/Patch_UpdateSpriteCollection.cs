@@ -1,4 +1,5 @@
 using HarmonyLib;
+using JetOSExtensions.Shared;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.Entities.Cube;
 using VRage.Game.GUI.TextPanel;
@@ -18,9 +19,11 @@ namespace CameraLCD.Patches
 
             int area = __instance.m_area;
             int surfaceKey = block is MyTextPanel ? 0 : area;
+            bool commonTssSet = __instance.Script == CameraTSS.SCRIPT_ID;
+            bool cameraSelected = CameraLcdManager.HasDisplay(block.EntityId, area);
             bool camovSurface =
-                CameraLcdManager.HasDisplay(block.EntityId, area) ||
-                CameraTSS.TryParseForcedForSurface(block.CustomData, surfaceKey);
+                cameraSelected ||
+                CamovSurfaceProtocol.UsesForcedMode(block.CustomData, surfaceKey, commonTssSet, cameraSelected);
             if (!camovSurface) return;
 
             CameraLcdManager.CaptureExternalSprites(block.EntityId, area, sprites);

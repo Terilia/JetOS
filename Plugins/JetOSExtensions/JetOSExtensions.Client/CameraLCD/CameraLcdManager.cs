@@ -59,13 +59,28 @@ namespace CameraLCD
 
         private static bool ShouldDraw()
         {
-            return Plugin.Settings.Enabled && (_renderCount % Plugin.Settings.Ratio) == 0;
+            return (_renderCount % Plugin.Settings.Ratio) == 0;
+        }
+
+        private static void RestoreAllResolutionScales()
+        {
+            foreach (var display in _displays.Values)
+                display.RestoreResolutionScale();
         }
 
         public static bool Draw()
         {
             _renderCount++;
-            if (!ShouldDraw() || _displays.Count == 0)
+            if (_displays.Count == 0)
+                return false;
+
+            if (!Plugin.Settings.Enabled)
+            {
+                RestoreAllResolutionScales();
+                return false;
+            }
+
+            if (!ShouldDraw())
                 return false;
 
             if (_displayIndex > _displays.Count)
