@@ -49,11 +49,11 @@ namespace CameraLCD.Gui
             pos.X -= 0.06f;
 
             MyGuiControlSlider ratioSlider = new MyGuiControlSlider(pos, 1, 30, 0.2f, settings.Ratio, originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, intValue: true);
-            ratioSlider.SetToolTip("Render camera view every nth frame.");
+            ratioSlider.SetToolTip("Camera LCD render framerate.\nLower values use less GPU but update slower.");
             ratioSlider.ValueChanged += RenderRatioChanged;
             Controls.Add(ratioSlider);
-            AddCaption(ratioSlider, "Render ratio");
-            AddCustomSliderLabel(ratioSlider, val => $"{val}x");
+            AddCaption(ratioSlider, "LCD framerate");
+            AddCustomSliderLabel(ratioSlider, val => $"{(int)(60 / val)} FPS");
             pos.Y += ratioSlider.Size.Y + space;
 
             MyGuiControlSlider rangeSlider = new MyGuiControlSlider(pos, 10, 500, 0.2f, settings.Range, originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, intValue: true);
@@ -64,23 +64,18 @@ namespace CameraLCD.Gui
             AddCustomSliderLabel(rangeSlider, val => $"{val}m");
             pos.Y += rangeSlider.Size.Y + space;
 
-            MyGuiControlCombobox resolutionScaleCombo = new MyGuiControlCombobox(
-                pos,
-                size: null,
-                backgroundColor: null,
-                textOffset: null,
-                openAreaItemsCount: CamovResolutionScale.AllowedPercents.Length,
-                iconSize: null,
-                useScrollBarOffset: true,
-                toolTip: "Render adjusted camera LCDs at a higher texture resolution.\n4x is expensive and only affects CAMOV camera displays.",
-                originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
-            foreach (int percent in CamovResolutionScale.AllowedPercents)
-                resolutionScaleCombo.AddItem(percent, CamovResolutionScale.FormatLabel(percent));
-            resolutionScaleCombo.SelectItemByKey(CamovResolutionScale.NormalizePercent(settings.ResolutionScalePercent));
-            resolutionScaleCombo.ItemSelected += () => ResolutionScaleChanged(resolutionScaleCombo);
-            Controls.Add(resolutionScaleCombo);
-            AddCaption(resolutionScaleCombo, "LCD resolution");
-            pos.Y += resolutionScaleCombo.Size.Y + space;
+            int scaleSliderValue = CamovResolutionScale.NormalizePercent(settings.ResolutionScalePercent) / CamovResolutionScale.Step;
+            MyGuiControlSlider resolutionSlider = new MyGuiControlSlider(pos,
+                CamovResolutionScale.MinPercent / CamovResolutionScale.Step,
+                CamovResolutionScale.MaxPercent / CamovResolutionScale.Step,
+                0.2f, scaleSliderValue,
+                originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP, intValue: true);
+            resolutionSlider.SetToolTip("Render camera LCDs at a higher texture resolution.\nDimensions shown for a standard 512px panel.\nHigher values use more VRAM.");
+            resolutionSlider.ValueChanged += ResolutionScaleSliderChanged;
+            Controls.Add(resolutionSlider);
+            AddCaption(resolutionSlider, "LCD resolution");
+            AddCustomSliderLabel(resolutionSlider, val => CamovResolutionScale.FormatLabelWithDimensions((int)val * CamovResolutionScale.Step, 512, 512));
+            pos.Y += resolutionSlider.Size.Y + space;
 
             MyGuiControlCheckbox headFixCheckbox = new MyGuiControlCheckbox(pos, isChecked: settings.HeadFix, originAlign: MyGuiDrawAlignEnum.HORISONTAL_LEFT_AND_VERTICAL_TOP);
             headFixCheckbox.SetToolTip("Fix invisible character head on camera lcd in 1st person view.\nMay cause issues with modded characters.");
@@ -132,9 +127,9 @@ namespace CameraLCD.Gui
         void IsEnabledCheckedChanged(MyGuiControlCheckbox cb) => Plugin.Settings.Enabled = cb.IsChecked;
         void RenderRatioChanged(MyGuiControlSlider slider) => Plugin.Settings.Ratio = (int)slider.Value;
         void RangeValueChanged(MyGuiControlSlider slider) => Plugin.Settings.Range = (int)slider.Value;
-        void ResolutionScaleChanged(MyGuiControlCombobox combo)
+        void ResolutionScaleSliderChanged(MyGuiControlSlider slider)
         {
-            int percent = CamovResolutionScale.NormalizePercent((int)combo.GetSelectedKey());
+            int percent = CamovResolutionScale.NormalizePercent((int)slider.Value * CamovResolutionScale.Step);
             Plugin.Settings.ResolutionScalePercent = percent;
             Plugin.Settings.Save();
             MyLog.Default.WriteLine($"CAMOV CLIENT: lcd-resolution setting changed to {CamovResolutionScale.FormatLabel(percent)} ({percent}%).");
