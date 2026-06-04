@@ -7,7 +7,6 @@ using HarmonyLib;
 using JetOSExtensions.Shared;
 using NLog;
 using Sandbox;
-using Sandbox.Game.Entities;
 using Sandbox.Game.Entities.Blocks;
 using Sandbox.Game.EntityComponents;
 using Sandbox.Game.Multiplayer;
@@ -184,76 +183,13 @@ namespace LcdBooster
 
         private static bool TryQueueForcedScriptSprites(MyTextPanelComponent panel, MySpriteDrawFrame drawFrame, ref bool dirty)
         {
-            bool commonTssSet = panel.Script == CamovSurfaceProtocol.CameraDisplayScriptId;
-            if (dirty || !commonTssSet)
-                return false;
-
-            var block = BlockField.GetValue(panel) as Sandbox.Game.Entities.Cube.MyTerminalBlock;
-            if (block == null)
-                return false;
-
-            int surfaceKey = block is MyTextPanel ? 0 : panel.Area;
-            bool cameraSelected = HasResolvableCameraSelection(block, surfaceKey);
-            if (!CamovSurfaceProtocol.UsesForcedMode(block.CustomData, surfaceKey, commonTssSet, cameraSelected))
+            if (dirty || panel.Script != CamovSurfaceProtocol.CameraDisplayScriptId)
                 return false;
 
             ref MySpriteCollection queue = ref QueueRef(panel);
             queue = drawFrame.ToCollection();
             dirty = true;
             return true;
-        }
-
-        private static bool HasResolvableCameraSelection(Sandbox.Game.Entities.Cube.MyTerminalBlock block, int surfaceKey)
-        {
-            string cameraName = CamovSurfaceProtocol.GetCameraSelectionName(block.CustomData, surfaceKey);
-            if (!string.IsNullOrWhiteSpace(cameraName))
-                return TryFindMechanicallyConnectedCamera(block.CubeGrid, cameraName);
-
-            using (var reader = new System.IO.StringReader(block.CustomData))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    if (!string.IsNullOrWhiteSpace(line) &&
-                        TryFindMechanicallyConnectedCamera(block.CubeGrid, line.Trim()))
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool TryFindMechanicallyConnectedCamera(MyCubeGrid grid, string customName)
-        {
-            if (grid == null || string.IsNullOrWhiteSpace(customName))
-                return false;
-
-            if (TryFindMatch(grid, customName))
-                return true;
-
-            var mechanicalGroup = MyCubeGridGroups.Static.Mechanical.GetGroup(grid);
-            if (mechanicalGroup != null)
-            {
-                foreach (var node in mechanicalGroup.Nodes)
-                {
-                    if (node.NodeData != grid && TryFindMatch(node.NodeData, customName))
-                        return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static bool TryFindMatch(MyCubeGrid grid, string customName)
-        {
-            foreach (var fatBlock in grid.GetFatBlocks())
-            {
-                var cameraBlock = fatBlock as MyCameraBlock;
-                if (cameraBlock != null &&
-                    string.Equals(cameraBlock.CustomName?.ToString(), customName, StringComparison.Ordinal))
-                    return true;
-            }
-            return false;
         }
 
         private static bool CheckTagged(PanelState state, MyTextPanelComponent panel, long now)

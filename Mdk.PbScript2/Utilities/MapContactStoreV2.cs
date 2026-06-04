@@ -9,11 +9,6 @@ namespace IngameScript
         {
             static readonly List<MapContactV2> _contacts = new List<MapContactV2>();
 
-            public static void Update(char kind, long id, Vector3D position, Vector3D velocity, string name, long observerId, int hopCount)
-            {
-                Update(kind, id, position, velocity, name, observerId, hopCount, 0);
-            }
-
             public static void Update(char kind, long id, Vector3D position, Vector3D velocity, string name, long observerId, int hopCount, double ageSeconds)
             {
                 if (id == 0 || !RadarContactV2.IsMapKind(kind))

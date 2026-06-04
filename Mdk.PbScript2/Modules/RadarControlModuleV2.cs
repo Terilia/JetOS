@@ -165,7 +165,7 @@ namespace IngameScript
                     if (kind == RadarContactV2.KIND_HOSTILE)
                         myJet.UpdateOrAddEnemy(pos, vel, name, RadarContactV2.SRC_RADARFEED_V2, targetId);
                     else if (RadarContactV2.IsMapKind(kind))
-                        MapContactStoreV2.Update(kind, targetId, pos, vel, name, ParentProgram.Me.EntityId, 0);
+                        MapContactStoreV2.Update(kind, targetId, pos, vel, name, ParentProgram.Me.EntityId, 0, 0);
                 }
             }
 

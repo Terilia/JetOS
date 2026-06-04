@@ -95,17 +95,8 @@ namespace IngameScript
                 SpriteHelpers.Tt(headingText, centerX, headingBoxY + 1f, 0.65f, HUD_PRIMARY);
             }
 
-            private string GetCompassDirection(double heading)
-            {
-                if (heading >= 337.5 || heading < 22.5) return "N";
-                else if (heading >= 22.5 && heading < 67.5) return "NE";
-                else if (heading >= 67.5 && heading < 112.5) return "E";
-                else if (heading >= 112.5 && heading < 157.5) return "SE";
-                else if (heading >= 157.5 && heading < 202.5) return "S";
-                else if (heading >= 202.5 && heading < 247.5) return "SW";
-                else if (heading >= 247.5 && heading < 292.5) return "W";
-                else return "NW";
-            }
+            static readonly string[] COMPASS = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
+            private string GetCompassDirection(double heading) => COMPASS[(int)((heading + 22.5) / 45) & 7];
 
             private void DrawAltitudeIndicatorF18Style(double currentAltitude, double displayVerticalVelocity)
             {

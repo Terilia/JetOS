@@ -24,6 +24,7 @@ namespace CameraLCD.Patches
             bool camovSurface =
                 cameraSelected ||
                 CamovSurfaceProtocol.UsesForcedMode(block.CustomData, surfaceKey, commonTssSet, cameraSelected);
+
             if (!camovSurface) return;
 
             CameraLcdManager.CaptureExternalSprites(block.EntityId, area, sprites);

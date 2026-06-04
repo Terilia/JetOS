@@ -1,0 +1,373 @@
+using Sandbox.ModAPI.Ingame;
+using System;
+using System.Collections.Generic;
+using VRage.Game.GUI.TextPanel;
+using VRageMath;
+
+namespace IngameScript
+{
+    partial class Program
+    {
+        // Top-down tactical map on a stable gravity-relative horizontal frame. Pan/zoom is driven
+        // by the command seat (mouse + W/S); A/D scans a terrain elevation reference. Shared by the
+        // dedicated HQ MAP screen and the HQ MFD fallback. SE clips sprites to the surface bounds,
+        // so the map paints the whole surface and the thin chrome is drawn on top.
+        //
+        // Layers (bottom→top): terrain elevation shading · self-similar grid · coverage rings ·
+        // persistent blips · HQ marker. Blips persist at last-known position (stale = dimmed) so
+        // they never vanish; new ones still appear. CLEAR drops stale ones.
+        static class MapView
+        {
+            const float DEFAULT_MPP = 40f;   // meters per pixel at startup (~20 km across)
+            const float MIN_MPP = 5f;        // zoomed in (~2.5 km across)
+            const float MAX_MPP = 800f;      // zoomed out (~410 km across / ~205 km radius)
+            const float PAN_SENS = 0.6f;     // mouse pixels per RotationIndicator unit
+            const float ZOOM_RATE = 1.6f;    // zoom factor per second while holding W/S
+            const float REF_RATE = 400f;     // elevation-reference meters per second on A/D
+            const int MAX_TRACKS = 256;
+            const int MAX_CELLS = 480;       // terrain sample cap (per-frame draw + periodic resample)
+            const double RESAMPLE_SEC = 0.15;
+
+            public static double PanEast;
+            public static double PanNorth;
+            public static float MetersPerPixel = DEFAULT_MPP;
+            public static double RefOffset;          // operator A/D bias over the auto median elevation
+            public static bool ShowLabels = true;
+            public static bool ShowTerrain = true;
+
+            static readonly Color MAP_BG  = Cr(4, 8, 6);
+            static readonly Color GRID    = Cr(16, 30, 21);
+            static readonly Color NEUTRAL = Cr(120, 170, 210);
+            static readonly Color UNKNOWN = Cr(150, 150, 150);
+            static readonly Color T_LOW   = Cr(2, 8, 7);     // valleys
+            static readonly Color T_HIGH  = Cr(74, 92, 52);  // peaks
+
+            public static string ScaleLabel => SpriteHelpers.FormatRange(MetersPerPixel) + "/px";
+
+            // ── Persistent last-known track store ──
+            class MapTrack
+            {
+                public Vector3D Pos, Vel;
+                public char Kind;
+                public string Name;
+                public bool Friendly;
+                public bool Live;
+                public double LastLive;
+            }
+            static readonly Dictionary<long, MapTrack> _tracks = new Dictionary<long, MapTrack>();
+
+            // ── Terrain sample cache (world-anchored so it scales smoothly between resamples) ──
+            static Vector3D[] _tw;
+            static float[] _th;
+            static int _tn;
+            static double _tspacing, _tmean, _tspan;
+            static double _lastSample = -1;
+            static float _sMpp;
+
+            public static int StaleCount
+            {
+                get { int n = 0; foreach (var kv in _tracks) if (!kv.Value.Live) n++; return n; }
+            }
+
+            public static void SyncTracks()
+            {
+                double now = SystemManager.ElapsedSeconds;
+                foreach (var kv in _tracks) kv.Value.Live = false;
+
+                foreach (var kv in FleetState.Jets)
+                {
+                    MapTrack t = Get(kv.Key);
+                    t.Friendly = true; t.Live = true;
+                    t.Pos = kv.Value.Pos; t.Vel = kv.Value.Vel;
+                    t.Name = FleetState.CallSign(kv.Value); t.LastLive = now;
+                }
+                foreach (var kv in FleetState.Contacts)
+                {
+                    MapTrack t = Get(kv.Key);
+                    t.Friendly = false; t.Live = true;
+                    t.Kind = kv.Value.Kind; t.Pos = kv.Value.Pos; t.Vel = kv.Value.Vel;
+                    t.Name = kv.Value.Name; t.LastLive = now;
+                }
+
+                if (_tracks.Count > MAX_TRACKS) EvictOldestStale();
+            }
+
+            static MapTrack Get(long id)
+            {
+                MapTrack t;
+                if (!_tracks.TryGetValue(id, out t)) { t = new MapTrack(); _tracks[id] = t; }
+                return t;
+            }
+
+            static void EvictOldestStale()
+            {
+                long worst = 0; double oldest = double.MaxValue; bool found = false;
+                foreach (var kv in _tracks)
+                    if (!kv.Value.Live && kv.Value.LastLive < oldest) { oldest = kv.Value.LastLive; worst = kv.Key; found = true; }
+                if (found) _tracks.Remove(worst);
+            }
+
+            public static void ClearStale()
+            {
+                var rm = new List<long>();
+                foreach (var kv in _tracks) if (!kv.Value.Live) rm.Add(kv.Key);
+                for (int i = 0; i < rm.Count; i++) _tracks.Remove(rm[i]);
+            }
+
+            // ── Input (every tick; only acts when the seat is manned + map focused) ──
+            public static void UpdateInput(Station st, bool active, double dt)
+            {
+                if (!active) return;
+                Vector2 rot = st.Rot;     // X = mouse-Y (pitch), Y = mouse-X (yaw)
+                Vector3 mov = st.Move;    // X = A(-)/D(+), Z = S(+)/W(-)
+
+                PanEast += rot.Y * PAN_SENS * MetersPerPixel;
+                PanNorth += -rot.X * PAN_SENS * MetersPerPixel;
+
+                if (mov.Z != 0)
+                    MetersPerPixel = Cl(MetersPerPixel * (float)(1.0 + mov.Z * ZOOM_RATE * dt), MIN_MPP, MAX_MPP);
+                if (mov.X != 0)
+                    RefOffset = Cl(RefOffset + mov.X * REF_RATE * dt, -10000, 10000);
+            }
+
+            public static void Recenter() { PanEast = 0; PanNorth = 0; RefOffset = 0; }
+            public static void ZoomIn()  { MetersPerPixel = Cl(MetersPerPixel * 0.7f, MIN_MPP, MAX_MPP); }
+            public static void ZoomOut() { MetersPerPixel = Cl(MetersPerPixel * 1.4f, MIN_MPP, MAX_MPP); }
+
+            // ── Full-surface render (dedicated HQ MAP screen, or HQ MFD fallback) ──
+            public static void RenderFull(IMyTextSurface surface)
+            {
+                if (surface == null) return;
+                var frame = surface.DrawFrame();
+                SpriteBus.Begin(frame, null);
+                try
+                {
+                    float sw = SX(surface), sh = SY(surface);
+                    DrawMap(new RectangleF(0, 0, sw, sh), V2(sw, sh));
+                    DrawChrome(sw, sh);
+                }
+                finally { SpriteBus.End(); frame.Dispose(); }
+            }
+
+            static void DrawMap(RectangleF area, Vector2 ss)
+            {
+                Station st = SystemManager.Station;
+                float k = ss.Y / 512f;
+                float x = area.Position.X, y = area.Position.Y, w = area.Width, h = area.Height;
+                float cx = x + w / 2f, cy = y + h / 2f;
+                float mpp = MetersPerPixel;
+
+                Sq(cx, cy, w, h, MAP_BG);
+
+                Vector3D up = st.MapUp, east, north;
+                Frame(up, out east, out north);
+                Vector3D center = st.Position + east * PanEast + north * PanNorth;
+
+                if (ShowTerrain && TerrainData.Ready)
+                    DrawTerrain(area, center, east, north, cx, cy, mpp, k);
+
+                DrawGrid(area, cx, cy, mpp, k);
+
+                Vector2 hq = ToScreen(st.Position, center, east, north, cx, cy, mpp);
+
+                // Coverage rings under the blips: HQ real antenna reach (gold) + assumed friendly
+                // bubbles (green, radius from CFG since the jets' true range isn't transmitted).
+                if (st.AntennaRange > 0)
+                    Ring(hq, (float)(st.AntennaRange / mpp), Cr(MFDTheme.CORP_GOLD, 0.5f));
+                if (HQConfig.JetRange > 0)
+                    foreach (var kv in _tracks)
+                    {
+                        MapTrack ft = kv.Value;
+                        if (!ft.Live || !ft.Friendly) continue;
+                        Vector2 fs = ToScreen(ft.Pos, center, east, north, cx, cy, mpp);
+                        if (Off(fs, area, 12f * k)) continue;
+                        Ring(fs, (float)(HQConfig.JetRange / mpp), Cr(MFDTheme.ACCENT, 0.33f));
+                    }
+
+                // Persistent tracks (live full-tint, stale dimmed; never auto-removed).
+                foreach (var kv in _tracks)
+                {
+                    MapTrack t = kv.Value;
+                    Vector2 s = ToScreen(t.Pos, center, east, north, cx, cy, mpp);
+                    if (Off(s, area, 12f * k)) continue;
+
+                    Color col; string tex;
+                    if (t.Friendly) { col = MFDTheme.ACCENT; tex = TEX_C_FRIENDLY; }
+                    else if (t.Kind == FleetState.KIND_HOSTILE) { col = MFDTheme.DANGER; tex = TEX_C_HOSTILE; }
+                    else if (t.Kind == FleetState.KIND_NEUTRAL) { col = NEUTRAL; tex = TEX_C_UNKNOWN; }
+                    else { col = UNKNOWN; tex = TEX_C_UNKNOWN; }
+                    if (!t.Live) col = Cr(col, 0.3f);
+
+                    SpriteHelpers.Sp(tex, s.X, s.Y, 11f * k, 11f * k, col);
+
+                    if (t.Live && t.Friendly && t.Vel.LengthSquared() > 1)
+                    {
+                        Vector3D vd = VN(t.Vel);
+                        Vector2 tip = s + V2((float)VD(vd, east), -(float)VD(vd, north)) * 11f * k;
+                        SpriteHelpers.AddLineSprite(s, tip, 1.5f * k, col);
+                    }
+                    if (ShowLabels && !SE(t.Name))
+                        SpriteHelpers.Tt(Clip(t.Name, 10, ""), s.X + 8f * k, s.Y - 5f * k, 0.3f * k, col, MFDTheme.AL);
+                }
+
+                SpriteHelpers.Sp(TEX_OWN_SHIP, hq.X, hq.Y, 15f * k, 15f * k, MFDTheme.CORP_GOLD);
+                DrawScaleBar(x, y, w, h, k, mpp);
+            }
+
+            // ── Terrain underlay ──
+            // World-anchored cells: sampled (W2G + Surf, expensive) only on a ~0.15 s throttle or
+            // when zoom changes; redrawn every frame from the cache at the current view (cheap), so
+            // they scale smoothly with pan/zoom. A/D shifts the shading reference over the median.
+            static void DrawTerrain(RectangleF area, Vector3D center, Vector3D east, Vector3D north,
+                float cx, float cy, float mpp, float k)
+            {
+                // Resample on a time throttle only (the cached cells scale smoothly with zoom in
+                // between, so re-gridding on every zoom delta would just add instruction spikes).
+                double now = SystemManager.ElapsedSeconds;
+                if (_lastSample < 0 || now - _lastSample > RESAMPLE_SEC)
+                    Resample(area, center, east, north, cx, cy, mpp, k, now);
+
+                double rf = _tmean + RefOffset;
+                double span = _tspan > 1 ? _tspan : 300;
+                float size = (float)(_tspacing / mpp) + 1.5f * k;
+                float margin = size;
+                for (int i = 0; i < _tn; i++)
+                {
+                    Vector2 s = ToScreen(_tw[i], center, east, north, cx, cy, mpp);
+                    if (Off(s, area, margin)) continue;
+                    Sq(s.X, s.Y, size, size, Shade(_th[i], rf, span));
+                }
+            }
+
+            static void Resample(RectangleF area, Vector3D center, Vector3D east, Vector3D north,
+                float cx, float cy, float mpp, float k, double now)
+            {
+                if (_tw == null) { _tw = new Vector3D[MAX_CELLS]; _th = new float[MAX_CELLS]; }
+
+                float w = area.Width, h = area.Height;
+                float cellPx = 30f * k;
+                int cols = (int)(w / cellPx) + 2, rows = (int)(h / cellPx) + 2;
+                while (cols * rows > MAX_CELLS) { cellPx *= 1.3f; cols = (int)(w / cellPx) + 2; rows = (int)(h / cellPx) + 2; }
+
+                _tspacing = cellPx * mpp;
+                float startX = area.Position.X - cellPx, startY = area.Position.Y - cellPx;
+                double sum = 0; float hmin = float.MaxValue, hmax = float.MinValue;
+                int idx = 0;
+                for (int gy = 0; gy < rows && idx < MAX_CELLS; gy++)
+                    for (int gx = 0; gx < cols && idx < MAX_CELLS; gx++)
+                    {
+                        float sx = startX + gx * cellPx + cellPx / 2f;
+                        float sy = startY + gy * cellPx + cellPx / 2f;
+                        Vector3D wp = center + east * ((sx - cx) * mpp) + north * ((cy - sy) * mpp);
+                        int r, c; TerrainData.W2G(wp, out r, out c);
+                        float hgt = (float)(TerrainData.Surf(r, c) - TerrainData.MeanR);
+                        _tw[idx] = wp; _th[idx] = hgt;
+                        sum += hgt; if (hgt < hmin) hmin = hgt; if (hgt > hmax) hmax = hgt;
+                        idx++;
+                    }
+                _tn = idx;
+                _tmean = _tn > 0 ? sum / _tn : 0;
+                _tspan = Mx(120.0, (hmax - hmin) * 0.5);
+                _lastSample = now; _sMpp = mpp;
+            }
+
+            static Color Shade(float h, double rf, double span)
+            {
+                double t = Cl((h - rf) / span, -1.0, 1.0);
+                return Anim.LerpColor(T_LOW, T_HIGH, 0.5 + 0.5 * t);
+            }
+
+            // Self-similar grid: spacing is a power of two so coarse lines are always a subset of
+            // fine lines (they never shift). The finest level fades by the fractional zoom level,
+            // so zooming smoothly subdivides/merges instead of the old 1-2-5 reflow.
+            static void DrawGrid(RectangleF area, float cx, float cy, float mpp, float k)
+            {
+                float x = area.Position.X, y = area.Position.Y, w = area.Width, h = area.Height;
+                double lvl = Math.Log(64.0 * k * mpp, 2);
+                int L = (int)Math.Floor(lvl);
+                double sMinor = Math.Pow(2, L);
+                Color cMin = Cr(GRID, (float)(1.0 - (lvl - L)) * 0.85f);
+
+                double e0 = PanEast - (w / 2.0) * mpp, e1 = PanEast + (w / 2.0) * mpp;
+                for (long i = (long)Math.Ceiling(e0 / sMinor); i <= (long)Math.Floor(e1 / sMinor); i++)
+                    Sq(cx + (float)((i * sMinor - PanEast) / mpp), cy, 1f, h, (i & 1) == 0 ? GRID : cMin);
+
+                double n0 = PanNorth - (h / 2.0) * mpp, n1 = PanNorth + (h / 2.0) * mpp;
+                for (long j = (long)Math.Ceiling(n0 / sMinor); j <= (long)Math.Floor(n1 / sMinor); j++)
+                    Sq(cx, cy - (float)((j * sMinor - PanNorth) / mpp), w, 1f, (j & 1) == 0 ? GRID : cMin);
+            }
+
+            static void Frame(Vector3D up, out Vector3D east, out Vector3D north)
+            {
+                up = VN(up);
+                Vector3D refv = Ab(VD(up, new Vector3D(0, 1, 0))) < 0.9 ? new Vector3D(0, 1, 0) : new Vector3D(1, 0, 0);
+                east = VN(VX(up, refv));
+                north = VN(VX(east, up));
+            }
+
+            static Vector2 ToScreen(Vector3D p, Vector3D center, Vector3D east, Vector3D north,
+                float cx, float cy, float mpp)
+            {
+                Vector3D d = p - center;
+                return V2(cx + (float)(VD(d, east) / mpp), cy - (float)(VD(d, north) / mpp));
+            }
+
+            static bool Off(Vector2 s, RectangleF a, float m)
+            {
+                return s.X < a.Position.X - m || s.X > a.Position.X + a.Width + m
+                    || s.Y < a.Position.Y - m || s.Y > a.Position.Y + a.Height + m;
+            }
+
+            static void Ring(Vector2 c, float rpx, Color col)
+            {
+                if (rpx < 6f) return;
+                SpriteHelpers.Sp(TEX_RANGE_RING, c.X, c.Y, rpx * 2f, rpx * 2f, col);
+            }
+
+            static void DrawScaleBar(float x, float y, float w, float h, float k, float mpp)
+            {
+                double nice = NiceStep(70f * mpp);
+                float px = (float)(nice / mpp);
+                float bx = x + 12f * k, by = y + h - 26f * k;
+                Sq(bx + px / 2f, by, px, 2.5f * k, MFDTheme.BRIGHT_TEXT);
+                Sq(bx, by, 1.5f * k, 6f * k, MFDTheme.BRIGHT_TEXT);
+                Sq(bx + px, by, 1.5f * k, 6f * k, MFDTheme.BRIGHT_TEXT);
+                SpriteHelpers.Tt(SpriteHelpers.FormatRange(nice), bx, by - 12f * k, 0.3f * k, MFDTheme.NORMAL_TEXT, MFDTheme.AL);
+            }
+
+            static void DrawChrome(float sw, float sh)
+            {
+                float k = sh / 512f;
+                Sq(sw / 2f, 9f * k, sw, 18f * k, MFDTheme.HEADER_BG);
+                Sq(sw / 2f, 18f * k, sw, 1f, MFDTheme.GOLD_LINE);
+                SpriteHelpers.Tt("NYINAH CORP  TACMAP", 6f * k, 2f * k, 0.42f * k, MFDTheme.CORP_GOLD, MFDTheme.AL);
+                Color tc = MFDTheme.TacsitColor(FleetState.Tacsit);
+                SpriteHelpers.Tt(FleetState.Tacsit + "  " + ScaleLabel, sw - 6f * k, 3f * k, 0.34f * k, tc, MFDTheme.AR);
+
+                if (ShowTerrain && TerrainData.Ready)
+                    SpriteHelpers.Tt("ELEV " + SpriteHelpers.FormatRange(_tmean + RefOffset),
+                        sw / 2f, 3f * k, 0.34f * k, MFDTheme.NORMAL_TEXT, MFDTheme.AC);
+                else if (ShowTerrain && TerrainData.Loading)
+                    SpriteHelpers.Tt("TERRAIN " + (int)(TerrainData.DownloadProgress * 100) + "%",
+                        sw / 2f, 3f * k, 0.32f * k, MFDTheme.WARN, MFDTheme.AC);
+
+                Sq(sw / 2f, sh - 9f * k, sw, 18f * k, MFDTheme.HEADER_BG);
+                Sq(sw / 2f, sh - 18f * k, sw, 1f, MFDTheme.BORDER);
+                SpriteHelpers.Tt("MOUSE PAN  W/S ZOOM  A/D ELEV", 6f * k, sh - 14f * k, 0.3f * k, MFDTheme.DIM_TEXT, MFDTheme.AL);
+                SpriteHelpers.Tt(FleetState.Jets.Count + "J  " + FleetState.Contacts.Count + "C",
+                    sw - 6f * k, sh - 14f * k, 0.32f * k, MFDTheme.DIM_TEXT_MID, MFDTheme.AR);
+
+                MFDFrame.DrawScreenBorder(sw, sh);
+            }
+
+            static double NiceStep(double target)
+            {
+                if (target <= 0) return 1;
+                double p = Math.Pow(10, Math.Floor(Math.Log10(target)));
+                double f = target / p;
+                double n = f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10;
+                return n * p;
+            }
+        }
+    }
+}

@@ -57,11 +57,12 @@ namespace IngameScript
         static Color Cr(Color c, float a) => new Color(c, a);
         static bool SE(string s) => string.IsNullOrEmpty(s);
         static bool SW(string s) => string.IsNullOrWhiteSpace(s);
+        // Empty -> fallback, else truncate to n chars. Dedups the SE/UNK/Substring pattern.
+        static string Clip(string s, int n, string e = "UNK") => SE(s) ? e : s.Length > n ? s.Substring(0, n) : s;
         static void PrepSurface(IMyTextSurface s)
         {
             if (s == null) return;
-            s.ContentType = ContentType.SCRIPT;
-            s.Script = "";
+            // ContentType and Script are owned externally (surface provider / CAMOV / manual) — don't touch them here.
             s.BackgroundColor = Color.Transparent;
             s.FontColor = Color.Black;
             s.FontSize = 0.1f;

@@ -44,7 +44,9 @@ namespace IngameScript
                 else SystemManager.RenderDefaultSidebar(area);
             }
 
-            public override string Title => _title;
+            // Module pages already show "SYS > NAME" in the breadcrumb, so suppress the redundant
+            // centered section title there. The main menu (no breadcrumb) keeps its title.
+            public override string Title => _module != null ? "" : _title;
             public override bool ShowFooterNav => true;
             public override bool ShowBreadcrumb => _module != null;
             public override string BreadcrumbPath => _module != null ? _module.name : "";

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using JetOSExtensions.Shared;
 using VRage.Game.GUI.TextPanel;
 
@@ -12,7 +11,6 @@ namespace CameraLCD
         private static readonly ConcurrentDictionary<DisplayId, MySprite[]> _externalSprites =
             new ConcurrentDictionary<DisplayId, MySprite[]>();
         private static long _renderCount = 0;
-        private static int _displayIndex = 0;
 
         public static void AddDisplay(DisplayId id, CameraTSS tss)
         {
@@ -83,42 +81,13 @@ namespace CameraLCD
             if (!ShouldDraw())
                 return false;
 
-            if (_displayIndex > _displays.Count)
-                _displayIndex = 0;
-
-            int i = _displayIndex;
-            if (i < _displays.Count)
-            {
-                foreach (var display in _displays.Values.Skip(_displayIndex))
-                {
-                    i++;
-                    if (display.Draw())
-                    {
-                        _displayIndex = i;
-                        return true;
-                    }
-                }
-            }
-
-            i = 0;
+            bool anyDrawn = false;
             foreach (var display in _displays.Values)
             {
-                if (i == _displayIndex)
-                {
-                    _displayIndex++;
-                    return false;
-                }
-
-                i++;
                 if (display.Draw())
-                {
-                    _displayIndex = i;
-                    return true;
-                }
+                    anyDrawn = true;
             }
-
-            _displayIndex = 0;
-            return false;
+            return anyDrawn;
         }
     }
 }

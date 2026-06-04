@@ -199,7 +199,7 @@ namespace IngameScript
                     return;
                 }
 
-                hud.ContentType = ContentType.SCRIPT;
+                // ContentType is owned externally (surface provider / CAMOV / manual) — don't force it here.
                 hud.ScriptBackgroundColor = Cr(0, 0, 0, 0);
                 hud.ScriptForegroundColor = Color.White;
 

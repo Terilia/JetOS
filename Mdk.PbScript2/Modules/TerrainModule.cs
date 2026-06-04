@@ -96,6 +96,7 @@ namespace IngameScript
                 DrawMissiles(cx, ccy, ma, ppm, sp, jF, jR);
                 DrawFriendlyJets(cx, ccy, ma, ppm, sp, jF, jR);
                 DrawMapOnlyContacts(cx, ccy, ma, ppm, sp, jF, jR);
+                DrawZones(cx, ccy, ma, ppm, sp, jF, jR);
                 DrawProfile(ml, mt + ma + 4f, ma, profH - 7f, sp, jet.CockpitVelocity, jF, VN(-jet.CachedGravity), ZS[zoom]);
                 SpriteHelpers.DrawCircleOutline(V2(cx, ccy), ma * 0.25f, Cr(MFDTheme.BORDER, 0.4f), 1f);
                 SpriteHelpers.Sp(TEXTURE_TRIANGLE, cx, ccy, 10f, 10f, MFDTheme.BRIGHT_TEXT);
@@ -425,6 +426,27 @@ namespace IngameScript
                 }
             }
 
+            // HQ-broadcast zones (DataLink Tag 3) as named bounding rings, colored by kind.
+            // True projected center (not clipped) so a partly-visible ring shows its arc as you
+            // approach; diameter clamped so extreme zoom stays sane.
+            static void DrawZones(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
+            {
+                var zs = DatalinkV2.GetZones();
+                for (int i = 0; i < zs.Count; i++)
+                {
+                    var z = zs[i];
+                    Vector3D to = z.Position - sp;
+                    float px = cx + (float)VD(to, jr) * ppm, py = cy - (float)VD(to, jf) * ppm;
+                    float d = Cl((float)(z.Num * ppm) * 2f, 10f, ma * 1.5f);
+                    Color zc = ZC(z.Misc);
+                    SpriteHelpers.Sp(TEX_RANGE_RING, px, py, d, d, zc);
+                    MFDFrame.Txt(Clip(z.Text, 9, "ZONE"), px, py - 6f, 0.28f, zc, MFDTheme.AC);
+                }
+            }
+
+            static Color ZC(int k) => k == 1 ? MFDTheme.WARN : k == 2 ? Cr(210, 70, 200)
+                : k == 3 ? MFDTheme.ACCENT : k == 4 ? MFDTheme.CORP_GOLD : MFDTheme.DANGER;
+
             static void DrawMapContact(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr,
                 Vector3D pos, string label, string sprite, Color c, bool showInfo, bool selected, float sizeScale = 1f)
             {
@@ -436,8 +458,7 @@ namespace IngameScript
                 float z = (selected ? 16f : off ? 11f : 12f) * sizeScale;
                 SpriteHelpers.Sp(sprite, p.X, p.Y, z, z, c);
                 if (!showInfo) return;
-                string n = SE(label) ? "TGT" : label;
-                if (n.Length > 9) n = n.Substring(0, 9);
+                string n = Clip(label, 9, "TGT");
                 bool l = p.X < cx;
                 float tx = p.X + (l ? 8f : -8f);
                 var a = l ? MFDTheme.AL : MFDTheme.AR;

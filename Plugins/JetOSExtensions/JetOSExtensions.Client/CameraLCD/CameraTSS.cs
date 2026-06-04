@@ -111,42 +111,29 @@ namespace CameraLCD
             }
         }
 
-        private void RegisterCamera(MyCameraBlock camera)
+        private void DetachCamera(string reason)
         {
-            UnregisterCamera("camera-change-before-attach");
+            if (_camera == null) return;
+            MyCameraBlock old = _camera;
+            _camera.OnClose -= Camera_OnClose;
+            _camera.IsWorkingChanged -= Camera_IsWorkingChanged;
+            _camera.CubeGridChanged -= Camera_CubeGridChanged;
+            _camera.CustomNameChanged -= Camera_CustomNameChanged;
+            _camera = null;
+            LogLifecycle("detach", reason, old);
+        }
 
+        private void AttachCamera(MyCameraBlock camera)
+        {
             _camera = camera;
             _camera.OnClose += Camera_OnClose;
             _camera.IsWorkingChanged += Camera_IsWorkingChanged;
             _camera.CubeGridChanged += Camera_CubeGridChanged;
             _camera.CustomNameChanged += Camera_CustomNameChanged;
-            UpdateIsActive("attach");
-            CameraLcdManager.AddDisplay(Id, this);
-            _lastDrawGate = "attach";
             LogLifecycle("attach", "camera-bound", camera);
         }
 
-        private void UnregisterCamera(string reason)
-        {
-            if (_camera != null)
-            {
-                MyCameraBlock oldCamera = _camera;
-                CameraLcdManager.RemoveDisplay(Id);
-                IsActive = false;
-                _camera.OnClose -= Camera_OnClose;
-                _camera.IsWorkingChanged -= Camera_IsWorkingChanged;
-                _camera.CubeGridChanged -= Camera_CubeGridChanged;
-                _camera.CustomNameChanged -= Camera_CustomNameChanged;
-                _camera = null;
-                _lastDrawGate = "detach";
-                LogLifecycle("detach", reason, oldCamera);
-                UpdateIsActive("detach");
-            }
-
-            RestoreResolutionScale();
-        }
-
-        private void Camera_OnClose(MyEntity obj) => UnregisterCamera("camera-closed");
+        private void Camera_OnClose(MyEntity obj) => UpdateSettings();
 
         private void Lcd_CustomDataChanged(MyTerminalBlock block) => UpdateSettings();
 
@@ -164,14 +151,15 @@ namespace CameraLCD
         {
             if (_camera != null && !_camera.CubeGrid.IsSameConstructAs(_lcd.CubeGrid))
             {
-                UnregisterCamera(reason);
+                DetachCamera(reason);
+                UpdateIsActive(reason);
             }
         }
 
         private void UpdateIsActive(string reason)
         {
             bool wasActive = IsActive;
-            IsActive = _camera != null && _camera.IsWorking && _lcd.IsWorking;
+            IsActive = (_camera == null || _camera.IsWorking) && _lcd.IsWorking;
             if (wasActive != IsActive)
                 LogLifecycle(IsActive ? "active" : "inactive", reason);
         }
@@ -180,32 +168,17 @@ namespace CameraLCD
         {
             _customData = _lcd.CustomData;
 
-            if (!TryFindCamera(_customData, out MyCameraBlock newCamera))
+            TryFindCamera(_customData, out MyCameraBlock newCamera);
+
+            if (_camera != newCamera)
             {
-                _isForced = false;
-                UnregisterCamera("camera-not-found");
-                return;
+                DetachCamera("camera-changed");
+                if (newCamera != null)
+                    AttachCamera(newCamera);
             }
 
-            _isForced = CamovSurfaceProtocol.UsesForcedMode(
-                _customData,
-                _surfaceId,
-                commonTssSet: true,
-                cameraSelected: true);
-
-            if (_camera == newCamera)
-            {
-                return;
-            }
-            
-            if (_camera is not null)
-            {
-                // unregister current camera if changed (and not null)
-                UnregisterCamera("camera-changed");
-            }
-
-            // is new or changed
-            RegisterCamera(newCamera);
+            UpdateIsActive("settings");
+            CameraLcdManager.AddDisplay(Id, this);
         }
 
         public void UpdateExternalSprites(IReadOnlyList<MySprite> sprites)
@@ -267,7 +240,7 @@ namespace CameraLCD
 
                 MyLog.Default.WriteLine(
                     $"CAMOV CLIENT: {action} reason={reason ?? "-"} lcd={_lcd.EntityId} area={_surfaceId} " +
-                    $"lcdName=\"{lcdName}\" camera={cameraId} cameraName=\"{cameraName}\" forced={_isForced} " +
+                    $"lcdName=\"{lcdName}\" camera={cameraId} cameraName=\"{cameraName}\" " +
                     $"active={IsActive} lcdWorking={_lcd.IsWorking} cameraWorking={cameraWorking} " +
                     $"content={_lcdComponent.ContentType} script={script} texGenerated={_lcdComponent.m_textureGenerated} " +
                     $"fileTexture={fileTexture} texName={renderTextureName ?? "<null>"} texSize={texSize} texLoaded={texLoaded} texRtv={texRtv} " +
@@ -348,10 +321,7 @@ namespace CameraLCD
             }
         }
 #nullable disable
-        // Forced-mode behavior comes from either explicit CustomData before script selection
-        // or from this active common TSS instance once a camera is selected.
-        private bool _isForced;
-        public bool IsForced => _isForced;
+        public bool IsForced => true;
 
         // Static helper used by CamovShadowManager before selecting the real TSS: checks
         // whether the given CustomData flags the given surfaceId as forced.
@@ -471,9 +441,6 @@ namespace CameraLCD
 
         private void ForceRebindAfterRecovery(string previousGate)
         {
-            if (!_isForced)
-                return;
-
             if (previousGate != "Inactive" &&
                 previousGate != "TextureNotGenerated" &&
                 previousGate != "NoRenderTexture")
@@ -710,41 +677,49 @@ namespace CameraLCD
             if (!EnsureRenderTargetReady(surfaceRtv))
                 return OnGate("RenderTargetResetFailed");
 
-            var originalRendererState = new RendererState
+            if (_camera != null)
             {
-                Lodding = MyCommon.LoddingSettings.Global.IsUpdateEnabled,
-                DrawBillboards = MyRender11.Settings.DrawBillboards,
-                EyeAdaption = MyRender11.Postprocess.EnableEyeAdaptation,
-                Flares = MyRender11.DebugOverrides.Flares,
-                SSAO = MyRender11.DebugOverrides.SSAO,
-                Bloom = MyRender11.DebugOverrides.Bloom,
-                ShadowCameraFrozen = MyRender11.Settings.ShadowCameraFrozen,
-                ViewportResolution = MyRender11.ViewportResolution,
-                ResolutionI = MyRender11.ResolutionI,
-            };
-
-            var originalCameraState = CameraState.From(MyRender11.Environment.Matrices);
-
-            {
-                // set state for CameraLCD rendering
-                SetRendererState(RendererState.GetCameraViewState(surfaceRtv.Size));
-                GetCameraViewMatrixAndPosition(_camera, out MatrixD cameraViewMatrix, out Vector3D cameraPos);
-                SetCameraViewMatrix(originalCameraState with
+                var originalRendererState = new RendererState
                 {
-                    ViewMatrix = cameraViewMatrix,
-                    Fov = _camera.GetFov(),
-                    NearPlane = renderCamera.NearPlaneDistance,
-                    FarPlane = renderCamera.FarPlaneDistance,
-                    CameraPos = cameraPos,
-                    ProjOffsetX = 0,
-                    ProjOffsetY = 0,
-                }, renderCamera.FarFarPlaneDistance, 1, false);
+                    Lodding = MyCommon.LoddingSettings.Global.IsUpdateEnabled,
+                    DrawBillboards = MyRender11.Settings.DrawBillboards,
+                    EyeAdaption = MyRender11.Postprocess.EnableEyeAdaptation,
+                    Flares = MyRender11.DebugOverrides.Flares,
+                    SSAO = MyRender11.DebugOverrides.SSAO,
+                    Bloom = MyRender11.DebugOverrides.Bloom,
+                    ShadowCameraFrozen = MyRender11.Settings.ShadowCameraFrozen,
+                    ViewportResolution = MyRender11.ViewportResolution,
+                    ResolutionI = MyRender11.ResolutionI,
+                };
 
-                CameraViewRenderer.Draw(surfaceRtv);
+                var originalCameraState = CameraState.From(MyRender11.Environment.Matrices);
 
-                // restore camera settings
-                SetRendererState(originalRendererState);
-                SetCameraViewMatrix(originalCameraState, renderCamera.FarFarPlaneDistance, 0, false);
+                try
+                {
+                    SetRendererState(RendererState.GetCameraViewState(surfaceRtv.Size));
+                    GetCameraViewMatrixAndPosition(_camera, out MatrixD cameraViewMatrix, out Vector3D cameraPos);
+                    SetCameraViewMatrix(originalCameraState with
+                    {
+                        ViewMatrix = cameraViewMatrix,
+                        Fov = _camera.GetFov(),
+                        NearPlane = renderCamera.NearPlaneDistance,
+                        FarPlane = renderCamera.FarPlaneDistance,
+                        CameraPos = cameraPos,
+                        ProjOffsetX = 0,
+                        ProjOffsetY = 0,
+                    }, renderCamera.FarFarPlaneDistance, 1, false);
+
+                    CameraViewRenderer.Draw(surfaceRtv);
+                }
+                finally
+                {
+                    SetRendererState(originalRendererState);
+                    SetCameraViewMatrix(originalCameraState, renderCamera.FarFarPlaneDistance, 0, false);
+                }
+            }
+            else
+            {
+                MyRender11.RC.ClearRtv(surfaceRtv, default);
             }
 
             // PB-sprite overlay: sprites go to a scratch RTV with alpha, then one fullscreen
@@ -848,7 +823,7 @@ namespace CameraLCD
             }
         }
 
-        private void BuildSpriteMessages(MySprite[] sprites, Vector2I textureSize,
+        private static void BuildSpriteMessages(MySprite[] sprites, Vector2I textureSize,
             Vector2 shift, Vector2 halfTexture, Vector2 renderScale, string targetName, int frameId)
         {
             bool hasScissor = false;
@@ -1091,7 +1066,10 @@ namespace CameraLCD
         {
             base.Dispose();
 
-            UnregisterCamera("dispose");
+            DetachCamera("dispose");
+            CameraLcdManager.RemoveDisplay(Id);
+            RestoreResolutionScale();
+            IsActive = false;
             _lcd.CustomDataChanged -= Lcd_CustomDataChanged;
             _lcd.IsWorkingChanged -= Lcd_IsWorkingChanged;
             _lcd.CubeGridChanged -= Lcd_CubeGridChanged;

@@ -48,6 +48,8 @@ namespace IngameScript
             private static bool altitudeWarningActive = false;
             private static bool bingoFuelActive = false;
             public static bool AltitudeWarningActive => altitudeWarningActive;
+            public static bool RwrActive => radarControlModule != null && radarControlModule.HasRwrThreat;
+            public static bool TrackLocked => radarControlModule != null && radarControlModule.IsTrackLocked;
 
             // Timing foundation — lag-resistant, uses wall-clock delta.
             // DeltaSeconds: seconds between this Main() call and the last.
@@ -108,6 +110,8 @@ namespace IngameScript
 
                 canardModule = new CanardModule(parentProgram, _myJet);
                 modules.Add(canardModule);
+
+                modules.Add(new DatalinkModule(parentProgram, _myJet));
 
                 mainMenuOptions = new string[modules.Count];
                 for (int i = 0; i < modules.Count; i++)

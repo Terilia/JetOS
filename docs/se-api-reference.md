@@ -20,13 +20,14 @@ Decompiled DLLs: `decompiled_dlls/` (Sandbox.Common, SpaceEngineers.Game, VRage.
 
 ---
 
-## SE Types Used (22)
+## SE Types Used (23)
 
 ### Block Interfaces
 - `IMyCockpit` (→ IMyShipController → IMyTerminalBlock → IMyFunctionalBlock → IMyCubeBlock → IMyEntity)
 - `IMyThrust`
 - `IMyShipMergeBlock`
-- `IMySmallGatlingGun`
+- `IMySmallGatlingGun` (→ `IMyUserControllableGun`)
+- `IMyUserControllableGun` (base of the gatling; HQ uses it directly for the cursor "click-gun")
 - `IMyGasTank`
 - `IMySoundBlock`
 - `IMyCameraBlock`
@@ -93,7 +94,19 @@ Vector3D GetNaturalGravity();
 Vector3 MoveIndicator { get; }  // Note: Vector3, not Vector3D
 ```
 
-### IMyCameraBlock
+### IMyUserControllableGun  (Sandbox.ModAPI.Ingame)
+```csharp
+bool IsShooting { get; }   // LIVE per-tick firing state — true while the gun actually fires.
+                           // Backed by m_isShooting (Sync<bool, FromServer>). Read it to detect a
+                           // player left-click on a seat-controlled weapon (HQ cursor "click-gun").
+bool Shoot { get; set; }   // terminal "Shoot" ON/OFF toggle (continuous fire). NOT the same as
+                           // IsShooting — this is the operator-settable toggle (m_forceShoot).
+void ShootOnce();          // fire a single shot
+```
+> **Correction (verified via ilspycmd decomp of Bin64 Sandbox.Common.dll + Sandbox.Game.dll,
+> 2026-06-04):** `IsShooting` **IS** exposed to PB scripts. An earlier review wrongly concluded "no
+> readable shooting state" from incomplete notes — for weapon APIs, trust a fresh decomp of the real
+> Bin64 DLL over secondary notes. `IMySmallGatlingGun` inherits all three members.
 ```csharp
 MyDetectedEntityInfo Raycast(double distance, float pitch = 0f, float yaw = 0f);
 bool CanScan(double distance);

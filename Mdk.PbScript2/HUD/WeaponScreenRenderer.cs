@@ -117,9 +117,7 @@ namespace IngameScript
                 float rightX = screenWidth - margin - 8f;
 
                 // Row 1: Name + track mode badge
-                string name = contact.Name;
-                if (SE(name)) name = "UNK";
-                if (name.Length > 14) name = name.Substring(0, 14);
+                string name = Clip(contact.Name, 14);
 
                 bool stale = contact.IsStale;
                 Color nameColor = stale ? MFDTheme.DIM_TEXT_MID : MFDTheme.BRIGHT_TEXT;
@@ -259,9 +257,7 @@ namespace IngameScript
                     string marker = isSelected ? "\u25C9" : "\u25CB";
                     MFDFrame.Txt(marker, textX, textY, TEXT_SCALE, contactColor);
 
-                    string cName = contact.Name;
-                    if (SE(cName)) cName = "UNK";
-                    if (cName.Length > 12) cName = cName.Substring(0, 12);
+                    string cName = Clip(contact.Name, 12);
                     MFDFrame.Txt(cName, textX + 14f, textY, TEXT_SCALE, contactColor);
 
                     double range = VDi(shooterPosition, contact.Position);
@@ -443,26 +439,10 @@ namespace IngameScript
 
             private void DrawTurretIndicator(Vector2 position, string label, bool isLocked)
             {
-                Color bgColor;
-                Color textColor;
-                string statusChar;
-
-                if (isLocked)
-                {
-                    bgColor = Cr(0, 100, 0, 200);
-                    textColor = MFDTheme.ACCENT;
-                    statusChar = "X";
-                }
-                else
-                {
-                    bgColor = Cr(30, 30, 30, 200);
-                    textColor = MFDTheme.DIM_TEXT_MID;
-                    statusChar = "O";
-                }
-
-                SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, position.X, position.Y, 35f, 35f, bgColor);
+                Color textColor = isLocked ? MFDTheme.ACCENT : MFDTheme.DIM_TEXT_MID;
+                SpriteHelpers.Sp(TEXTURE_CIRCLE_SOLID, position.X, position.Y, 35f, 35f, isLocked ? Cr(0, 100, 0, 200) : Cr(30, 30, 30, 200));
                 SpriteHelpers.Tt(label, position.X, position.Y - 18f, 0.5f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
-                SpriteHelpers.Tt(statusChar, position.X, position.Y - 5f, 0.8f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
+                SpriteHelpers.Tt(isLocked ? "X" : "O", position.X, position.Y - 5f, 0.8f, textColor, MFDTheme.AC, MFDTheme.FONT_W);
             }
         }
     }

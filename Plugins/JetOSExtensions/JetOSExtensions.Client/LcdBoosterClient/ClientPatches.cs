@@ -34,9 +34,6 @@ namespace LcdBoosterClient
 
         private static readonly ConcurrentDictionary<MyTextPanelComponent, long> LastRenderTick =
             new ConcurrentDictionary<MyTextPanelComponent, long>();
-        private static readonly ConcurrentDictionary<MyTextPanelComponent, bool> CamovSkipLogged =
-            new ConcurrentDictionary<MyTextPanelComponent, bool>();
-
         private const double FullRateDistSq = 5.0 * 5.0;
         private const double HalfRateDistSq = 12.0 * 12.0;
         private const int CleanupIntervalTicks = 3600;
@@ -79,10 +76,7 @@ namespace LcdBoosterClient
                 return;
 
             if (__instance.Script == CameraTSS.SCRIPT_ID)
-            {
-                LogCamovSkip(__instance);
                 return;
-            }
 
             if (__instance.Render == null)
                 return;
@@ -125,26 +119,6 @@ namespace LcdBoosterClient
                     LastRenderTick.TryRemove(kvp.Key, out _);
             }
 
-            foreach (var kvp in CamovSkipLogged)
-            {
-                var block = BlockField.GetValue(kvp.Key) as Sandbox.Game.Entities.Cube.MyTerminalBlock;
-                if (block == null || block.MarkedForClose)
-                    CamovSkipLogged.TryRemove(kvp.Key, out _);
-            }
-        }
-
-        private static void LogCamovSkip(MyTextPanelComponent panel)
-        {
-            if (!Plugin.Settings.DebugLogging)
-                return;
-
-            if (!CamovSkipLogged.TryAdd(panel, true))
-                return;
-
-            var block = BlockField?.GetValue(panel) as MyTerminalBlock;
-            MyLog.Default.WriteLine(
-                $"CAMOV CLIENT: lcdbooster-skip lcd={block?.EntityId ?? 0} area={panel.Area} " +
-                $"lcdName=\"{block?.CustomName}\" script={panel.Script}");
         }
     }
 }

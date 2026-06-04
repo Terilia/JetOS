@@ -674,3 +674,62 @@ Used for aim dispersion and fudge vectors on missed scans.
 | 8 | IsSameConstructAs vs CubeGrid == | Missing subgrid blocks |
 | 9 | Property writes trigger network sync | Server performance death spiral |
 | 10 | No line primitive in sprite API | Must fake with rotated rectangles |
+| 11 | RotateToAngle is a wall-slam | Drives at constant RPM into a Havok angle limit |
+| 12 | BrakingTorque = Havok MaxFrictionTorque | Damping, not just braking — keep high for anti-oscillation |
+
+---
+
+## 11. RotateToAngle Is a Havok Limit-Wall Slam
+
+**Source:** `MyMotorStator.RequestRotation` (decompiled Sandbox.Game)
+
+`RotateToAngle(AUTO, angle, rpm)` does NOT smoothly servo to the target. Internally:
+
+```csharp
+// 1. Reset limits
+LowerLimitRad = float.MinValue;
+UpperLimitRad = float.MaxValue;
+TargetVelocityRPM = 0;
+
+// 2. Set ONE limit to desired angle, drive toward it
+if (CW) {
+    UpperLimitRad = desiredAngle;
+    TargetVelocityRPM = +rpm;
+} else {
+    LowerLimitRad = desiredAngle;
+    TargetVelocityRPM = -rpm;
+}
+```
+
+The joint drives at constant RPM until the Havok constraint solver stops it at the
+limit. A `SOFT_ZONE_AROUND_LIMITS = 0.1 deg` clamps motor force to
+`min(Torque, subgridMass^2)` near the limit, but the zone is too small for
+meaningful deceleration at typical RPMs.
+
+**Implications for PB scripts:**
+- Each call is `MyMultiplayer.RaiseEvent` (network event, syncs 3 float properties)
+- Re-calling with a nearby target moves the wall slightly; joint slams into new wall
+- For smooth motion: use a resend threshold (0.01-0.02 rad) to avoid micro-slams
+- RPM is the ONLY control over impact severity (not Torque)
+- `BrakingTorque` maps to `hkLimitedHingeConstraintData.MaxFrictionTorque` -- this is
+  continuous damping that opposes all angular velocity, not just braking. Keep it HIGH
+  for anti-oscillation. Lowering it makes joints bouncier.
+
+---
+
+## 12. BrakingTorque = Havok Friction Damping
+
+**Source:** `MyMotorStator` update loop, line 1316 (decompiled)
+
+```csharp
+hkLimitedHingeConstraintData.MaxFrictionTorque = BrakingTorque;
+```
+
+This is NOT a brake that only activates when decelerating. It is Havok's constraint
+friction -- a force that opposes all relative angular velocity at the hinge joint.
+Higher `MaxFrictionTorque` = more damping = faster settling of oscillations.
+
+The driving `Torque` sets `m_motor.MaxForce` (the motor's force limit). Both Torque
+and BrakingTorque should be set to the same value (typically 33.6 MN-m, the
+`DangerousTorqueThreshold`) because lowering one relative to the other either stalls
+the motor (if friction > motor) or removes damping (if motor > friction).

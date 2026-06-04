@@ -109,7 +109,7 @@ namespace IngameScript
             public int LeftAllFn, LeftAllTot, RightAllFn, RightAllTot;
             public int LeftAbFn, LeftAbTot, RightAbFn, RightAbTot;
             public int LeftAllDam, RightAllDam, LeftAllMax, RightAllMax;
-            public float LeftUseCurKN, LeftUseMaxKN, RightUseCurKN, RightUseMaxKN, LeftAbCurKN, RightAbCurKN;
+            public float LeftUseCurKN, LeftUseMaxKN, RightUseCurKN, RightUseMaxKN;
             double engineClassifyAge = double.MaxValue;
             const double ENGINE_CLASSIFY_SECONDS = 1.0;
             public bool LeftEngineBad { get { return LeftAllMax > 0 && (LeftAllTot < LeftAllMax || LeftAllFn < LeftAllTot || LeftAllDam > 0); } }
@@ -232,7 +232,7 @@ namespace IngameScript
                     if (!forwardPropulsion && !reversePropulsion)
                         continue;
 
-                    double rightOffset = Vector3D.Dot(t.GetPosition() - cockpitPos, cockpitRight);
+                    double rightOffset = VD(t.GetPosition() - cockpitPos, cockpitRight);
                     bool isLeft = rightOffset < -LATERAL_TOLERANCE;
                     bool isRight = rightOffset > LATERAL_TOLERANCE;
                     bool isCenter = !isLeft && !isRight;
@@ -263,10 +263,10 @@ namespace IngameScript
             {
                 CacheEngineSide(leftEnginesAll, leftABAll, leftEngines, leftAB,
                     out LeftAllFn, out LeftAllTot, out LeftUseFn, out LeftUseTot,
-                    out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAbCurKN, out LeftAllDam);
+                    out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAllDam);
                 CacheEngineSide(rightEnginesAll, rightABAll, rightEngines, rightAB,
                     out RightAllFn, out RightAllTot, out RightUseFn, out RightUseTot,
-                    out RightAbFn, out RightAbTot, out RightUseCurKN, out RightUseMaxKN, out RightAbCurKN, out RightAllDam);
+                    out RightAbFn, out RightAbTot, out RightUseCurKN, out RightUseMaxKN, out RightAllDam);
                 if (LeftAllTot > LeftAllMax) LeftAllMax = LeftAllTot;
                 if (RightAllTot > RightAllMax) RightAllMax = RightAllTot;
             }
@@ -274,7 +274,7 @@ namespace IngameScript
             static void CacheEngineSide(List<IMyThrust> allEng, List<IMyThrust> allAb,
                 List<IMyThrust> useEng, List<IMyThrust> useAb,
                 out int allFn, out int allTot, out int useFn, out int useTot,
-                out int abFn, out int abTot, out float useCur, out float useMax, out float abCur, out int allDam)
+                out int abFn, out int abTot, out float useCur, out float useMax, out int allDam)
             {
                 int af, at, ef, et, ad, abd;
                 GetEngineHealth(allEng, out af, out at, out ad);
@@ -284,7 +284,7 @@ namespace IngameScript
                 GetEngineHealth(useEng, out ef, out et, out ad);
                 GetEngineHealth(useAb, out af, out at, out abd);
                 useFn = ef + af; useTot = et + at;
-                float cur, max, abMax;
+                float cur, max, abMax, abCur;
                 GetEngineThrust(useEng, out cur, out max);
                 GetEngineThrust(useAb, out abCur, out abMax);
                 useCur = cur + abCur; useMax = max + abMax;
@@ -494,14 +494,6 @@ namespace IngameScript
             public bool IsSelected(EnemyContact contact)
             {
                 return SameTarget(selectedEnemyEntityId, selectedEnemyName, selectedEnemySourceIndex, contact.EntityId, contact.Name, contact.SourceIndex);
-            }
-
-            /// <summary>
-            /// Convenience null+staleness check for selected enemy.
-            /// </summary>
-            public bool HasSelectedEnemy()
-            {
-                return GetSelectedEnemy().HasValue;
             }
 
             public void SelectEnemy(EnemyContact contact)

@@ -1,6 +1,5 @@
 using Sandbox.ModAPI.Ingame;
 using System.Collections.Generic;
-using System.Text;
 using VRage;
 using VRageMath;
 
@@ -11,57 +10,50 @@ namespace IngameScript
         static class DatalinkV2
         {
             const string IGC_CHANNEL = "JETOS_DL";
-            const int KIND_FRIEND = 0;
-            const int KIND_TARGET_LEGACY = 1;
+            const int TAG_STATUS = 0;
+            const int TAG_CONTACT = 1;
+            const int TAG_STATION = 2;
+            const int TAG_ZONE = 3;
             const double BROADCAST_INTERVAL = 0.2;
+            const double STATION_TIMEOUT = 10.0;
             const double FRIEND_TIMEOUT = 2.0;
             const double LOCAL_OBSERVATION_WINDOW = 3.0;
             const double KEYFRAME_SECONDS = 5.0;
             const int MAX_HOPS = 3;
 
-            static readonly System.Globalization.NumberFormatInfo _nfi =
-                new System.Globalization.NumberFormatInfo { NumberDecimalSeparator = ".", NumberGroupSeparator = "" };
-
             static IMyBroadcastListener _listener;
-            static readonly List<Datalink.FriendlyStatus> _friends = new List<Datalink.FriendlyStatus>();
-            static readonly List<RelayContact> _relays = new List<RelayContact>();
-            static readonly List<SentContact> _sent = new List<SentContact>();
-            static readonly StringBuilder _sb = new StringBuilder(192);
+            static readonly List<Datalink.Node> _friends = new List<Datalink.Node>();
+            static readonly List<Datalink.Node> _relays = new List<Datalink.Node>();
+            static readonly List<Datalink.Node> _sent = new List<Datalink.Node>();
+            static readonly List<Datalink.Node> _stations = new List<Datalink.Node>();
+            // HQ-broadcast zones (Tag 3). Reuses Node: Position=center, Num=radius, Misc=kind, Text=name.
+            static readonly List<Datalink.Node> _zones = new List<Datalink.Node>();
             static double _broadcastAccum = BROADCAST_INTERVAL;
-
-            struct RelayContact
-            {
-                public char Kind;
-                public long ObserverId;
-                public long TargetId;
-                public Vector3D Position;
-                public Vector3D Velocity;
-                public string Name;
-                public double ObservedAt;
-                public int HopCount;
-            }
-
-            struct SentContact
-            {
-                public long TargetId;
-                public long ObserverId;
-                public Vector3D Position;
-                public double LastSent;
-                public double LastKeyframe;
-            }
 
             public static void Tick(Program program, Jet jet)
             {
                 Poll(program, jet);
                 Broadcast(program, jet);
-                PruneFriends();
-                PruneRelays();
+                Prune(_friends, FRIEND_TIMEOUT, false);
+                Prune(_relays, RadarContactV2.CONTACT_DECAY_SECONDS, false);
+                Prune(_stations, STATION_TIMEOUT, true);
+                Prune(_zones, RadarContactV2.CONTACT_DECAY_SECONDS, false);
             }
 
-            public static List<Datalink.FriendlyStatus> GetActiveFriendlies()
+            public static List<Datalink.Node> GetZones()
             {
-                PruneFriends();
+                return _zones; // pruned each tick by Tick()
+            }
+
+            public static List<Datalink.Node> GetActiveFriendlies()
+            {
+                Prune(_friends, FRIEND_TIMEOUT, false);
                 return _friends;
+            }
+
+            public static List<Datalink.Node> GetStations()
+            {
+                return _stations; // pruned each tick by Tick()
             }
 
             static void Broadcast(Program program, Jet jet)
@@ -72,14 +64,17 @@ namespace IngameScript
                 _broadcastAccum = 0;
 
                 double now = SystemManager.ElapsedSeconds;
+                long me = program.Me.EntityId;
                 program.IGC.SendBroadcastMessage(IGC_CHANNEL,
-                    MyTuple.Create(KIND_FRIEND, program.Me.EntityId, 0L, jet.CockpitPosition, jet.CockpitVelocity, ""));
+                    Pack(TAG_STATUS, me, jet.CockpitPosition, jet.CockpitVelocity,
+                        BuildStatusWord(jet), jet.GetSelectedEnemyId(), 0.0, 0,
+                        program.Me.CubeGrid.CustomName ?? ""));
 
                 for (int i = 0; i < jet.enemyList.Count; i++)
                 {
                     var c = jet.enemyList[i];
                     if (c.EntityId == 0 || c.SourceIndex < 0 || c.AgeSeconds > LOCAL_OBSERVATION_WINDOW) continue;
-                    SendContactIfDue(program, RadarContactV2.KIND_HOSTILE, program.Me.EntityId, c.EntityId,
+                    SendContactIfDue(program, RadarContactV2.KIND_HOSTILE, me, c.EntityId,
                         c.Position, c.Velocity, c.Name, 0, 0, now);
                 }
 
@@ -87,18 +82,18 @@ namespace IngameScript
                 for (int i = 0; i < maps.Count; i++)
                 {
                     var c = maps[i];
-                    if (c.ObserverId != program.Me.EntityId || c.AgeSeconds > LOCAL_OBSERVATION_WINDOW) continue;
-                    SendContactIfDue(program, c.Kind, c.ObserverId, c.Id, c.Position, c.Velocity, c.Name, 0, 0, now);
+                    if (c.ObserverId != me || c.AgeSeconds > LOCAL_OBSERVATION_WINDOW) continue;
+                    SendContactIfDue(program, c.Kind, me, c.Id, c.Position, c.Velocity, c.Name, 0, 0, now);
                 }
 
                 for (int i = 0; i < _relays.Count; i++)
                 {
                     var r = _relays[i];
-                    if (r.ObserverId == program.Me.EntityId || r.HopCount >= MAX_HOPS) continue;
-                    double age = now - r.ObservedAt;
+                    if (r.Id == me || r.Misc >= MAX_HOPS) continue;
+                    double age = now - r.SeenAt;
                     if (age > RadarContactV2.CONTACT_DECAY_SECONDS) continue;
-                    SendContactIfDue(program, r.Kind, r.ObserverId, r.TargetId, r.Position, r.Velocity, r.Name,
-                        age, r.HopCount + 1, now);
+                    SendContactIfDue(program, r.Kind, r.Id, r.TargetId, r.Position, r.Velocity, r.Text,
+                        age, r.Misc + 1, now);
                 }
             }
 
@@ -107,56 +102,87 @@ namespace IngameScript
                 if (_listener == null)
                     _listener = program.IGC.RegisterBroadcastListener(IGC_CHANNEL);
 
+                long me = program.Me.EntityId;
                 while (_listener.HasPendingMessage)
                 {
                     MyIGCMessage msg = _listener.AcceptMessage();
-                    if (msg.Data is string)
+                    var tn = msg.Data as MyTuple<int, long, Vector3D, Vector3D, long, MyTuple<long, double, int, string>>?;
+                    if (tn == null) continue;
+                    var t = tn.Value;
+                    long sender = t.Item2;
+                    if (sender == me) continue;
+                    var inner = t.Item6;
+                    double now = SystemManager.ElapsedSeconds;
+
+                    if (t.Item1 == TAG_STATUS || t.Item1 == TAG_STATION)
                     {
-                        ReadV2Packet(program, jet, msg.Data as string);
+                        // Friends and stations share the same envelope mapping; only the
+                        // extra fields differ (STATUS carries velocity, STATION carries
+                        // Ttl/OrderType in inner.Item2/Item3).
+                        var node = new Datalink.Node
+                        {
+                            Id = sender,
+                            Position = t.Item3,
+                            Word = t.Item5,
+                            TargetId = inner.Item1,
+                            Text = inner.Item4 ?? "",
+                            SeenAt = now
+                        };
+                        if (t.Item1 == TAG_STATUS)
+                        {
+                            node.Velocity = t.Item4;
+                            UpsertById(_friends, node);
+                        }
+                        else
+                        {
+                            node.Num = inner.Item2;
+                            node.Misc = inner.Item3;
+                            UpsertById(_stations, node);
+                        }
                         continue;
                     }
 
-                    if (!(msg.Data is MyTuple<int, long, long, Vector3D, Vector3D, string>)) continue;
-                    var t = (MyTuple<int, long, long, Vector3D, Vector3D, string>)msg.Data;
-                    if (t.Item2 == program.Me.EntityId) continue;
-                    if (t.Item1 == KIND_FRIEND)
-                        UpsertFriend(new Datalink.FriendlyStatus { Id = t.Item2, Position = t.Item4, SeenAt = SystemManager.ElapsedSeconds });
-                    else if (t.Item1 == KIND_TARGET_LEGACY && t.Item3 != 0 && t.Item4.LengthSquared() >= 1.0)
-                        jet.UpdateOrAddEnemy(t.Item4, t.Item5, t.Item6, RadarContactV2.SRC_DATALINK, t.Item3);
+                    if (t.Item1 == TAG_ZONE)
+                    {
+                        // Circle-only plot: ignore per-vertex Pos/index. vc==0 (Misc bits 6..11) is a
+                        // tombstone -> drop. Else upsert center(Vel)/radius(Num)/kind(Misc 15..18)/name.
+                        if (((inner.Item3 >> 6) & 63) == 0) RemoveById(_zones, t.Item5);
+                        else UpsertById(_zones, new Datalink.Node
+                        {
+                            Id = t.Item5,
+                            Position = t.Item4,
+                            Num = inner.Item2,
+                            Misc = (inner.Item3 >> 15) & 15,
+                            Text = inner.Item4 ?? "",
+                            SeenAt = now
+                        });
+                        continue;
+                    }
+
+                    if (t.Item1 != TAG_CONTACT) continue;
+                    long observerId = t.Item5;
+                    if (observerId == me) continue;
+
+                    long targetId = inner.Item1;
+                    if (targetId == 0) continue;
+                    double age = inner.Item2;
+                    if (age < 0 || age > RadarContactV2.CONTACT_DECAY_SECONDS) continue;
+                    int misc = inner.Item3;
+                    int hop = misc & 15;
+                    if (hop > MAX_HOPS) continue;
+                    char kind = (char)(misc >> 4);
+                    if (kind != RadarContactV2.KIND_HOSTILE && !RadarContactV2.IsMapKind(kind)) continue;
+
+                    string name = inner.Item4 ?? "";
+                    Vector3D pos = t.Item3;
+                    Vector3D vel = t.Item4;
+                    if (!UpsertRelay(kind, observerId, targetId, pos, vel, name, age, hop)) continue;
+
+                    if (kind == RadarContactV2.KIND_HOSTILE)
+                        jet.UpdateOrAddEnemy(pos, vel, name, RadarContactV2.SRC_DATALINK, targetId, age);
+                    else
+                        MapContactStoreV2.Update(kind, targetId, pos, vel, name, observerId, hop, age);
                 }
-            }
-
-            static void ReadV2Packet(Program program, Jet jet, string payload)
-            {
-                if (SE(payload) || !payload.StartsWith("J2|")) return;
-                string[] p = payload.Split('|');
-                if (p.Length < 14) return;
-
-                char kind = SE(p[1]) ? '\0' : p[1][0];
-                long observerId, senderId, targetId;
-                double px, py, pz, vx, vy, vz, age;
-                int hop;
-                if (!long.TryParse(p[2], out observerId) || observerId == program.Me.EntityId) return;
-                if (!long.TryParse(p[3], out senderId) || senderId == program.Me.EntityId) return;
-                if (!long.TryParse(p[4], out targetId) || targetId == 0) return;
-                if (!TryD(p[5], out px) || !TryD(p[6], out py) || !TryD(p[7], out pz)) return;
-                if (!TryD(p[8], out vx) || !TryD(p[9], out vy) || !TryD(p[10], out vz)) return;
-                if (!TryD(p[11], out age) || age < 0 || age > RadarContactV2.CONTACT_DECAY_SECONDS) return;
-                if (!int.TryParse(p[12], out hop) || hop < 0 || hop > MAX_HOPS) return;
-
-                string name = p[13];
-                Vector3D pos = new Vector3D(px, py, pz);
-                Vector3D vel = new Vector3D(vx, vy, vz);
-                if (kind != RadarContactV2.KIND_HOSTILE && !RadarContactV2.IsMapKind(kind))
-                    return;
-
-                if (!UpsertRelay(kind, observerId, targetId, pos, vel, name, age, hop))
-                    return;
-
-                if (kind == RadarContactV2.KIND_HOSTILE)
-                    jet.UpdateOrAddEnemy(pos, vel, name, RadarContactV2.SRC_DATALINK, targetId, age);
-                else if (RadarContactV2.IsMapKind(kind))
-                    MapContactStoreV2.Update(kind, targetId, pos, vel, name, observerId, hop, age);
             }
 
             static void SendContactIfDue(Program program, char kind, long observerId, long targetId,
@@ -165,49 +191,78 @@ namespace IngameScript
                 if (targetId == 0 || observerId == 0) return;
                 if (!ShouldSend(observerId, targetId, position, now)) return;
                 program.IGC.SendBroadcastMessage(IGC_CHANNEL,
-                    FormatContact(kind, observerId, program.Me.EntityId, targetId, position, velocity, name, ageSeconds, hopCount));
+                    Pack(TAG_CONTACT, program.Me.EntityId, position, velocity, observerId,
+                        targetId, ageSeconds, ((int)kind << 4) | hopCount, name ?? ""));
             }
 
-            static string FormatContact(char kind, long observerId, long senderId, long targetId,
-                Vector3D position, Vector3D velocity, string name, double ageSeconds, int hopCount)
+            // Single typed envelope shared by every datalink message. Tag selects how the fields are read:
+            //   TAG_STATUS  : sender=jetId, pos/vel=jet, packed=statusWord, idB=currentTargetId, text=callsign
+            //   TAG_CONTACT : sender=relayer, packed=observerId, idB=targetId, num=age, misc=(kind<<4)|hop, text=name
+            // (TAG 2/STATION reserved for the HQ broadcast in a later phase.)
+            static MyTuple<int, long, Vector3D, Vector3D, long, MyTuple<long, double, int, string>> Pack(
+                int tag, long sender, Vector3D pos, Vector3D vel, long packed, long idB, double num, int misc, string text)
             {
-                _sb.Clear();
-                _sb.Append("J2|").Append(kind).Append('|').Append(observerId).Append('|').Append(senderId).Append('|').Append(targetId);
-                AppendV(position.X); AppendV(position.Y); AppendV(position.Z);
-                AppendV(velocity.X); AppendV(velocity.Y); AppendV(velocity.Z);
-                _sb.Append('|').Append(ageSeconds.ToString("0.###", _nfi)).Append('|').Append(hopCount).Append('|').Append(CleanName(name));
-                return _sb.ToString();
+                return MyTuple.Create(tag, sender, pos, vel, packed, MyTuple.Create(idB, num, misc, text));
             }
 
-            static void AppendV(double value)
+            // Encode this jet's live state into the TAG_STATUS bit field (see envelope contract):
+            //  [0..6] fuel% [7..13] battery% [14..20] integrity% [21..24] missiles [25..27] gun
+            //  [28..31] state [32..43] altitude/8 [44..55] flags
+            static long BuildStatusWord(Jet jet)
             {
-                _sb.Append('|').Append(value.ToString("0.###", _nfi));
-            }
+                int fuel = Mn(100, Mx(0, (int)(jet.FuelPct * 100)));
+                int batt = Mn(100, Mx(0, (int)(jet.BatteryPct * 100)));
 
-            static string CleanName(string name)
-            {
-                if (SE(name)) return "";
-                return name.Replace('|', ' ');
+                int ef = 0, et = 0, f, t, d;
+                Jet.GetEngineHealth(jet.leftEnginesAll, out f, out t, out d); ef += f; et += t;
+                Jet.GetEngineHealth(jet.rightEnginesAll, out f, out t, out d); ef += f; et += t;
+                Jet.GetEngineHealth(jet.centerEnginesAll, out f, out t, out d); ef += f; et += t;
+                int integ = et > 0 ? ef * 100 / et : 100;
+
+                int missiles = Mn(15, jet._bays != null ? jet._bays.Count : 0);
+                int gunBucket = Mn(7, jet.GetTotalGunAmmo() / 20);
+                int altDiv8 = Mn(4095, Mx(0, (int)(jet.SurfaceAltitude / 8.0)));
+
+                bool bingo = fuel < 15;
+                int state = 1;
+                if (jet.GetSelectedEnemyId() != 0) state = 2;
+                if (SystemManager.RwrActive) state = 3;
+                if (bingo) state = 5;
+
+                int flags = 0;
+                if (SystemManager.RwrActive) flags |= 1;
+                if (SystemManager.TrackLocked) flags |= 2;
+                if (bingo) flags |= 4;
+                if (SystemManager.AltitudeWarningActive) flags |= 8;
+
+                return (long)(fuel & 127)
+                     | ((long)(batt & 127) << 7)
+                     | ((long)(integ & 127) << 14)
+                     | ((long)(missiles & 15) << 21)
+                     | ((long)(gunBucket & 7) << 25)
+                     | ((long)(state & 15) << 28)
+                     | ((long)(altDiv8 & 4095) << 32)
+                     | ((long)(flags & 4095) << 44);
             }
 
             static bool ShouldSend(long observerId, long targetId, Vector3D position, double now)
             {
                 for (int i = 0; i < _sent.Count; i++)
                 {
-                    SentContact s = _sent[i];
-                    if (s.ObserverId != observerId || s.TargetId != targetId) continue;
-                    bool keyframe = now - s.LastKeyframe >= KEYFRAME_SECONDS;
+                    Datalink.Node s = _sent[i];
+                    if (s.Id != observerId || s.TargetId != targetId) continue;
+                    bool keyframe = now - s.Num >= KEYFRAME_SECONDS;
                     bool moved = (s.Position - position).LengthSquared() > 0.01;
                     if (!keyframe && !moved) return false;
-                    if (now - s.LastSent < BROADCAST_INTERVAL) return false;
+                    if (now - s.SeenAt < BROADCAST_INTERVAL) return false;
                     s.Position = position;
-                    s.LastSent = now;
-                    if (keyframe) s.LastKeyframe = now;
+                    s.SeenAt = now;
+                    if (keyframe) s.Num = now;
                     _sent[i] = s;
                     return true;
                 }
 
-                _sent.Add(new SentContact { ObserverId = observerId, TargetId = targetId, Position = position, LastSent = now, LastKeyframe = now });
+                _sent.Add(new Datalink.Node { Id = observerId, TargetId = targetId, Position = position, SeenAt = now, Num = now });
                 return true;
             }
 
@@ -217,64 +272,62 @@ namespace IngameScript
                 for (int i = 0; i < _relays.Count; i++)
                 {
                     var r = _relays[i];
-                    if (r.ObserverId != observerId || r.TargetId != targetId) continue;
-                    if (observedAt < r.ObservedAt) return false;
+                    if (r.Id != observerId || r.TargetId != targetId) continue;
+                    if (observedAt < r.SeenAt) return false;
                     r.Kind = kind;
                     r.Position = position;
                     r.Velocity = velocity;
-                    r.Name = name;
-                    r.ObservedAt = observedAt;
-                    r.HopCount = hop;
+                    r.Text = name;
+                    r.SeenAt = observedAt;
+                    r.Misc = hop;
                     _relays[i] = r;
                     return true;
                 }
 
-                _relays.Add(new RelayContact
+                _relays.Add(new Datalink.Node
                 {
                     Kind = kind,
-                    ObserverId = observerId,
+                    Id = observerId,
                     TargetId = targetId,
                     Position = position,
                     Velocity = velocity,
-                    Name = name,
-                    ObservedAt = observedAt,
-                    HopCount = hop
+                    Text = name,
+                    SeenAt = observedAt,
+                    Misc = hop
                 });
                 return true;
             }
 
-            static void UpsertFriend(Datalink.FriendlyStatus status)
+            static void UpsertById(List<Datalink.Node> list, Datalink.Node node)
             {
-                for (int i = 0; i < _friends.Count; i++)
+                for (int i = 0; i < list.Count; i++)
                 {
-                    if (_friends[i].Id == status.Id)
+                    if (list[i].Id == node.Id)
                     {
-                        _friends[i] = status;
+                        list[i] = node;
                         return;
                     }
                 }
-                _friends.Add(status);
+                list.Add(node);
             }
 
-            static void PruneFriends()
+            static void RemoveById(List<Datalink.Node> list, long id)
+            {
+                for (int i = 0; i < list.Count; i++)
+                    if (list[i].Id == id) { list.RemoveAt(i); return; }
+            }
+
+            // Drop entries whose age exceeds their lifetime. useNum: per-node Num
+            // (station TTL, falling back to STATION_TIMEOUT when <=0) overrides life.
+            static void Prune(List<Datalink.Node> list, double life, bool useNum)
             {
                 double now = SystemManager.ElapsedSeconds;
-                for (int i = _friends.Count - 1; i >= 0; i--)
-                    if (now - _friends[i].SeenAt > FRIEND_TIMEOUT)
-                        _friends.RemoveAt(i);
-            }
-
-            static void PruneRelays()
-            {
-                double now = SystemManager.ElapsedSeconds;
-                for (int i = _relays.Count - 1; i >= 0; i--)
-                    if (now - _relays[i].ObservedAt > RadarContactV2.CONTACT_DECAY_SECONDS)
-                        _relays.RemoveAt(i);
-            }
-
-            static bool TryD(string s, out double value)
-            {
-                return double.TryParse(s, System.Globalization.NumberStyles.Float, _nfi, out value);
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    double l = useNum && list[i].Num > 0 ? list[i].Num : life;
+                    if (now - list[i].SeenAt > l)
+                        list.RemoveAt(i);
+                }
             }
         }
     }

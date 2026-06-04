@@ -7,14 +7,31 @@ namespace IngameScript
     {
         static class Datalink
         {
-            public struct FriendlyStatus
+            // Unified datalink record. One field-set reused for friends, stations,
+            // relays and sent-dedupe entries (the old FriendlyStatus / StationStatus /
+            // RelayContact / SentContact). Field meaning by use-site:
+            //   Id       : friend jetId / station id / relay+sent observerId
+            //   Word     : friend StatusWord / station Flags
+            //   TargetId : friend currentTarget / station WaypointId / relay+sent targetId
+            //   Text     : friend Callsign / station Text / relay Name
+            //   Num      : station Ttl / sent LastKeyframe
+            //   Misc     : station OrderType / relay HopCount
+            //   SeenAt   : friend/station SeenAt / relay ObservedAt / sent LastSent
+            public struct Node
             {
                 public long Id;
                 public Vector3D Position;
+                public Vector3D Velocity;
                 public double SeenAt;
+                public long Word;
+                public long TargetId;
+                public string Text;
+                public double Num;
+                public int Misc;
+                public char Kind;
             }
 
-            public static List<FriendlyStatus> GetActiveFriendlies()
+            public static List<Node> GetActiveFriendlies()
             {
                 return DatalinkV2.GetActiveFriendlies();
             }

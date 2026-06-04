@@ -130,6 +130,7 @@ namespace CameraLCD.Gui
         void ResolutionScaleSliderChanged(MyGuiControlSlider slider)
         {
             int percent = CamovResolutionScale.NormalizePercent((int)slider.Value * CamovResolutionScale.Step);
+            if (percent == Plugin.Settings.ResolutionScalePercent) return;
             Plugin.Settings.ResolutionScalePercent = percent;
             Plugin.Settings.Save();
             MyLog.Default.WriteLine($"CAMOV CLIENT: lcd-resolution setting changed to {CamovResolutionScale.FormatLabel(percent)} ({percent}%).");
