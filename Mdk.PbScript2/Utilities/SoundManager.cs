@@ -116,9 +116,14 @@ namespace IngameScript
                 Request(warningChannel, sound, priority, loopSeconds);
             }
 
+            // Radial-menu warning mute — gates new warning-channel requests only (RWR/event
+            // tones stay live); the 3-tick state machine is untouched, channel just idles.
+            public static bool WarnMute;
+
             static bool Request(SoundChannel ch, string sound, int priority, double loopSeconds, int eventId = 0)
             {
                 if (ch == null) return false;
+                if (WarnMute && ch == warningChannel) return false;
                 if (priority >= ch.requestedPriority)
                 {
                     ch.requestedSound = sound;

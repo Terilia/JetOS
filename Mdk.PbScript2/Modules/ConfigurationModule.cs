@@ -220,6 +220,16 @@ namespace IngameScript
                 return allConfigs.TryGetValue(configName, out p) ? p.Value : 0f;
             }
 
+            public void Toggle(string configName)
+            {
+                ConfigParam p;
+                if (allConfigs.TryGetValue(configName, out p) && p.IsToggle)
+                {
+                    p.Value = p.Value > 0.5f ? 0f : 1f;
+                    SaveToCustomData();
+                }
+            }
+
             private static readonly string[] themeNames = { "G", "B", "A", "W" };
 
             public override string[] GetOptions()

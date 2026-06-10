@@ -151,6 +151,15 @@ namespace IngameScript
                 return hudProgram != null ? hudProgram.smoothedAoA : 0;
             }
 
+            // Config gate for optional HUD elements — also hides them while the hold-C
+            // radial menu is open so the glass has room for it.
+            public static bool HudCfg(string k) => !RadialMenu.Active && GetConfigValue(k) > 0.5f;
+
+            public static void ToggleConfig(string k)
+            {
+                if (configModule != null) configModule.Toggle(k);
+            }
+
             public static float GetConfigValue(string configName)
             {
                 if (configModule != null)

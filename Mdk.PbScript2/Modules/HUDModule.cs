@@ -112,8 +112,6 @@ namespace IngameScript
             // --- Thrust Balancing ---
             // Reads MaxEffectiveThrust per side each tick to keep thrust equal
 
-            // --- Manual Fire Toggle ---
-            private bool manualFireToggleCooldown = false;
 
 
             // --- Cached HUD Values ---
@@ -225,6 +223,7 @@ namespace IngameScript
                     return;
 
                 CacheTheme();
+                RadialMenu.Tick(ParentProgram, cockpit, myjet);
 
                 double throttle = cockpit.MoveIndicator.Z * -1;
                 double jumpthrottle = cockpit.MoveIndicator.Y;
@@ -274,7 +273,7 @@ namespace IngameScript
                     DrawArtificialHorizon(frame, (float)pitch, (float)roll, centerX, centerY, pixelsPerDegree);
                     DrawAircraftSymbol(centerX, centerY);
                     DrawBankAngleMarkers(centerX, centerY, (float)roll, pixelsPerDegree);
-                    if (SystemManager.GetConfigValue(CFG_HUD_FPM) > 0.5f)
+                    if (SystemManager.HudCfg(CFG_HUD_FPM))
                         DrawFlightPathMarker(currentVelocity, worldToCockpitMatrix, roll, centerX, centerY, pixelsPerDegree);
 
                     // Instruments
@@ -286,17 +285,17 @@ namespace IngameScript
 
                     DrawFlightInfo(_displayThrottle.Value);
                     DrawSpeedIndicatorF18StyleKph(_displaySpeedKph.Value);
-                    if (SystemManager.GetConfigValue(CFG_HUD_COMPASS) > 0.5f)
+                    if (SystemManager.HudCfg(CFG_HUD_COMPASS))
                         DrawCompass(heading);
                     DrawAltitudeIndicatorF18Style(_displayAltitude.Value, _displayVvi.Value);
-                    if (SystemManager.GetConfigValue(CFG_HUD_GFORCE) > 0.5f)
+                    if (SystemManager.HudCfg(CFG_HUD_GFORCE))
                         DrawGForceIndicator(smoothedGForces, peakGForce);
 
-                    if (velocity > 1.0 && SystemManager.GetConfigValue(CFG_HUD_AOA) > 0.5f)
+                    if (velocity > 1.0 && SystemManager.HudCfg(CFG_HUD_AOA))
                         DrawAOAIndexer(smoothedAoA, energyRate, velocity);
 
                     // Radar minimap
-                    if (SystemManager.GetConfigValue(CFG_HUD_RADAR) > 0.5f)
+                    if (SystemManager.HudCfg(CFG_HUD_RADAR))
                         DrawRadarMinimap(cockpit, hud);
 
                     Vector2 surfaceSize = SS(hud);
@@ -337,10 +336,10 @@ namespace IngameScript
                                 isAimingAtPip = distanceToPip <= pipRadius;
                             }
 
-                            if (SystemManager.GetConfigValue(CFG_HUD_GUN_FUNNEL) > 0.5f)
+                            if (SystemManager.HudCfg(CFG_HUD_GUN_FUNNEL))
                                 DrawGunFunnel(hud, worldToCockpitMatrix, aimPoint, shooterPosition, range, isAimingAtPip);
                             DrawLeadingPip(hud, worldToCockpitMatrix, shooterPosition, activeTargetPos, interceptPoint, aimPoint, timeToIntercept, isAimingAtPip, HUD_WARNING, HUD_EMPHASIS, HUD_WARNING, Color.White);
-                            if (SystemManager.GetConfigValue(CFG_HUD_TARGET_BRACKETS) > 0.5f)
+                            if (SystemManager.HudCfg(CFG_HUD_TARGET_BRACKETS))
                                 DrawTargetBrackets(hud, worldToCockpitMatrix, activeTargetPos, activeTargetVel, shooterPosition, currentVelocity);
                         }
 
@@ -351,6 +350,7 @@ namespace IngameScript
                         SetGatlingsEnabled(isAimingAtPip);
                     DrawFormationGhosts(hud, worldToCockpitMatrix);
                     DrawGunControlOverlay();
+                    RadialMenu.Draw(hudCenter, viewportMinDim); // on top of everything
                     }
                     finally { SpriteBus.End(); }
                 }
@@ -551,18 +551,8 @@ namespace IngameScript
                     airbrakesOpen = shouldOpenAirbrakes;
                 }
 
-                if (jumpthrottle < -0.5)
-                {
-                    if (!manualFireToggleCooldown)
-                    {
-                        myjet.manualfire = !myjet.manualfire;
-                        manualFireToggleCooldown = true;
-                    }
-                }
-                else
-                {
-                    manualFireToggleCooldown = false;
-                }
+                // C (jumpthrottle < -0.5) is owned by RadialMenu now: tap = manualfire
+                // toggle (legacy), hold+flick = radial selection.
 
                 if (myjet.manualfire)
                     SetGatlingsEnabled(true);

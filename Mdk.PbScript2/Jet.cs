@@ -210,6 +210,11 @@ namespace IngameScript
             public void ClassifyEnginesIfNeeded()
             {
                 if (_cockpit == null) return;
+                // GridThrustDirection is relative to the grid's CURRENT controller — with no
+                // one seated it returns Zero for every thruster, which would empty the engine
+                // lists and latch a false "engine fire" (AllTot < AllMax). Freeze the last
+                // manned classification instead; health checks on it stay valid while parked.
+                if (!_cockpit.IsUnderControl) return;
                 engineClassifyAge += SystemManager.DeltaSeconds;
                 if (engineClassifyAge < ENGINE_CLASSIFY_SECONDS) return;
                 engineClassifyAge = 0;
