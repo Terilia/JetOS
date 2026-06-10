@@ -17,7 +17,9 @@ namespace IngameScript
             public abstract void ExecuteOption(int index);
             // Override to render a custom MFD page instead of the default menu list.
             // Default returns a MenuMfdPage that wraps this module's GetOptions/name/GetHotkeys.
-            public virtual MfdPage GetPage() => new MenuMfdPage(this);
+            // Cached — GetPage is called every render tick.
+            MfdPage _defaultPage;
+            public virtual MfdPage GetPage() => _defaultPage ?? (_defaultPage = new MenuMfdPage(this));
             public virtual void HandleSpecialFunction(int key) { }
             public virtual void Tick() { }
             public virtual string GetHotkeys()

@@ -49,7 +49,12 @@ namespace IngameScript
             {
                 if (key == 5) MapView.ZoomOut();
                 else if (key == 6) MapView.ZoomIn();
-                else if (key == 7) MapView.Recenter();
+                else if (key == 7)
+                {
+                    long marked = MapView.MarkedTrackId();
+                    if (marked != 0) DatalinkHQ.ToggleStrike(marked);
+                    else MapView.Recenter();
+                }
                 // key 8 (seeker toggle) is handled globally in SystemManager — not here, to avoid a
                 // double-toggle.
             }

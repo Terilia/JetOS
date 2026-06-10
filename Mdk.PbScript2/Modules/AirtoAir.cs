@@ -84,8 +84,6 @@ namespace IngameScript
             {
                 MissileBayHelper.PollMissileStatus(ParentProgram);
 
-                SystemManager.UpdateActiveTargetGPS();
-
                 MissileBayHelper.BroadcastTargetUpdates(ParentProgram, myJet, missileBays);
             }
 

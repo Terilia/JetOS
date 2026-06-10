@@ -18,6 +18,7 @@ namespace IngameScript
             // since module list/selection drives MenuItems).
             private static GridMfdPage _gridPage;
             private static WeaponMfdPage _weaponPage;
+            private static MenuMfdPage _mainMenuPage;
 
             // Wall-clock timestamp of the last main-MFD page swap. The shader-style
             // transition replay runs for PAGE_FADE_DURATION after this. -1 = no fade pending.
@@ -36,14 +37,11 @@ namespace IngameScript
             private static Program parentProgram;
             private static UIController uiController;
             private static string _pendingArgument = null;
-            public static int currentTick = 0;
             private static Program.HUDModule hudProgram;
             private static Program.ConfigurationModule configModule;
             private static Program.RadarControlModuleV2 radarControlModule;
             private static Program.AirtoAir airtoAirModule;
-            private static Program.GunControlModule gunControlModule;
             private static Program.TerrainModule terrainModule;
-            private static Program.CanardModule canardModule;
             // Altitude warning hysteresis
             private static bool altitudeWarningActive = false;
             private static bool bingoFuelActive = false;
@@ -99,17 +97,11 @@ namespace IngameScript
                 modules.Add(hudProgram);
                 uiController = new UIController();
 
-                configModule = new ConfigurationModule(parentProgram);
+                configModule = new ConfigurationModule(parentProgram, _myJet);
                 modules.Add(configModule);
-
-                gunControlModule = new GunControlModule(parentProgram, _myJet);
-                modules.Add(gunControlModule);
 
                 terrainModule = new TerrainModule(parentProgram, _myJet);
                 modules.Add(terrainModule);
-
-                canardModule = new CanardModule(parentProgram, _myJet);
-                modules.Add(canardModule);
 
                 modules.Add(new DatalinkModule(parentProgram, _myJet));
 
@@ -123,6 +115,8 @@ namespace IngameScript
                 // Build static MFD pages for surface 1 (status grid) and surface 2 (weapons).
                 _gridPage = new GridMfdPage(parentProgram, _myJet, hudProgram);
                 _weaponPage = new WeaponMfdPage(hudProgram);
+                _mainMenuPage = new MenuMfdPage("SYS", mainMenuOptions, showSidebar: true,
+                    sidebarRenderer: RenderDefaultSidebar);
             }
 
             // Default sidebar renderer — used by main menu and every module menu (fuel/battery/engine/terrain).
@@ -166,10 +160,10 @@ namespace IngameScript
 
             public static void Main(string argument, UpdateType updateSource)
             {
-                // When a toolbar button is pressed, SE calls Main() twice in the same sim tick:
-                // once with UpdateType.Trigger and once with Update1. We must only process once
-                // to prevent double-advancing currentTick, double-ticking modules, etc.
-                if ((updateSource & UpdateType.Trigger) != 0)
+                // When a toolbar button is pressed (or Run is clicked in the terminal), SE calls
+                // Main() in the same sim tick as the regular Update1 pass. We must only process once
+                // to prevent double-advancing time, double-ticking modules, etc.
+                if ((updateSource & (UpdateType.Trigger | UpdateType.Terminal)) != 0)
                 {
                     _pendingArgument = argument;
                     return;
@@ -179,8 +173,6 @@ namespace IngameScript
                     argument = _pendingArgument;
                     _pendingArgument = null;
                 }
-
-                currentTick++;
 
                 // Update wall-clock timing. Clamp to avoid huge jumps after pause.
                 double dt = parentProgram.Runtime.TimeSinceLastRun.TotalSeconds;
@@ -255,8 +247,7 @@ namespace IngameScript
                 TickBackground(hudProgram);
                 TickBackground(radarControlModule);
                 TickBackground(airtoAirModule);
-                TickBackground(gunControlModule);
-                TickBackground(canardModule);
+                configModule.TickSystems();
 
                 HandleSpecialFunctionInputs(argument);
 
@@ -296,21 +287,10 @@ namespace IngameScript
                     _lastModule = currentModule;
                     // Freeze the just-rendered outgoing page as the transition replay source.
                     _outgoingSnapshot.Clear();
-                    for (int i = 0; i < _mainCapture.Count; i++)
-                        _outgoingSnapshot.Add(_mainCapture[i]);
+                    _outgoingSnapshot.AddRange(_mainCapture);
                 }
 
-                MfdPage mainPage;
-                if (currentModule == null)
-                {
-                    mainPage = new MenuMfdPage("SYS", mainMenuOptions, showSidebar: true,
-                        sidebarRenderer: panelArea =>
-                            StatusPanelRenderer.Render(panelArea, _myJet, hudProgram));
-                }
-                else
-                {
-                    mainPage = currentModule.GetPage();
-                }
+                MfdPage mainPage = currentModule == null ? _mainMenuPage : currentModule.GetPage();
 
                 _mainCapture.Clear();
                 // Only pass the snapshot while the transition window is open; null after it ends.
@@ -384,26 +364,6 @@ namespace IngameScript
                 // Advance to next entry (wrapping)
                 int nextIndex = (currentIndex + 1) % sorted.Count;
                 _myJet.SelectEnemy(sorted[nextIndex]);
-
-                UpdateActiveTargetGPS();
-            }
-
-            public static void UpdateActiveTargetGPS()
-            {
-                var selected = _myJet.GetSelectedEnemy();
-                if (!selected.HasValue)
-                {
-                    if (!SE(GetCustomDataValue(CD_CACHED))) SetCustomDataValue(CD_CACHED, "");
-                    if (!SE(GetCustomDataValue("CachedSpeed"))) SetCustomDataValue("CachedSpeed", "");
-                    return;
-                }
-
-                Vector3D targetPos = selected.Value.Position;
-                Vector3D targetVel = selected.Value.Velocity;
-
-                SetCustomDataValue(CD_CACHED, NavigationHelper.FormatGps(targetPos));
-                string speedValue = $"{targetVel.X}:{targetVel.Y}:{targetVel.Z}:#FF75C9F1:";
-                SetCustomDataValue("CachedSpeed", speedValue);
             }
 
             private static void NavigateUp()
@@ -472,7 +432,7 @@ namespace IngameScript
 
             public static GunControlModule GetGunControl()
             {
-                return gunControlModule;
+                return configModule != null ? configModule.Gun : null;
             }
 
         }

@@ -9,7 +9,10 @@ namespace IngameScript
 {
     partial class Program
     {
-        class GunControlModule : ProgramModule
+        // Turret auto-aiming logic. No longer a menu module — owned + ticked by
+        // ConfigurationModule; on/off is the CFG_GUN_AUTO config toggle, tuning lives in
+        // the config "Gun" category, and the weapon-screen turret indicators read its getters.
+        class GunControlModule
         {
             // --- Turret Assembly ---
             private class TurretAssembly
@@ -19,7 +22,6 @@ namespace IngameScript
                 public IMySmallGatlingGun Gun;
                 public string Name;
                 public bool IsTracking;
-                public Vector3D TargetPosition;
                 public float YawError;
                 public float PitchError;
                 public int ElevationSign; // +1 or -1, derived from hinge mounting orientation
@@ -29,6 +31,10 @@ namespace IngameScript
                 // Target LOS rate (D-term): derivative of aim direction
                 public Vector3D LastAimDir;
                 public bool HasLastAimDir;
+                // Aim source bookkeeping — the D-term must not differentiate across a
+                // source change (target switch / target↔forward), or it kicks for one tick.
+                public int AimSource;
+                public long AimTargetId;
             }
 
             // --- Turret References ---
@@ -38,9 +44,6 @@ namespace IngameScript
             // References
             private Jet myJet;
             private IMyCockpit cockpit;
-
-            // --- Control State ---
-            private bool controlEnabled = false;
 
             // --- Constants ---
             private const float MAX_ANGLE_DEG = 15f;
@@ -62,11 +65,10 @@ namespace IngameScript
             private const string ROTOR_RIGHT_NAME = "Gun Rotor Right";
             private const string HINGE_RIGHT_NAME = "Gun Hinge Right";
 
-            public GunControlModule(Program program, Jet jet) : base(program)
+            public GunControlModule(Program program, Jet jet)
             {
                 myJet = jet;
                 cockpit = jet._cockpit;
-                name = "Gun";
 
                 leftTurret = new TurretAssembly { Name = "Left" };
                 rightTurret = new TurretAssembly { Name = "Right" };
@@ -159,115 +161,67 @@ namespace IngameScript
                 return (float)(angle / dt * scale);
             }
 
-            public override string[] GetOptions()
-            {
-                string controlStatus = controlEnabled ? "ON" : "OFF";
-                string leftStatus = GetTurretStatus(leftTurret);
-                string rightStatus = GetTurretStatus(rightTurret);
-                string leftLock = leftTurret.IsTracking ? "LOCKED" : "---";
-                string rightLock = rightTurret.IsTracking ? "LOCKED" : "---";
-                int totalAmmo = GetTotalAmmo();
-
-                return new string[]
-                {
-                    $"AUTO [{controlStatus}]",
-                    $"AMMO {totalAmmo}",
-                    $"L {leftStatus} [{leftLock}]",
-                    $"R {rightStatus} [{rightLock}]",
-                    "CENTER"
-                };
-            }
-
-            private string GetTurretStatus(TurretAssembly turret)
-            {
-                if (turret.Rotor == null || turret.Hinge == null)
-                    return "MISS";
-                if (!turret.Rotor.IsFunctional || !turret.Hinge.IsFunctional)
-                    return "DMG";
-                if (turret.Gun == null)
-                    return "NO GUN";
-                if (!turret.Gun.IsFunctional)
-                    return "GDMG";
-                return "OK";
-            }
-
-            public override void ExecuteOption(int index)
-            {
-                switch (index)
-                {
-                    case 0:
-                        ToggleControl();
-                        break;
-                    case 4:
-                        CenterTurrets();
-                        break;
-                }
-            }
-
-            public override void HandleSpecialFunction(int key)
-            {
-                switch (key)
-                {
-                    case 5:
-                        ToggleControl();
-                        break;
-                    case 6:
-                        CenterTurrets();
-                        break;
-                }
-            }
-
-            public override string GetHotkeys()
-            {
-                return "5 AUTO\n6 CENTER";
-            }
-
-            private void ToggleControl()
-            {
-                controlEnabled = !controlEnabled;
-
-                if (!controlEnabled)
-                {
-                    StopAllMotors();
-                    leftTurret.IsTracking = false;
-                    rightTurret.IsTracking = false;
-                }
-            }
-
-            private void CenterTurrets()
-            {
-                DriveTowardDirection(leftTurret, WF(cockpit));
-                DriveTowardDirection(rightTurret, WF(cockpit));
-            }
-
-            private void StopAllMotors()
-            {
-                if (leftTurret.Rotor != null) leftTurret.Rotor.TargetVelocityRPM = 0f;
-                if (leftTurret.Hinge != null) leftTurret.Hinge.TargetVelocityRPM = 0f;
-                if (rightTurret.Rotor != null) rightTurret.Rotor.TargetVelocityRPM = 0f;
-                if (rightTurret.Hinge != null) rightTurret.Hinge.TargetVelocityRPM = 0f;
-            }
-
-            public override void Tick()
+            public void Tick()
             {
                 // Motor signs depend on static mounting geometry (hinge axis relative
                 // to rotor axis) — these don't change during flight. Calculated once
                 // in constructor; no periodic recalc needed.
 
-                if (!controlEnabled)
+                if (SystemManager.GetConfigValue(CFG_GUN_AUTO) < 0.5f)
                 {
                     leftTurret.IsTracking = false;
                     rightTurret.IsTracking = false;
 
                     // Return turrets to cockpit forward when disabled
-                    DriveTowardDirection(leftTurret, WF(cockpit));
-                    DriveTowardDirection(rightTurret, WF(cockpit));
+                    DriveForward(leftTurret);
+                    DriveForward(rightTurret);
                     return;
                 }
 
                 var selected = myJet.GetSelectedEnemy();
-                TrackTarget(leftTurret, selected);
-                TrackTarget(rightTurret, selected);
+
+                // Lead solution is ship-level — solve once per tick, not per turret.
+                // Per-gun parallax is preserved in TrackTarget via aimDir from gunPosition.
+                bool haveSolution = false;
+                Vector3D aimPoint = VZ;
+                if (selected.HasValue && cockpit != null)
+                {
+                    var enemy = selected.Value;
+                    Vector3D shooterVelocity = myJet.CockpitVelocity;
+                    // Spawn-delay compensation: one dt of relative motion between computing
+                    // the lead and the bullet actually spawning. Matches HUD lead pip.
+                    Vector3D spawnAdjusted = enemy.Position
+                        + (enemy.Velocity - shooterVelocity) * SystemManager.DeltaSeconds;
+                    Vector3D interceptPoint;
+                    double timeToIntercept;
+                    if (!BallisticsCalculator.CalculateInterceptPoint(
+                        myJet.CockpitPosition, shooterVelocity, MUZZLE_VELOCITY,
+                        spawnAdjusted, enemy.Velocity, myJet.CachedGravity,
+                        out interceptPoint, out timeToIntercept, out aimPoint))
+                        aimPoint = spawnAdjusted;
+                    haveSolution = true;
+                }
+
+                TrackTarget(leftTurret, selected, haveSolution, aimPoint);
+                TrackTarget(rightTurret, selected, haveSolution, aimPoint);
+            }
+
+            // Forward-drive with aim-source bookkeeping (and cockpit-null safety).
+            void DriveForward(TurretAssembly turret)
+            {
+                if (cockpit == null) return;
+                Retarget(turret, 1, 0);
+                DriveTowardDirection(turret, WF(cockpit));
+            }
+
+            static void Retarget(TurretAssembly t, int source, long id)
+            {
+                if (t.AimSource != source || t.AimTargetId != id)
+                {
+                    t.HasLastAimDir = false;
+                    t.AimSource = source;
+                    t.AimTargetId = id;
+                }
             }
 
             // Unified aiming: drives turret rotor/hinge to align gun with targetWorldDir.
@@ -373,7 +327,7 @@ namespace IngameScript
                 turret.PitchError = Ab(pitchDeg);
             }
 
-            private void TrackTarget(TurretAssembly turret, Jet.EnemyContact? selected)
+            private void TrackTarget(TurretAssembly turret, Jet.EnemyContact? selected, bool haveSolution, Vector3D aimPoint)
             {
                 turret.IsTracking = false;
 
@@ -383,23 +337,21 @@ namespace IngameScript
                 if (cockpit == null)
                     return;
 
-                if (!selected.HasValue)
+                if (!haveSolution)
                 {
-                    DriveTowardDirection(turret, WF(cockpit));
+                    DriveForward(turret);
                     return;
                 }
 
+                var enemy = selected.Value;
                 Vector3D gunPosition = GP(turret.Gun);
                 Vector3D shipForward = WF(cockpit);
-
-                Vector3D shooterVelocity = LV(cockpit);
-                var enemy = selected.Value;
                 Vector3D toTarget = enemy.Position - gunPosition;
                 double distance = toTarget.Length();
 
                 if (distance < 10)
                 {
-                    DriveTowardDirection(turret, WF(cockpit));
+                    DriveForward(turret);
                     return;
                 }
 
@@ -408,30 +360,13 @@ namespace IngameScript
 
                 if (angleRad > MAX_ANGLE_RAD || distance > MAX_ENGAGE_RANGE)
                 {
-                    DriveTowardDirection(turret, WF(cockpit));
+                    DriveForward(turret);
                     return;
                 }
 
-                // Spawn-delay compensation: one dt of relative motion between computing
-                // the lead and the bullet actually spawning. Matches HUD lead pip.
-                Vector3D spawnAdjustedTargetPos = enemy.Position
-                    + (enemy.Velocity - shooterVelocity) * SystemManager.DeltaSeconds;
-                turret.TargetPosition = spawnAdjustedTargetPos;
+                Retarget(turret, 2, enemy.EntityId);
 
-                // Lead prediction
-                Vector3D aimPoint;
-                Vector3D interceptPoint;
-                double timeToIntercept;
-
-                bool hasIntercept = BallisticsCalculator.CalculateInterceptPoint(
-                    gunPosition, shooterVelocity, MUZZLE_VELOCITY,
-                    spawnAdjustedTargetPos, enemy.Velocity, myJet.CachedGravity,
-                    out interceptPoint, out timeToIntercept, out aimPoint);
-
-                if (!hasIntercept)
-                    aimPoint = spawnAdjustedTargetPos;
-
-                // Drive toward computed aim direction
+                // Drive toward the shared aim point, with this gun's parallax
                 Vector3D aimDir = VN(aimPoint - gunPosition);
                 DriveTowardDirection(turret, aimDir);
 
@@ -441,32 +376,8 @@ namespace IngameScript
                 }
             }
 
-            // Ammo display cache — inventory iteration every tick is wasteful.
-            private int _cachedAmmo = 0;
-            private double _ammoCacheAge = double.MaxValue;
-            private const double AMMO_CACHE_REFRESH_SECONDS = 0.5;
-
-            private int GetTotalAmmo()
-            {
-                _ammoCacheAge += SystemManager.DeltaSeconds;
-                if (_ammoCacheAge < AMMO_CACHE_REFRESH_SECONDS)
-                    return _cachedAmmo;
-
-                int total = 0;
-                total += GetGunAmmo(leftTurret.Gun);
-                total += GetGunAmmo(rightTurret.Gun);
-                _cachedAmmo = total;
-                _ammoCacheAge = 0;
-                return total;
-            }
-
-            private static int GetGunAmmo(IMySmallGatlingGun gun)
-            {
-                return Jet.GetGunAmmo(gun);
-            }
-
-            // Public getters for HUD integration
-            public bool IsControlEnabled => controlEnabled;
+            // Public getters for HUD integration (weapon-screen turret indicators)
+            public bool IsControlEnabled => SystemManager.GetConfigValue(CFG_GUN_AUTO) > 0.5f;
             public bool IsLeftTracking => leftTurret.IsTracking;
             public bool IsRightTracking => rightTurret.IsTracking;
         }

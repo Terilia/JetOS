@@ -31,7 +31,7 @@ namespace IngameScript
                     return new string[]
                     {
                         "NO HQ LINK",
-                        Datalink.GetActiveFriendlies().Count + "W  " + MapContactStoreV2.GetActive().Count + "C"
+                        DatalinkV2.GetActiveFriendlies().Count + "W  " + MapContactStoreV2.GetActive().Count + "C"
                     };
 
                 string[] lines = (hq.Text ?? "").Split('\n');

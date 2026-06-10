@@ -187,7 +187,7 @@ namespace IngameScript
             /// straight at the target — no cone/salvo/approach setup is written since the geometry
             /// asks for tighter turns than the missile can actually pull.
             /// </summary>
-            static void WriteLaunchSetup(
+            static bool WriteLaunchSetup(
                 List<IMyShipMergeBlock> bays,
                 bool[] baySelected,
                 Jet jet,
@@ -195,7 +195,7 @@ namespace IngameScript
             {
                 Vector3D targetPos;
                 if (!TryGetTargetPosition(jet, out targetPos))
-                    return;
+                    return false;
 
                 string gps = NavigationHelper.FormatGps(targetPos);
 
@@ -210,6 +210,7 @@ namespace IngameScript
                     int bayNum = ExtractBayNumber(bays[i], i + 1);
                     SystemManager.SetCustomDataValue(bayNum.ToString(), gps);
                 }
+                return true;
             }
 
             public static void FireSelectedBays(
@@ -219,11 +220,8 @@ namespace IngameScript
                 Jet jet,
                 bool topdown)
             {
-                Vector3D targetPos;
-                if (!TryGetTargetPosition(jet, out targetPos))
+                if (!WriteLaunchSetup(bays, baySelected, jet, topdown))
                     return;
-
-                WriteLaunchSetup(bays, baySelected, jet, topdown);
 
                 for (int i = 0; i < bays.Count; i++)
                 {
@@ -286,6 +284,22 @@ namespace IngameScript
             /// approach offset so the missile flies straight at the target — the cone geometry would
             /// demand sharper turns than the missile can actually pull at the waypoint.
             /// </summary>
+            // Bay numbers and channel names are static — cache them instead of
+            // Split+concat per bay per tick (this runs in the per-tick stream).
+            static string[] _channels;
+            static List<IMyShipMergeBlock> _channelBays;
+            static string[] GetChannels(List<IMyShipMergeBlock> bays)
+            {
+                if (_channels == null || _channelBays != bays || _channels.Length != bays.Count)
+                {
+                    _channelBays = bays;
+                    _channels = new string[bays.Count];
+                    for (int i = 0; i < bays.Count; i++)
+                        _channels[i] = IGC_CHANNEL_PREFIX + ExtractBayNumber(bays[i], i + 1);
+                }
+                return _channels;
+            }
+
             public static void BroadcastTargetUpdates(
                 Program program,
                 Jet jet,
@@ -298,12 +312,10 @@ namespace IngameScript
                 if (!TryGetTargetData(jet, out targetPos, out targetVel))
                     return;
 
-                for (int i = 0; i < bays.Count; i++)
-                {
-                    int bayNum = ExtractBayNumber(bays[i], i + 1);
-                    var payload = MyTuple.Create(targetPos, targetVel, VZ);
-                    program.IGC.SendBroadcastMessage(IGC_CHANNEL_PREFIX + bayNum, payload);
-                }
+                var channels = GetChannels(bays);
+                var payload = MyTuple.Create(targetPos, targetVel, VZ);
+                for (int i = 0; i < channels.Length; i++)
+                    program.IGC.SendBroadcastMessage(channels[i], payload);
             }
 
             public const string WEAPON_HOTKEYS = "5 FIRE\n";
@@ -337,11 +349,9 @@ namespace IngameScript
                 for (int i = 0; i < bays.Count; i++)
                 {
                     string baySymbol = (i < baySelected.Length && baySelected[i]) ? "[X]" : "[ ]";
-                    string bayStatus = bays[i]?.IsConnected == true ? "[ON]" : "[OFF]";
-                    var mergeBlock = bays[i] as IMyShipMergeBlock;
-                    bool isConnected = mergeBlock != null && mergeBlock.IsConnected;
+                    bool isConnected = bays[i] != null && bays[i].IsConnected;
                     char colorChar = ColorToChar(isConnected ? 0 : 255, isConnected ? 255 : 0, 0);
-                    options.Add($"{colorChar}{baySymbol} {bays[i]?.CustomName ?? "Bay?"} {bayStatus}");
+                    options.Add($"{colorChar}{baySymbol} {bays[i]?.CustomName ?? "Bay?"} {(isConnected ? "[ON]" : "[OFF]")}");
                 }
             }
         }

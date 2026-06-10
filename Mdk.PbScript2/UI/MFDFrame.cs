@@ -79,7 +79,8 @@ namespace IngameScript
                     Txt(MFDTheme.NC, sw - padX, fy + footerH * 0.15f,
                         tinyScale, MFDTheme.GOLD_DIM, MFDTheme.AR);
 
-                DrawScreenBorder(sw, sh);
+                // Screen border is drawn by UIController.Render AFTER content — drawing it
+                // here too was 4 always-overdrawn sprites per surface per tick.
 
                 // Return content start Y
                 return hy + headerH + 2f;

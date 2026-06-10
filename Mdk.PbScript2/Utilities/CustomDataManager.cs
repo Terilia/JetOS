@@ -63,6 +63,9 @@ namespace IngameScript
             public static void SetValue(string key, string value)
             {
                 ParseCustomData();
+                string old;
+                if (customDataCache.TryGetValue(key, out old) && old == value)
+                    return; // unchanged — skip the full rebuild + synced terminal write
                 customDataCache[key] = value;
                 RebuildCustomData();
             }
@@ -86,8 +89,9 @@ namespace IngameScript
                     _rebuildSb.Append(kvp.Key).Append(':').Append(kvp.Value).Append('\n');
                 }
 
-                programBlock.CustomData = _rebuildSb.ToString();
-                lastCustomDataRaw = programBlock.CustomData;
+                string raw = _rebuildSb.ToString();
+                programBlock.CustomData = raw;
+                lastCustomDataRaw = raw;
             }
         }
     }

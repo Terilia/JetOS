@@ -35,7 +35,8 @@ namespace IngameScript
             public override void ExecuteOption(int i) { if (i == 0) SystemManager.ReturnToMainMenu(); }
             public override bool HandleNavigation(bool u)
             { if (u && zoom > 0) zoom--; else if (!u && zoom < ZS.Length - 1) zoom++; return true; }
-            public override MfdPage GetPage() => new TerrainMfdPage(this);
+            MfdPage _terrainPage;
+            public override MfdPage GetPage() => _terrainPage ?? (_terrainPage = new TerrainMfdPage(this));
 
             // ═══ FULL-SCREEN MAP RENDER (called by TerrainMfdPage.RenderContent) ═══
             // Receives the post-chrome content rect. The screen-coord origin is still 0,0
@@ -403,7 +404,7 @@ namespace IngameScript
 
             static void DrawFriendlyJets(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
             {
-                var friends = Datalink.GetActiveFriendlies();
+                var friends = DatalinkV2.GetActiveFriendlies();
                 Color blue = Cr(70, 150, 255);
                 for (int i = 0; i < friends.Count; i++)
                 {
@@ -432,15 +433,37 @@ namespace IngameScript
             static void DrawZones(float cx, float cy, float ma, float ppm, Vector3D sp, Vector3D jf, Vector3D jr)
             {
                 var zs = DatalinkV2.GetZones();
+                float h = ma / 2f;
                 for (int i = 0; i < zs.Count; i++)
                 {
                     var z = zs[i];
-                    Vector3D to = z.Position - sp;
-                    float px = cx + (float)VD(to, jr) * ppm, py = cy - (float)VD(to, jf) * ppm;
-                    float d = Cl((float)(z.Num * ppm) * 2f, 10f, ma * 1.5f);
+                    var V = z.Verts;
+                    if (V == null || V.Length == 0) continue;
                     Color zc = ZC(z.Misc);
-                    SpriteHelpers.Sp(TEX_RANGE_RING, px, py, d, d, zc);
-                    MFDFrame.Txt(Clip(z.Text, 9, "ZONE"), px, py - 6f, 0.28f, zc, MFDTheme.AC);
+                    if (V.Length == 1)
+                    {
+                        // circle zone: named bounding ring
+                        Vector3D to = V[0] - sp;
+                        float px = cx + (float)VD(to, jr) * ppm, py = cy - (float)VD(to, jf) * ppm;
+                        float d = Cl((float)(z.Num * ppm) * 2f, 10f, ma * 1.5f);
+                        SpriteHelpers.Sp(TEX_RANGE_RING, px, py, d, d, zc);
+                        MFDFrame.Txt(Clip(z.Text, 9, "ZONE"), px, py - 6f, 0.28f, zc, MFDTheme.AC);
+                    }
+                    else
+                    {
+                        // polygon zone: true outline (closed loop) + centroid label
+                        Vector2 first = V2(0, 0), prev = first;
+                        float sx = 0f, sy = 0f;
+                        for (int k = 0; k < V.Length; k++)
+                        {
+                            Vector3D to = V[k] - sp;
+                            Vector2 p = ClipMap(cx, cy, (float)VD(to, jr) * ppm, -(float)VD(to, jf) * ppm, h);
+                            if (k == 0) first = p; else AF(prev, p, 1.4f, zc);
+                            prev = p; sx += p.X; sy += p.Y;
+                        }
+                        AF(prev, first, 1.4f, zc);
+                        MFDFrame.Txt(Clip(z.Text, 9, "ZONE"), sx / V.Length, sy / V.Length, 0.28f, zc, MFDTheme.AC);
+                    }
                 }
             }
 

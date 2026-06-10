@@ -63,7 +63,7 @@ namespace IngameScript
                     EntityId = entityId;
                     LastSeen = GameSeconds;
                     SourceIndex = source;
-                    TrackHistory = 0x3FFFFFFF; // all 30 bits set — new contact starts fully green
+                    TrackHistory = 1; // only the current second — history must be earned
                     LastHistoryShift = GameSeconds;
                 }
 
@@ -93,6 +93,7 @@ namespace IngameScript
             public List<EnemyContact> enemyList = new List<EnemyContact>();
             Dictionary<long, int> _entityIdIndex = new Dictionary<long, int>();
             const double CONTACT_DECAY_SECONDS = 30;   // wall-clock seconds without update before removal
+            const double SELECTED_DECAY_SECONDS = 60;  // pilot-selected target survives longer
             private double decayCheckAccum = 0;
             private const double DECAY_CHECK_SECONDS = 1;      // re-check decay once per wall-clock second
 
@@ -171,7 +172,7 @@ namespace IngameScript
 
                 hudBlock = grid.GetBlockWithName("Fighter HUD [HFPS]");
                 hud = hudBlock as IMyTextSurface;
-                grid.GetBlocksOfType(tanks, g => g.IsSameConstructAs(_cockpit) && g.CustomName.Contains("Jet"));
+                grid.GetBlocksOfType(tanks, g => g.IsSameConstructAs(_cockpit) && g.CustomName.Contains("Jet") && g.BlockDefinition.SubtypeId.Contains(S_HYDROGEN));
                 grid.GetBlocksOfType(batteries, b => b.IsSameConstructAs(_cockpit));
             }
             private int ExtractBayNumber(string name)
@@ -259,8 +260,14 @@ namespace IngameScript
                 BatteryPct = BatteryMaxMWh > 0 ? Cl(BatteryCurMWh / BatteryMaxMWh, 0f, 1f) : 0f;
             }
 
+            double engineMetricAge = double.MaxValue;
+            const double ENGINE_METRIC_SECONDS = 0.25;
+
             void UpdateEngineMetricCache()
             {
+                engineMetricAge += SystemManager.DeltaSeconds;
+                if (engineMetricAge < ENGINE_METRIC_SECONDS) return;
+                engineMetricAge = 0;
                 CacheEngineSide(leftEnginesAll, leftABAll, leftEngines, leftAB,
                     out LeftAllFn, out LeftAllTot, out LeftUseFn, out LeftUseTot,
                     out LeftAbFn, out LeftAbTot, out LeftUseCurKN, out LeftUseMaxKN, out LeftAllDam);
@@ -370,6 +377,8 @@ namespace IngameScript
                         Vector3D rawAccel = (vel - enemyList[existingIndex].Velocity) / dt;
                         accel = enemyList[existingIndex].Acceleration * 0.6 + rawAccel * 0.4; // EMA α=0.4
                     }
+                    else if (dt <= 0) // same-tick duplicate (STT + IGC feed) — keep the EMA
+                        accel = enemyList[existingIndex].Acceleration;
                 }
 
                 if (existingIndex >= 0)
@@ -444,7 +453,7 @@ namespace IngameScript
                 {
                     var c = enemyList[i];
                     bool isSelected = SameTarget(c.EntityId, c.Name, c.SourceIndex, selectedEnemyEntityId, selectedEnemyName, selectedEnemySourceIndex);
-                    if (c.AgeSeconds > CONTACT_DECAY_SECONDS)
+                    if (c.AgeSeconds > (isSelected ? SELECTED_DECAY_SECONDS : CONTACT_DECAY_SECONDS))
                     {
                         if (isSelected) ClearSelection();
                         enemyList.RemoveAt(i);
@@ -461,22 +470,6 @@ namespace IngameScript
                         if (eid != 0) _entityIdIndex[eid] = i;
                     }
                 }
-            }
-
-            // Reusable lists to reduce GC pressure
-            private List<KeyValuePair<double, EnemyContact>> _sortBuffer = new List<KeyValuePair<double, EnemyContact>>();
-            private List<KeyValuePair<double, EnemyContact>> SortEnemiesByDistance()
-            {
-                _sortBuffer.Clear();
-                if (_cockpit == null) return _sortBuffer;
-                Vector3D cockpitPos = CockpitPosition;
-                for (int i = 0; i < enemyList.Count; i++)
-                {
-                    double distance = VDi(enemyList[i].Position, cockpitPos);
-                    _sortBuffer.Add(new KeyValuePair<double, EnemyContact>(distance, enemyList[i]));
-                }
-                _sortBuffer.Sort((a, b) => a.Key.CompareTo(b.Key));
-                return _sortBuffer;
             }
 
             // ------------------------------
@@ -520,18 +513,18 @@ namespace IngameScript
                 selectedEnemySourceIndex = 0;
             }
 
-            // Reusable buffer for sorted-by-distance results
+            // Reusable buffer for sorted-by-distance results. _sortPos is static so the
+            // sort lambda captures nothing (compiler caches the delegate — no per-call alloc).
             private List<EnemyContact> _distanceSortedBuffer = new List<EnemyContact>();
+            static Vector3D _sortPos;
 
             public List<EnemyContact> GetEnemiesSortedByDistance()
             {
                 _distanceSortedBuffer.Clear();
-                var sorted = SortEnemiesByDistance();
-                for (int i = 0; i < sorted.Count; i++)
-                {
-                    _distanceSortedBuffer.Add(sorted[i].Value);
-                }
-
+                if (_cockpit == null) return _distanceSortedBuffer;
+                _sortPos = CockpitPosition;
+                _distanceSortedBuffer.AddRange(enemyList);
+                _distanceSortedBuffer.Sort((a, b) => (a.Position - _sortPos).LengthSquared().CompareTo((b.Position - _sortPos).LengthSquared()));
                 return _distanceSortedBuffer;
             }
 
@@ -629,7 +622,6 @@ namespace IngameScript
                 {
                     var t = tanks[i];
                     if (t == null) continue;
-                    if (!t.BlockDefinition.SubtypeId.Contains(S_HYDROGEN)) continue;
                     cap += t.Capacity;
                     filled += t.Capacity * t.FilledRatio;
                 }

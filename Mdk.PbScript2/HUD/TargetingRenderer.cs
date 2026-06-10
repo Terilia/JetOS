@@ -231,7 +231,7 @@ namespace IngameScript
                     DrawSimpleHudBracket(hud, worldToCockpitMatrix, shooterPosition, p, Cr(myjet.GetEnemyContactColor(c), 0.58f));
                 }
 
-                var friends = Datalink.GetActiveFriendlies();
+                var friends = DatalinkV2.GetActiveFriendlies();
                 for (int i = 0; i < friends.Count; i++)
                     DrawSimpleHudBracket(hud, worldToCockpitMatrix, shooterPosition, friends[i].Position, Cr(Color.DeepSkyBlue, 0.78f));
             }

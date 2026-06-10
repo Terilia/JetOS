@@ -18,6 +18,7 @@ namespace IngameScript
 
             const string C_W = "Warn";
             const string C_GC = "Gun";
+            const string C_CN = "Canard";
             const string C_HT = "HUD";
             const string C_TH = "Theme";
             const string C_RA = "Reset";
@@ -28,6 +29,7 @@ namespace IngameScript
             {
                 C_W,
                 C_GC,
+                C_CN,
                 C_HT,
                 C_TH,
                 C_RA
@@ -36,11 +38,25 @@ namespace IngameScript
             // Configuration storage
             private Dictionary<string, ConfigParam> allConfigs = new Dictionary<string, ConfigParam>();
 
-            public ConfigurationModule(Program program) : base(program)
+            // Flight systems formerly separate menu modules — now owned + ticked here.
+            private CanardModule canard;
+            private GunControlModule gun;
+            public GunControlModule Gun => gun;
+
+            public ConfigurationModule(Program program, Jet jet) : base(program)
             {
                 name = "Config";
                 InitializeConfigs();
                 LoadFromCustomData();
+                gun = new GunControlModule(program, jet);
+                canard = new CanardModule(program, jet);
+            }
+
+            // Ticked every frame by SystemManager (replaces the gun/canard background ticks).
+            public void TickSystems()
+            {
+                gun.Tick();
+                canard.Tick();
             }
 
             private class ConfigParam
@@ -90,12 +106,17 @@ namespace IngameScript
                 AddConfig(C_W, CFG_BINGO_FUEL, "Bingo", 0.20f, 0.05f, 0.50f, 0.05f, "%");
                 AddConfig(C_W, CFG_LOW_FUEL, "Low Fuel", 0.35f, 0.10f, 0.60f, 0.05f, "%");
 
-                // GUN CONTROL
+                // GUN CONTROL (Auto defaults OFF to match prior runtime default)
+                AddConfig(C_GC, CFG_GUN_AUTO, "Auto", 0f, 0f, 1f, 1f);
                 AddConfig(C_GC, CFG_GUN_KP, "KP Gain", 5.0f, 0.5f, 20.0f, 0.5f);
                 AddConfig(C_GC, CFG_GUN_MAX_RPM, "Max RPM", 30f, 5f, 60f, 5f, "RPM");
                 AddConfig(C_GC, CFG_GUN_LOCK_THRESHOLD, "Lock", 2.0f, 0.5f, 10.0f, 0.5f, "deg");
                 AddConfig(C_GC, CFG_GUN_MAX_RANGE, "Range", 4500f, 1000f, 15000f, 500f, "m");
                 AddConfig(C_GC, CFG_GUN_MUZZLE_VELOCITY, "Muzzle", 1100f, 200f, 2000f, 50f, "m/s");
+
+                // CANARD (Auto defaults OFF to match prior runtime default)
+                AddConfig(C_CN, CFG_CANARD_AUTO, "Auto", 0f, 0f, 1f, 1f);
+                AddConfig(C_CN, CFG_CANARD_GAIN, "Gain", 1.5f, 0.5f, 5.0f, 0.5f);
 
                 // HUD TOGGLES (1=on, 0=off)
                 AddHudToggle(CFG_HUD_RADAR, "Radar");
@@ -169,24 +190,24 @@ namespace IngameScript
             {
                 StringBuilder sb = new StringBuilder();
 
-                // Preserve non-config lines
+                // Preserve non-config lines. LF only — AppendLine's CRLF would add one more
+                // '\r' to every preserved line per save, plus a growing blank-line tail.
                 string currentData = ParentProgram.Me.CustomData;
                 if (!SE(currentData))
                 {
                     string[] lines = currentData.Split('\n');
                     foreach (string line in lines)
                     {
-                        if (!line.StartsWith(CD_CONFIG))
-                        {
-                            sb.AppendLine(line);
-                        }
+                        string l = line.TrimEnd('\r');
+                        if (!SW(l) && !l.StartsWith(CD_CONFIG))
+                            sb.Append(l).Append('\n');
                     }
                 }
 
                 // Add all config values
                 foreach (var kvp in allConfigs)
                 {
-                    sb.AppendLine($"{CD_CONFIG}{kvp.Key}:{kvp.Value.Value}");
+                    sb.Append(CD_CONFIG).Append(kvp.Key).Append(':').Append(kvp.Value.Value).Append('\n');
                 }
 
                 ParentProgram.Me.CustomData = sb.ToString();
@@ -195,9 +216,8 @@ namespace IngameScript
 
             public float GetValue(string configName)
             {
-                if (allConfigs.ContainsKey(configName))
-                    return allConfigs[configName].Value;
-                return 0f;
+                ConfigParam p;
+                return allConfigs.TryGetValue(configName, out p) ? p.Value : 0f;
             }
 
             private static readonly string[] themeNames = { "G", "B", "A", "W" };

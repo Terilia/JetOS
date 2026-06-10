@@ -29,11 +29,7 @@ namespace IngameScript
                 public double Num;
                 public int Misc;
                 public char Kind;
-            }
-
-            public static List<Node> GetActiveFriendlies()
-            {
-                return DatalinkV2.GetActiveFriendlies();
+                public Vector3D[] Verts; // TAG_ZONE polygon vertices (1 entry = circle); null otherwise
             }
         }
     }

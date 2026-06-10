@@ -393,6 +393,9 @@ ExternalMods/Dev/
 /ExternalMods/Built/Torch/manifest.xml
 /ExternalMods/Built/Torch/Torch.cfg
 
+# Decompiled Space Engineers source (Keen copyrighted code; local reference only)
+se-source/
+
 # SE API analysis reports
 se_api_usage.json
 se_api_usage_report.txt

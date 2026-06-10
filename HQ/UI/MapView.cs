@@ -289,6 +289,18 @@ namespace IngameScript
                         SpriteHelpers.Tt(Clip(t.Name, 10, ""), s.X + 8f * k, s.Y - 5f * k, 0.3f * k, col, MFDTheme.AL);
                 }
 
+                long ovr = DatalinkHQ.StrikeId;
+                if (ovr != 0)
+                {
+                    MapTrack ot;
+                    if (_tracks.TryGetValue(ovr, out ot))
+                    {
+                        Vector2 os = ToScreen(ot.Pos, center, east, north, cx, cy, mpp);
+                        if (!Off(os, area, 12f * k) && Anim.Blink(0.5))
+                            Ring(os, 9f * k, MFDTheme.DANGER);
+                    }
+                }
+
                 SpriteHelpers.Sp(TEX_OWN_SHIP, hq.X, hq.Y, 15f * k, 15f * k, MFDTheme.CORP_GOLD);
                 DrawScaleBar(x, y, w, h, k, mpp);
 
@@ -296,6 +308,42 @@ namespace IngameScript
             }
 
             public static void ToggleSeeker() { SeekerOn = !SeekerOn; if (!SeekerOn) _lockId = 0; }
+
+            // Track under the marker: the seeker lock when engaged, else the map track nearest the
+            // global cursor (non-friendly only). 0 = nothing marked.
+            public static long MarkedTrackId()
+            {
+                MapTrack t;
+                if (SeekerOn && _lockId != 0 && _tracks.TryGetValue(_lockId, out t) && !t.Friendly)
+                    return _lockId;
+
+                if (!ViewReady || !MouseCursor.Visible || !Canvas.OnRight(MouseCursor.X)) return 0;
+                float lx = MouseCursor.X - Canvas.LW;
+                float ly = Cl(MouseCursor.Y, 0f, Canvas.RH);
+                float k = ViewCy / 256f;
+                long cand = 0; float best = 12f * k;
+                foreach (var kv in _tracks)
+                {
+                    if (kv.Value.Friendly) continue;
+                    Vector2 s = WorldToScreen(kv.Value.Pos);
+                    float dx = s.X - lx, dy = s.Y - ly;
+                    float d = (float)Math.Sqrt(dx * dx + dy * dy);
+                    if (d < best) { best = d; cand = kv.Key; }
+                }
+                return cand;
+            }
+
+            public static bool TryGetTrack(long id, out Vector3D pos, out Vector3D vel, out bool live)
+            {
+                MapTrack t;
+                if (_tracks.TryGetValue(id, out t))
+                {
+                    pos = t.Pos; vel = t.Vel; live = t.Live;
+                    return true;
+                }
+                pos = VZ; vel = VZ; live = false;
+                return false;
+            }
 
             // The seeker gate sits at screen center. Pan a track into it and it auto-locks; the
             // camera then holds that target centered and a popup shows its data top-left. Wiggle

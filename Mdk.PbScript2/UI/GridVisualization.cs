@@ -100,7 +100,7 @@ namespace IngameScript
                 {
                     case 1: // Phase 1: Collect blocks
                         gridBlocks.Clear();
-                        program.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(gridBlocks);
+                        program.GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(gridBlocks, b => b.IsSameConstructAs(program.Me));
                         if (originalBlockCount == 0) originalBlockCount = gridBlocks.Count;
 
                         // Only proceed to phase 2 if count changed or damage check due

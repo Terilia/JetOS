@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>HollowEarth</AssemblyName>
+    <RootNamespace>HollowEarth</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Bin64 Condition="'$(Bin64)' == ''">G:\SteamLibrary\steamapps\common\SpaceEngineers\Bin64</Bin64>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Sandbox.Common" HintPath="$(Bin64)\Sandbox.Common.dll" Private="False" />
+    <Reference Include="Sandbox.Game" HintPath="$(Bin64)\Sandbox.Game.dll" Private="False" />
+    <Reference Include="SpaceEngineers.Game" HintPath="$(Bin64)\SpaceEngineers.Game.dll" Private="False" />
+    <Reference Include="VRage" HintPath="$(Bin64)\VRage.dll" Private="False" />
+    <Reference Include="VRage.Game" HintPath="$(Bin64)\VRage.Game.dll" Private="False" />
+    <Reference Include="VRage.Library" HintPath="$(Bin64)\VRage.Library.dll" Private="False" />
+    <Reference Include="VRage.Math" HintPath="$(Bin64)\VRage.Math.dll" Private="False" />
+    <Reference Include="VRage.NativeWrapper" HintPath="$(Bin64)\VRage.NativeWrapper.dll" Private="False" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Publicize Include="Sandbox.Game" IncludeCompilerGeneratedMembers="false" />
+  </ItemGroup>
+  <PropertyGroup>
+    <PublicizerClearCacheOnClean>true</PublicizerClearCacheOnClean>
+    <PublicizerRuntimeStrategies>Unsafe</PublicizerRuntimeStrategies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Krafs.Publicizer" Version="2.2.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

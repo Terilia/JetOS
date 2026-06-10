@@ -163,7 +163,7 @@ namespace IngameScript
             {
                 get
                 {
-                    return L_CombatBLock.SearchEnemyComponent.FoundEnemyId == null ? false : true;
+                    return L_CombatBLock.SearchEnemyComponent.FoundEnemyId != null;
                 }
             }
 
@@ -191,15 +191,19 @@ namespace IngameScript
             // and only re-parse when FoundEnemyId changes (i.e. target actually changed).
             long _cachedNameEntityId = -1;
             string _cachedName = "";
+            int _nameRetryTick;
 
             public string TrackedObjectName
             {
                 get
                 {
                     long currentId = TrackedEntityId;
-                    if (currentId == _cachedNameEntityId && !SE(_cachedName))
+                    // Cache hit also covers a parsed-but-empty name — DetailedInfo can lag the
+                    // lock, so retry empty names at ~1s instead of re-fetching every tick.
+                    if (currentId == _cachedNameEntityId && (!SE(_cachedName) || ++_nameRetryTick < 60))
                         return _cachedName;
 
+                    _nameRetryTick = 0;
                     _cachedNameEntityId = currentId;
 
                     string detailedInfo = L_CombatBLock.DetailedInfo;

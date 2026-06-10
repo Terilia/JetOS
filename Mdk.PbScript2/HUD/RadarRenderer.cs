@@ -215,7 +215,7 @@ namespace IngameScript
 
             private void DrawFormationGhosts(IMyTextSurface hud, MatrixD worldToCockpitMatrix)
             {
-                var friends = Datalink.GetActiveFriendlies();
+                var friends = DatalinkV2.GetActiveFriendlies();
                 if (friends.Count == 0) return;
 
                 Vector3D shooterPosition = myjet.CockpitPosition;

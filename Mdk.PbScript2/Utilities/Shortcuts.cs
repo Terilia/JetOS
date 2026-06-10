@@ -49,7 +49,7 @@ namespace IngameScript
         static int Sg(float v) => Math.Sign(v);
         static float Cl(float v, float min, float max) => MathHelper.Clamp(v, min, max);
         static double Cl(double v, double min, double max) => MathHelper.Clamp(v, min, max);
-        static double ToDeg(double r) => MathHelper.ToDegrees((float)r);
+        static double ToDeg(double r) => r * (180.0 / PI);
         static float ToRad(float d) => MathHelper.ToRadians(d);
         static Vector2 V2(float x, float y) => new Vector2(x, y);
         static Color Cr(int r, int g, int b) => new Color(r, g, b);
@@ -87,7 +87,7 @@ namespace IngameScript
         const string CD_TOPDOWN = "Topdown";
         const string CD_ANTI_AIR = "AntiAir";
         const string CD_CACHED = "Cached";
-        const string CD_CONFIG = "Config:";
+        const string CD_CONFIG = "Config_";
         const string CD_RWR_COUNT = "RWRCount";
         const string TERRAIN_API = "TerrainAPI";
         const string CFG_ALTITUDE_WARNING = "altitude_warning";
@@ -99,6 +99,9 @@ namespace IngameScript
         const string CFG_GUN_LOCK_THRESHOLD = "gun_lock_threshold";
         const string CFG_GUN_MAX_RANGE = "gun_max_range";
         const string CFG_GUN_MUZZLE_VELOCITY = "gun_muzzle_velocity";
+        const string CFG_GUN_AUTO = "gun_auto";
+        const string CFG_CANARD_AUTO = "canard_auto";
+        const string CFG_CANARD_GAIN = "canard_gain";
         const string CFG_HUD_RADAR = "hud_radar";
         const string CFG_HUD_GUN_FUNNEL = "hud_gun_funnel";
         const string CFG_HUD_TARGET_BRACKETS = "hud_target_brackets";

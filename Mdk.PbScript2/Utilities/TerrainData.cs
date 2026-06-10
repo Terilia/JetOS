@@ -100,6 +100,14 @@ namespace IngameScript
             {
                 if (_off) return;
 
+                // Init can fail transiently (mod not ready at compile time) — retry until
+                // the download actually starts instead of staying dead until recompile.
+                if (!_ready && !_downloading)
+                {
+                    Init(me);
+                    return;
+                }
+
                 if (_downloading && _grid != null)
                 {
                     DownloadChunk(me);
@@ -120,6 +128,7 @@ namespace IngameScript
                 if (_sb == null || _sb.Length < 2) return;
 
                 string resp = _sb.ToString();
+                if (resp[0] == 'E') return; // error response — don't decode it as height data
                 int nl = resp.IndexOf('\n');
                 if (nl < 0) return;
 
@@ -144,7 +153,7 @@ namespace IngameScript
             static void UpdateTangents(Vector3D shipPos)
             {
                 Vector3D dir = VN(shipPos - _pc);
-                double lat = As(dir.Y);
+                double lat = As(Cl(dir.Y, -1.0, 1.0)); // |Y| can drift to 1+1ulp at the poles → NaN
                 double lon = At2(dir.Z, dir.X);
 
                 double sinLat = Sn(lat), cosLat = Cs(lat);
@@ -170,7 +179,7 @@ namespace IngameScript
             public static bool W2G(Vector3D wp, out int row, out int col)
             {
                 Vector3D dir = VN(wp - _pc);
-                double lat = As(dir.Y);
+                double lat = As(Cl(dir.Y, -1.0, 1.0));
                 double lon = At2(dir.Z, dir.X);
 
                 row = (int)((lat / PI + 0.5) * _rows);
@@ -188,14 +197,15 @@ namespace IngameScript
             public static void W2GF(Vector3D wp, out int row, out int col, out double fracR, out double fracC)
             {
                 Vector3D dir = VN(wp - _pc);
-                double lat = As(dir.Y);
+                double lat = As(Cl(dir.Y, -1.0, 1.0));
                 double lon = At2(dir.Z, dir.X);
 
                 double er = (lat / PI + 0.5) * _rows;
                 double ec = (lon / (2.0 * PI) + 0.5) * _cols;
 
-                row = (int)er; if (er < row) row--;
-                col = (int)ec; if (ec < col) col--;
+                // er/ec are non-negative (lat ∈ [-π/2,π/2], At2 ∈ (-π,π]) — truncation is floor
+                row = (int)er;
+                col = (int)ec;
                 fracR = er - row;
                 fracC = ec - col;
 

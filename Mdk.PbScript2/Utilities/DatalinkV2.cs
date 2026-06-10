@@ -38,6 +38,9 @@ namespace IngameScript
                 Prune(_relays, RadarContactV2.CONTACT_DECAY_SECONDS, false);
                 Prune(_stations, STATION_TIMEOUT, true);
                 Prune(_zones, RadarContactV2.CONTACT_DECAY_SECONDS, false);
+                // _sent dedupe entries are refreshed on every send — pruning only drops dead
+                // pairs (one extra keyframe on revival), and stops unbounded growth.
+                Prune(_sent, RadarContactV2.CONTACT_DECAY_SECONDS, false);
             }
 
             public static List<Datalink.Node> GetZones()
@@ -75,7 +78,7 @@ namespace IngameScript
                     var c = jet.enemyList[i];
                     if (c.EntityId == 0 || c.SourceIndex < 0 || c.AgeSeconds > LOCAL_OBSERVATION_WINDOW) continue;
                     SendContactIfDue(program, RadarContactV2.KIND_HOSTILE, me, c.EntityId,
-                        c.Position, c.Velocity, c.Name, 0, 0, now);
+                        c.Position, c.Velocity, c.Name, c.AgeSeconds, 0, now);
                 }
 
                 var maps = MapContactStoreV2.GetActive();
@@ -83,7 +86,7 @@ namespace IngameScript
                 {
                     var c = maps[i];
                     if (c.ObserverId != me || c.AgeSeconds > LOCAL_OBSERVATION_WINDOW) continue;
-                    SendContactIfDue(program, c.Kind, me, c.Id, c.Position, c.Velocity, c.Name, 0, 0, now);
+                    SendContactIfDue(program, c.Kind, me, c.Id, c.Position, c.Velocity, c.Name, c.AgeSeconds, 0, now);
                 }
 
                 for (int i = 0; i < _relays.Count; i++)
@@ -144,18 +147,23 @@ namespace IngameScript
 
                     if (t.Item1 == TAG_ZONE)
                     {
-                        // Circle-only plot: ignore per-vertex Pos/index. vc==0 (Misc bits 6..11) is a
-                        // tombstone -> drop. Else upsert center(Vel)/radius(Num)/kind(Misc 15..18)/name.
-                        if (((inner.Item3 >> 6) & 63) == 0) RemoveById(_zones, t.Item5);
-                        else UpsertById(_zones, new Datalink.Node
-                        {
-                            Id = t.Item5,
-                            Position = t.Item4,
-                            Num = inner.Item2,
-                            Misc = (inner.Item3 >> 15) & 15,
-                            Text = inner.Item4 ?? "",
-                            SeenAt = now
-                        });
+                        // One packet per vertex (round-robin). Reassemble polygons: Pos(Item3)=this
+                        // vertex, index/count in Misc[0..5]/[6..11], Vel(Item4)=center, Num=radius,
+                        // Misc[15..18]=kind, Text=name. vc==0 = tombstone. Verts.Length==1 => circle.
+                        int zmisc = inner.Item3, vc = (zmisc >> 6) & 63;
+                        long id = t.Item5;
+                        if (vc == 0) { RemoveById(_zones, id); continue; }
+                        int vi = zmisc & 63, zi = -1;
+                        for (int k = 0; k < _zones.Count; k++) if (_zones[k].Id == id) { zi = k; break; }
+                        Datalink.Node z = zi >= 0 ? _zones[zi] : new Datalink.Node { Id = id };
+                        if (z.Verts == null || z.Verts.Length != vc)
+                        { z.Verts = new Vector3D[vc]; for (int k = 0; k < vc; k++) z.Verts[k] = t.Item4; }
+                        if (vi < vc) z.Verts[vi] = t.Item3;
+                        z.Num = inner.Item2;
+                        z.Misc = (zmisc >> 15) & 15;
+                        z.Text = inner.Item4 ?? "";
+                        z.SeenAt = now;
+                        if (zi >= 0) _zones[zi] = z; else _zones.Add(z);
                         continue;
                     }
 
@@ -219,7 +227,11 @@ namespace IngameScript
                 Jet.GetEngineHealth(jet.centerEnginesAll, out f, out t, out d); ef += f; et += t;
                 int integ = et > 0 ? ef * 100 / et : 100;
 
-                int missiles = Mn(15, jet._bays != null ? jet._bays.Count : 0);
+                int missiles = 0;
+                if (jet._bays != null)
+                    for (int i = 0; i < jet._bays.Count; i++)
+                        if (jet._bays[i] != null && jet._bays[i].IsConnected) missiles++;
+                missiles = Mn(15, missiles);
                 int gunBucket = Mn(7, jet.GetTotalGunAmmo() / 20);
                 int altDiv8 = Mn(4095, Mx(0, (int)(jet.SurfaceAltitude / 8.0)));
 

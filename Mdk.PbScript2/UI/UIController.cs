@@ -110,14 +110,15 @@ namespace IngameScript
 
                     var contentArea = new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop);
 
-                    if (page.HasMenu && page.MenuItems != null)
+                    // MenuItems calls the module's GetOptions() — read once per render.
+                    var items = page.HasMenu ? page.MenuItems : null;
+                    if (items != null)
                     {
                         bool inTransition = transitionStart >= 0
                             && (SystemManager.ElapsedSeconds - transitionStart) < PAGE_FADE_DURATION;
-                        DrawMenuList(sh, page.CompactRows, page.MenuItems, selectedIndex,
+                        DrawMenuList(sh, page.CompactRows, items, selectedIndex,
                             menuLeft, bodyTop, menuWidth, contentBot, inTransition);
-                        page.RenderMenuSupplement(new RectangleF(menuLeft, bodyTop, menuWidth, contentBot - bodyTop),
-                            SS(surface), selectedIndex);
+                        page.RenderMenuSupplement(contentArea, SS(surface), selectedIndex);
                     }
                     else
                         page.RenderContent(contentArea, SS(surface));

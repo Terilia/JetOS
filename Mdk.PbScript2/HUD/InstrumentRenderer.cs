@@ -182,7 +182,7 @@ namespace IngameScript
                 SpriteHelpers.Tt(peakGText, PADDING, SY(hud) - PADDING - LINE_HEIGHT * 2, TEXT_SCALE, HUD_PRIMARY, MFDTheme.AL, MFDTheme.FONT_W);
             }
 
-            private void DrawAOAIndexer(double aoa, Vector3D acceleration, double velocity)
+            private void DrawAOAIndexer(double aoa, double energyRate, double velocity)
             {
                 float INDEXER_X = 100f;
                 float indexerY = SY(hud) / 2f;
@@ -257,7 +257,6 @@ namespace IngameScript
                     DrawStallWarning(currentStallLevel, absAoA);
                 }
 
-                double energyRate = acceleration.Length();
                 string energySymbol = energyRate > 5 ? "+" : energyRate < -5 ? "-" : "=";
                 Color energyColor = energyRate > 5 ? HUD_PRIMARY : energyRate < -5 ? HUD_WARNING : HUD_EMPHASIS;
 

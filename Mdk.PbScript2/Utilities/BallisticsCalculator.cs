@@ -32,7 +32,8 @@ namespace IngameScript
                 double qC = D.LengthSquared();
 
                 double t = -1;
-                if (Ab(qA) < 1e-6)
+                // Relative threshold — qA's magnitude is ~S² (≈1e6), an absolute 1e-6 never fires
+                if (Ab(qA) < 1e-6 * S2)
                 {
                     if (Ab(qB) > 1e-6)
                         t = -qC / qB;

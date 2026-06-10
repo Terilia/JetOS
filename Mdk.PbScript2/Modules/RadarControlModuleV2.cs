@@ -40,12 +40,11 @@ namespace IngameScript
 
             public override string[] GetOptions()
             {
-                var options = new List<string>();
-                options.Add(onboardRadar == null ? "NO STT" : IsTrackLocked ? "STT LOCK" : "STT SRCH");
-                options.Add(HasRwrThreat ? "RWR WARN" : "RWR OK");
-                options.Add("TGT " + myJet.enemyList.Count);
-                options.Add("MAP " + MapContactStoreV2.GetActive().Count);
-                return options.ToArray();
+                return new[] {
+                    onboardRadar == null ? "NO STT" : IsTrackLocked ? "STT LOCK" : "STT SRCH",
+                    HasRwrThreat ? "RWR WARN" : "RWR OK",
+                    "TGT " + myJet.enemyList.Count,
+                    "MAP " + MapContactStoreV2.GetActive().Count };
             }
 
             public override void ExecuteOption(int index)
@@ -68,7 +67,6 @@ namespace IngameScript
                 ProcessPluginFeed();
                 PublishSttRequest();
                 UpdateRwrThreats();
-                MapContactStoreV2.Decay();
                 myJet.UpdateEnemyDecay();
             }
 
@@ -113,20 +111,33 @@ namespace IngameScript
                     return;
 
                 long entityId = onboardRadar.TrackedEntityId;
-                string name = onboardRadar.TrackedObjectName;
                 var selected = myJet.GetSelectedEnemy();
-                if (selected.HasValue && (selected.Value.Position - targetPos).LengthSquared() < 2500)
-                    IsTrackLocked = true;
-                if (ParentProgram.Me.GetProperty("JetOSRadarFeed") != null)
+                // EntityId match must run in BOTH paths — proximity alone flickers on fast
+                // targets between feed updates (stored pos lags >50m behind extrapolated STT).
+                IsTrackLocked = myJet.IsSelectedEntity(entityId)
+                    || (selected.HasValue && (selected.Value.Position - targetPos).LengthSquared() < 2500);
+                if (HasFeed())
                     return;
 
-                myJet.UpdateOrAddEnemy(targetPos, onboardRadar.TargetVelocity, !SE(name) ? name : "", RadarContactV2.SRC_ONBOARD_STT, entityId);
-                IsTrackLocked = IsTrackLocked || myJet.IsSelectedEntity(entityId);
+                myJet.UpdateOrAddEnemy(targetPos, onboardRadar.TargetVelocity, onboardRadar.TrackedObjectName, RadarContactV2.SRC_ONBOARD_STT, entityId);
+            }
+
+            // The plugin registers its terminal property at load — existence can't change
+            // mid-session, so probe once instead of a dictionary lookup 3x per tick.
+            bool _feedProbed, _hasFeed;
+            bool HasFeed()
+            {
+                if (!_feedProbed)
+                {
+                    _feedProbed = true;
+                    _hasFeed = ParentProgram.Me.GetProperty("JetOSRadarFeed") != null;
+                }
+                return _hasFeed;
             }
 
             void ProcessPluginFeed()
             {
-                if (ParentProgram.Me.GetProperty("JetOSRadarFeed") == null)
+                if (!HasFeed())
                     return;
 
                 StringBuilder sb = ParentProgram.Me.GetValue<StringBuilder>("JetOSRadarFeed");
@@ -151,9 +162,9 @@ namespace IngameScript
                     double px, py, pz, vx, vy, vz;
                     if (!long.TryParse(p[2], out targetId) || targetId == 0)
                         continue;
-                    if (!TryParseFeedDouble(p[3], out px) || !TryParseFeedDouble(p[4], out py) || !TryParseFeedDouble(p[5], out pz))
+                    if (!double.TryParse(p[3], out px) || !double.TryParse(p[4], out py) || !double.TryParse(p[5], out pz))
                         continue;
-                    if (!TryParseFeedDouble(p[6], out vx) || !TryParseFeedDouble(p[7], out vy) || !TryParseFeedDouble(p[8], out vz))
+                    if (!double.TryParse(p[6], out vx) || !double.TryParse(p[7], out vy) || !double.TryParse(p[8], out vz))
                         continue;
 
                     Vector3D pos = new Vector3D(px, py, pz);
@@ -171,7 +182,7 @@ namespace IngameScript
 
             void PublishSttRequest()
             {
-                if (ParentProgram.Me.GetProperty("JetOSRadarFeed") == null)
+                if (!HasFeed())
                     return;
 
                 long selectedId = myJet.GetSelectedEnemyId();
@@ -221,19 +232,6 @@ namespace IngameScript
                 return VDi(ownFuture, targetFuture) <= RWR_MAX_CPA_METERS;
             }
 
-            static bool TryParseFeedDouble(string s, out double value)
-            {
-                return double.TryParse(s, out value);
-            }
-
-            public override void HandleSpecialFunction(int key)
-            {
-            }
-
-            public override string GetHotkeys()
-            {
-                return "";
-            }
         }
     }
 }

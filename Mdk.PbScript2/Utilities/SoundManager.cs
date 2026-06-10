@@ -29,11 +29,17 @@ namespace IngameScript
                 internal string activeSound = "";
                 internal double playStartSeconds = 0.0;
                 internal double activeLoopSeconds = 5.0;
+                // Latched alongside pendingSound at decision time, consumed at play time —
+                // requestedLoopSeconds can be overwritten mid-transition by a newer request,
+                // and event cooldowns must only arm when the sound actually plays.
+                internal double pendingLoopSeconds = 5.0;
+                internal int pendingEventId = 0;
 
                 // Per-tick request (reset each tick)
                 internal string requestedSound = "";
                 internal int requestedPriority = PRIORITY_NONE;
                 internal double requestedLoopSeconds = 5.0;
+                internal int requestedEventId = 0;
             }
 
             private static SoundChannel warningChannel, rwrChannel, eventChannel;
@@ -80,7 +86,10 @@ namespace IngameScript
                 if (ch == null || SE(snd)) return;
                 double now = SystemManager.ElapsedSeconds;
                 if (id > 0 && id < lastEvent.Length && lastEvent[id] > 0.0 && now - lastEvent[id] < cool) return;
-                if (Request(ch, snd, pri, cool) && id > 0 && id < lastEvent.Length) lastEvent[id] = now;
+                // Cooldown is latched at play time (TickChannel case 3), not here — a request
+                // that wins the race but gets superseded or lands mid-transition never plays,
+                // and must not arm its cooldown.
+                Request(ch, snd, pri, cool, id);
             }
 
             static void Map(int id, out SoundChannel ch, out string snd, out int pri, out double cool)
@@ -107,7 +116,7 @@ namespace IngameScript
                 Request(warningChannel, sound, priority, loopSeconds);
             }
 
-            static bool Request(SoundChannel ch, string sound, int priority, double loopSeconds)
+            static bool Request(SoundChannel ch, string sound, int priority, double loopSeconds, int eventId = 0)
             {
                 if (ch == null) return false;
                 if (priority >= ch.requestedPriority)
@@ -115,6 +124,7 @@ namespace IngameScript
                     ch.requestedSound = sound;
                     ch.requestedPriority = priority;
                     ch.requestedLoopSeconds = loopSeconds;
+                    ch.requestedEventId = eventId;
                     return true;
                 }
                 return false;
@@ -191,8 +201,10 @@ namespace IngameScript
                                 b.Play();
                         }
                         ch.activeSound = ch.pendingSound;
-                        ch.activeLoopSeconds = ch.requestedLoopSeconds;
+                        ch.activeLoopSeconds = ch.pendingLoopSeconds;
                         ch.playStartSeconds = currentSeconds;
+                        if (ch.pendingEventId > 0) lastEvent[ch.pendingEventId] = currentSeconds;
+                        ch.pendingEventId = 0;
                         ch.state = 0;
                         break;
                 }
@@ -205,16 +217,22 @@ namespace IngameScript
                         desired = ch.activeSound;
                     bool needsChange = false;
 
+                    // desired came from this tick's request unless it's the carried-over active sound
+                    bool fromRequest = !SE(ch.requestedSound);
+
                     if (desired != ch.activeSound)
                     {
                         if (!SE(desired))
                         {
                             ch.pendingSound = desired;
+                            ch.pendingLoopSeconds = ch.requestedLoopSeconds;
+                            ch.pendingEventId = ch.requestedEventId;
                             needsChange = true;
                         }
                         else if (!SE(ch.activeSound))
                         {
                             ch.pendingSound = "";
+                            ch.pendingEventId = 0;
                             needsChange = true;
                         }
                     }
@@ -223,6 +241,8 @@ namespace IngameScript
                         if (currentSeconds - ch.playStartSeconds >= ch.activeLoopSeconds)
                         {
                             ch.pendingSound = desired;
+                            ch.pendingLoopSeconds = fromRequest ? ch.requestedLoopSeconds : ch.activeLoopSeconds;
+                            ch.pendingEventId = fromRequest ? ch.requestedEventId : 0;
                             needsChange = true;
                         }
                     }

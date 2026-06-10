@@ -57,6 +57,15 @@ namespace CameraLCD
         private string _scaledRenderTextureName;
         private Vector2I _scaledRenderTextureSize;
         private bool _scaledRenderTextureCreated;
+
+        // Deferred material-binding recovery after a far->near round-trip (see DriveMaterialRecovery).
+        private bool _recoverPending;
+        private int _recoverStableFrames;
+        private bool _lastEnsureRecreated;
+        private int _recordScriptCounter;
+        private const int RecoverStableFramesRequired = 15;
+        private const int RecordScriptStride = 30;
+
         private static readonly FieldInfo GeneratedTextureDescField =
             typeof(MyGeneratedTextureManager).Assembly
                 .GetType("VRage.Render11.Resources.Internal.MyGeneratedTexture")
@@ -101,7 +110,10 @@ namespace CameraLCD
         {
             base.Run();
 
-            if (_lcdComponent.Script != SCRIPT_ID)
+            // Gate on the render-side selected script (set by SelectScriptToDraw), not the synced
+            // Script property — the property can be left empty after a zoom round-trip / heal swap on
+            // non-"Forced" surfaces, which would otherwise wedge us out via ScriptMismatch.
+            if (_lcdComponent.m_previousScript != SCRIPT_ID)
                 return;
 
             bool customDataChanged = _customData != _lcd.CustomData;
@@ -430,32 +442,83 @@ namespace CameraLCD
                 LogLifecycle("texture-ready", "draw-success");
             }
 
-            if (_lastDrawGate == null)
-                return;
+            // Record the script selected while we're actively drawing (in range), throttled. Captured
+            // BEFORE any zoom-out detach so the heal can restore the correct choice even if SE resets the
+            // live Script during the far->near round-trip. The choice changes rarely, so a coarse cadence
+            // keeps the per-frame cost negligible.
+            if ((_recordScriptCounter++ % RecordScriptStride) == 0)
+                CameraLcdManager.RecordScript(Id, _lcdComponent.Script);
 
-            string previousGate = _lastDrawGate;
-            _lastDrawGate = null;
-            ForceRebindAfterRecovery(previousGate);
-            LogLifecycle("draw-resume", $"{previousGate} size={surfaceRtv.Size.X}x{surfaceRtv.Size.Y}");
+            if (_lastDrawGate != null)
+            {
+                string previousGate = _lastDrawGate;
+                _lastDrawGate = null;
+                RecoverBindingAfterResume(previousGate);
+                LogLifecycle("draw-resume", $"{previousGate} size={surfaceRtv.Size.X}x{surfaceRtv.Size.Y}");
+            }
+
+            if (_recoverPending)
+                DriveMaterialRecovery(surfaceRtv);
         }
 
-        private void ForceRebindAfterRecovery(string previousGate)
+        private void RecoverBindingAfterResume(string previousGate)
         {
+            bool scaled = _scaledRenderTextureCreated ||
+                _appliedResolutionScalePercent != CamovResolutionScale.DefaultPercent;
+
+            // The far->near (OutOfRange) round-trip is the only case that strands a SCALED surface on
+            // the stock screen texture and needs the full TSS-swap recovery. Arm it; the swap fires once
+            // the recreate churn quiesces (DriveMaterialRecovery -> PerformHealSwap). Restricting to
+            // OutOfRange keeps the fresh post-swap script's own init transients from re-triggering a loop.
+            if (scaled && previousGate == "OutOfRange")
+            {
+                _recoverPending = true;
+                _recoverStableFrames = 0;
+                return;
+            }
+
+            // Other resume gates (and unscaled surfaces, which never exhibited the bug): a cheap forced
+            // rebind is enough.
             if (previousGate != "Inactive" &&
                 previousGate != "TextureNotGenerated" &&
-                previousGate != "NoRenderTexture")
+                previousGate != "NoRenderTexture" &&
+                previousGate != "NoRenderObject")
                 return;
-
             try
             {
-                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetActiveRenderTextureName(), isForced: true);
-                LogLifecycle("forced-rebind", previousGate);
+                if (IsSurfaceRenderObjectAssigned())
+                    _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetActiveRenderTextureName(), isForced: true);
             }
             catch (Exception ex)
             {
                 MyLog.Default.WriteLine(
                     $"CAMOV CLIENT: forced-rebind failed lcd={_lcd?.EntityId} area={_surfaceId} reason={previousGate}: {ex}");
             }
+        }
+
+        // Runs after a resume until the scaled surface has been stable (no recreate churn, texture
+        // loaded + RTV) for RecoverStableFramesRequired frames, then performs the one thing a manual
+        // TSS swap does that our prior attempts didn't.
+        private void DriveMaterialRecovery(IUserGeneratedTexture surfaceRtv)
+        {
+            if (_lastEnsureRecreated || surfaceRtv == null || !surfaceRtv.IsLoaded || surfaceRtv.Rtv == null)
+            {
+                _recoverStableFrames = 0;   // ramp still churning; wait for full quiescence
+                return;
+            }
+            if (++_recoverStableFrames < RecoverStableFramesRequired)
+                return;
+
+            _recoverPending = false;
+            _recoverStableFrames = 0;
+
+            // The far->near recreate churn left the LCD mesh submesh bound to the stock screen
+            // material, and re-issuing ChangeRenderTexture (even forced, every frame) does not move it
+            // back while we are the suppressing writer. A manual TSS swap recovers it by disposing and
+            // recreating the script. Queue that swap; CameraLcdManager runs it (dispose -> short gap ->
+            // recreate) on the sim thread from Plugin.Update. Local/render-side only, no network sync.
+            CameraLcdManager.RequestHeal(Id, _lcdComponent);
+            LogLifecycle("heal-swap-armed", "scaled");
         }
 
         private bool EnsureRenderTargetReady(IUserGeneratedTexture surfaceRtv)
@@ -500,6 +563,8 @@ namespace CameraLCD
                 SameSize(surfaceRtv.Size, desiredSize);
             bool componentMatches = SameSize(_lcdComponent.m_textureSize, desiredSize);
 
+            _lastEnsureRecreated = false;
+
             if (componentMatches && textureMatches)
             {
                 SetResolutionScaleState(textureName, desiredSize, percent);
@@ -510,6 +575,7 @@ namespace CameraLCD
             try
             {
                 ApplyResolutionScale(textureName, desiredSize);
+                _lastEnsureRecreated = true;
                 bool ready = TryGetRenderTexture(textureName, out surfaceRtv) &&
                     SameSize(_lcdComponent.m_textureSize, desiredSize) &&
                     SameSize(surfaceRtv.Size, desiredSize);
@@ -547,6 +613,15 @@ namespace CameraLCD
         private static bool SameSize(Vector2I left, Vector2I right)
         {
             return left.X == right.X && left.Y == right.Y;
+        }
+
+        // True once the LCD's screen-area render object is assigned. While the grid is
+        // scene-streamed out it is uint.MaxValue, and any ChangeRenderTexture we issue then
+        // silently fails to bind yet still poisons m_previousTextureID (see DrawInternal).
+        private bool IsSurfaceRenderObjectAssigned()
+        {
+            MyRenderComponentScreenAreas render = _lcdComponent.Render;
+            return render != null && render.GetRenderObjectID() != uint.MaxValue;
         }
 
         private void SetResolutionScaleState(string textureName, Vector2I textureSize, int percent)
@@ -639,7 +714,10 @@ namespace CameraLCD
                 _lcdComponent.m_textureSize = _baseTextureSize;
                 _lcdComponent.ReleaseTexture(useEmptyTexture: false);
                 _lcdComponent.EnsureGeneratedTexture();
-                _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetVanillaRenderTextureName(), isForced: true);
+                // Only rebind when the render object is live — otherwise this poisons
+                // m_previousTextureID during scene-stream/dispose (same trap as DrawInternal).
+                if (IsSurfaceRenderObjectAssigned())
+                    _lcdComponent.ChangeRenderTexture(_lcdComponent.m_area, GetVanillaRenderTextureName(), isForced: true);
                 _appliedResolutionScalePercent = CamovResolutionScale.DefaultPercent;
                 _scaledRenderTextureName = null;
                 _scaledRenderTextureSize = Vector2I.Zero;
@@ -664,7 +742,16 @@ namespace CameraLCD
                 return OnGate("OutOfRange");
 
             if (_lcdComponent.ContentType != ContentType.SCRIPT) return OnGate("ContentTypeNotScript");
-            if (_lcdComponent.Script != SCRIPT_ID) return OnGate("ScriptMismatch");
+            // Render-side selected script, not the synced Script property (see Run()): the property can
+            // be empty after a zoom round-trip on a non-"Forced" surface, which would falsely gate us out.
+            if (_lcdComponent.m_previousScript != SCRIPT_ID) return OnGate("ScriptMismatch");
+
+            // Grid scene-streamed out: the LCD's render objects were released (RenderObjectIDs ==
+            // uint.MaxValue). A forced ChangeRenderTexture now no-ops the actual bind but still sets
+            // m_previousTextureID, which pre-empts vanilla's own Reset->recreate->rebind recovery and
+            // strands the surface on the stock "Online" texture. Keep our hands off the binding until
+            // the render object is reassigned; vanilla rebinds it for us in the meantime.
+            if (!IsSurfaceRenderObjectAssigned()) return OnGate("NoRenderObject");
 
             // frustum test
             if (MyRender11.Environment.Matrices.ViewFrustumClippedD.Contains(_lcd.PositionComp.WorldAABB) is ContainmentType.Disjoint)

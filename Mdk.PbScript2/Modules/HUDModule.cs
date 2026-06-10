@@ -63,11 +63,12 @@ namespace IngameScript
             internal Vector3D previousVelocity = VZ;
 
             // --- Smoothed Values with Running Averages ---
-            private CircularBuffer<double> velocityHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
-            private CircularBuffer<double> altitudeHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
-            private CircularBuffer<double> gForcesHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
-            private CircularBuffer<double> aoaHistory = new CircularBuffer<double>(SMOOTHING_WINDOW_SIZE);
+            private Queue<double> velocityHistory = new Queue<double>(SMOOTHING_WINDOW_SIZE);
+            private Queue<double> altitudeHistory = new Queue<double>(SMOOTHING_WINDOW_SIZE);
+            private Queue<double> gForcesHistory = new Queue<double>(SMOOTHING_WINDOW_SIZE);
+            private Queue<double> aoaHistory = new Queue<double>(SMOOTHING_WINDOW_SIZE);
 
+            internal double energyRate = 0;
             internal double smoothedVelocity = 0;
             internal double smoothedAltitude = 0;
             internal double smoothedGForces = 0;
@@ -292,10 +293,7 @@ namespace IngameScript
                         DrawGForceIndicator(smoothedGForces, peakGForce);
 
                     if (velocity > 1.0 && SystemManager.GetConfigValue(CFG_HUD_AOA) > 0.5f)
-                    {
-                        Vector3D acceleration = (currentVelocity - previousVelocity) / SystemManager.DeltaSeconds;
-                        DrawAOAIndexer(smoothedAoA, acceleration, velocity);
-                    }
+                        DrawAOAIndexer(smoothedAoA, energyRate, velocity);
 
                     // Radar minimap
                     if (SystemManager.GetConfigValue(CFG_HUD_RADAR) > 0.5f)
@@ -439,13 +437,16 @@ namespace IngameScript
 
                 if (inGravity)
                 {
-                    pitch = As(VD(forwardVector, gravityDirection)) * (180 / PI);
+                    pitch = As(Cl(VD(forwardVector, gravityDirection), -1.0, 1.0)) * (180 / PI);
                     roll = At2(
                         VD(leftVector, gravityDirection),
                         VD(upVector, gravityDirection)
                     ) * (180 / PI);
                 }
 
+                // Signed energy rate (d|v|/dt) for the E+/E=/E- carat — must be computed
+                // before `velocity` is overwritten with this tick's speed.
+                energyRate = (myjet.CockpitSpeed - velocity) / SystemManager.DeltaSeconds;
                 velocity = myjet.CockpitSpeed;
                 mach = velocity / SEA_LEVEL_SPEED_OF_SOUND;
 
@@ -601,13 +602,12 @@ namespace IngameScript
                 // Center engines: no balancing needed, straight throttle
                 SetGroupOverride(myjet.centerEngines, scaledThrottle);
 
-                // Hydrogen/AB engines: full override when AB is on
-                if (hydrogenswitch)
-                {
-                    SetGroupOverride(myjet.leftAB, 1f);
-                    SetGroupOverride(myjet.rightAB, 1f);
-                    SetGroupOverride(myjet.centerAB, 1f);
-                }
+                // Hydrogen/AB engines: full override when AB is on, hard zero when off —
+                // a leftover 100% override + any H2 source (O2/H2 gen, refuel) = surprise AB.
+                float abOverride = hydrogenswitch ? 1f : 0f;
+                SetGroupOverride(myjet.leftAB, abOverride);
+                SetGroupOverride(myjet.rightAB, abOverride);
+                SetGroupOverride(myjet.centerAB, abOverride);
             }
 
             private static void SetGroupOverride(List<IMyThrust> group, float value)
@@ -651,7 +651,7 @@ namespace IngameScript
                 throttlePercent = throttle * 100;
             }
 
-            private double Smooth(CircularBuffer<double> history, ref double sum, double value)
+            private double Smooth(Queue<double> history, ref double sum, double value)
             {
                 if (history.Count >= SMOOTHING_WINDOW_SIZE)
                     sum -= history.Dequeue();

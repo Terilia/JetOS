@@ -20,6 +20,11 @@ namespace CameraLCD
         private uint _counter = 0;
         public void Update()
         {
+            // Drive heal swaps every frame (sim thread) so far->near recovery is snappy, not gated
+            // by the 10-frame throttle below.
+            if (Settings.Enabled)
+                CameraLcdManager.ProcessHealQueue();
+
             if (++_counter % 10 != 0 || !Settings.Enabled)
                 return;
 

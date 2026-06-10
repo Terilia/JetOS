@@ -85,8 +85,6 @@ namespace IngameScript
                         sprite.RotationOrScale = existing + rollRad;
                     }
 
-                    sprites[s] = sprite;
-
                     frame.Add(sprite);
                 }
 

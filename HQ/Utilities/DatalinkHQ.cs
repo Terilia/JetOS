@@ -105,6 +105,33 @@ namespace IngameScript
                 _stationAccum += dt;
                 double interval = HQConfig.BroadcastHz > 0.01 ? 1.0 / HQConfig.BroadcastHz : 1.0;
                 if (_stationAccum >= interval) { _stationAccum = 0; Broadcast(); }
+
+                if (_ovrId != 0)
+                {
+                    _ovrAccum += dt;
+                    if (_ovrAccum >= OVR_INTERVAL)
+                    {
+                        _ovrAccum = 0;
+                        Vector3D op, ov; bool live;
+                        if (!MapView.TryGetTrack(_ovrId, out op, out ov, out live))
+                            _ovrId = 0;   // track evicted — disarm
+                        else if (live)    // stale = hold fire on updates; resumes when track refreshes
+                            _p.IGC.SendBroadcastMessage(OVR_CHANNEL, MyTuple.Create(op, ov));
+                    }
+                }
+            }
+
+            // Missile strike override — streams the marked track's live state on the missiles'
+            // override channel. Armed/disarmed via MAP key 7 (toggle on the same track).
+            const string OVR_CHANNEL = "JETOS_MSL_OVR";
+            const double OVR_INTERVAL = 0.2;
+            static long _ovrId;
+            static double _ovrAccum;
+            public static long StrikeId => _ovrId;
+            public static void ToggleStrike(long id)
+            {
+                _ovrId = _ovrId == id ? 0 : id;
+                _ovrAccum = OVR_INTERVAL;   // first packet goes out this tick
             }
 
             static void Poll()

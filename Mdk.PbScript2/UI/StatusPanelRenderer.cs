@@ -54,8 +54,7 @@ namespace IngameScript
                 Rect(x + w / 2f, y + h / 2f, w, h, Cr(2, 3, 2));
                 SpriteHelpers.DrawRectangleOutline(x, y, w, h, 1f, Cr(14, 26, 16));
                 var area = new RectangleF(V2(x + 2f, y + 2f), V2(w - 4f, h - 4f));
-                if (TerrainData.Ready && jet.CachedGravity.LengthSquared() > 0.01
-                    && !(SystemManager.currentModule is TerrainModule))
+                if (TerrainData.Ready && jet.CachedGravity.LengthSquared() > 0.01)
                     TerrainModule.RenderMinimap(area, jet);
                 else
                     Txt("NO TER", x + w / 2f, y + h / 2f - 6f, 0.35f, Cr(42, 74, 42));
